@@ -342,7 +342,7 @@ def cmd_mcp_config(workspace: str, name: str | None = None, http_url: str | None
     print()
     print("## Opción B — HTTP (red LAN):")
     print("# Arranca primero: TRANSPORT=streamable-http ./start-mcp.sh <workspace>")
-    url = http_url or f"http://{_local_ip()}:8765/mcp"
+    url = http_url or f"http://{_load_conf().get('LAN_HOST') or _local_ip()}:8765/mcp"
     config_http = {
         "mcpServers": {
             server_name: {
