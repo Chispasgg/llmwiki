@@ -33,6 +33,64 @@ def _sanitize_name(name: str) -> str:
     return slug or "wiki"
 
 
+def _local_ip() -> str:
+    """Devuelve la IP LAN conectando un socket UDP (no envía tráfico)."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        try:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+        except Exception:
+            return "127.0.0.1"
+
+
+def _load_conf() -> dict[str, str]:
+    """Lee config/llmwiki-launcher.conf (bash KEY="value") si existe.
+
+    Devuelve un dict con las claves definidas. Ignora comentarios, líneas
+    vacías y cualquier sintaxis bash que no sea KEY=valor simple.
+    El fichero es opcional — si no existe devuelve {}.
+    """
+    conf_path = REPO_ROOT.parent / "config" / "llmwiki-launcher.conf"
+    result: dict[str, str] = {}
+    if not conf_path.exists():
+        return result
+    for line in conf_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, raw = line.partition("=")
+        key = key.strip()
+        value = raw.strip().strip('"').strip("'")
+        if key and value:
+            result[key] = value
+    return result
+
+
+def _resolve_network(
+    host_flag: str | None,
+    api_port: str,
+    web_port: str,
+) -> tuple[str, str, str]:
+    """Devuelve (app_url, api_url, cors_origin) según precedencia.
+
+    Precedencia: --host flag > APP_URL/NEXT_PUBLIC_API_URL/LAN_HOST del conf > auto-detect.
+    """
+    conf = _load_conf()
+
+    if host_flag:
+        app_url = f"http://{host_flag}:{web_port}"
+        api_url = f"http://{host_flag}:{api_port}"
+        cors_origin = conf.get("CORS_ORIGIN") or app_url
+        return app_url, api_url, cors_origin
+
+    lan_host = conf.get("LAN_HOST") or _local_ip()
+    app_url = conf.get("APP_URL") or f"http://{lan_host}:{web_port}"
+    api_url = conf.get("NEXT_PUBLIC_API_URL") or f"http://{lan_host}:{api_port}"
+    cors_origin = conf.get("CORS_ORIGIN") or app_url
+    return app_url, api_url, cors_origin
+
+
 def cmd_init(workspace: str) -> None:
     ws = Path(workspace).resolve()
     ws.mkdir(parents=True, exist_ok=True)
@@ -189,7 +247,7 @@ def _index_existing_files(ws: Path, db_path: Path, user_id: str, ws_id: str) -> 
         print(f"✓ Indexed {indexed} existing file(s)")
 
 
-def cmd_serve(workspace: str, open_browser: bool = True) -> None:
+def cmd_serve(workspace: str, open_browser: bool = True, host: str | None = None) -> None:
     ws = Path(workspace).resolve()
     if not (ws / ".llmwiki" / "index.db").exists():
         print(f"Workspace not initialized. Run: llmwiki init {ws}", file=sys.stderr)
@@ -197,14 +255,13 @@ def cmd_serve(workspace: str, open_browser: bool = True) -> None:
 
     api_port = "1503"
     web_port = "1504"
-    app_url = f"http://localhost:{web_port}"
-    api_url = f"http://localhost:{api_port}"
+    app_url, api_url, cors_origin = _resolve_network(host, api_port, web_port)
 
     env = os.environ.copy()
     env["MODE"] = "local"
     env["WORKSPACE_PATH"] = str(ws)
     env["DATABASE_URL"] = ""
-    env["APP_URL"] = app_url
+    env["APP_URL"] = cors_origin
     env["API_URL"] = api_url
 
     print(f"Starting LLM Wiki for: {ws}")
@@ -226,7 +283,7 @@ def cmd_serve(workspace: str, open_browser: bool = True) -> None:
     web_env["NEXT_PUBLIC_API_URL"] = api_url
     npm = shutil.which("pnpm") or shutil.which("npm")
     web_proc = subprocess.Popen(
-        [npm, "run", "dev", "--", "--port", web_port],
+        [npm, "run", "dev", "--", "--port", web_port, "--hostname", "0.0.0.0"],
         cwd=str(WEB_DIR),
         env=web_env,
     )
@@ -246,11 +303,11 @@ def cmd_serve(workspace: str, open_browser: bool = True) -> None:
         web_proc.wait()
 
 
-def cmd_open(workspace: str) -> None:
+def cmd_open(workspace: str, host: str | None = None) -> None:
     ws = Path(workspace).resolve()
     if not (ws / ".llmwiki" / "index.db").exists():
         cmd_init(str(ws))
-    cmd_serve(str(ws), open_browser=True)
+    cmd_serve(str(ws), open_browser=True, host=host)
 
 
 def cmd_mcp(workspace: str) -> None:
@@ -264,12 +321,15 @@ def cmd_mcp(workspace: str) -> None:
     )
 
 
-def cmd_mcp_config(workspace: str, name: str | None = None) -> None:
+def cmd_mcp_config(workspace: str, name: str | None = None, http_url: str | None = None) -> None:
     ws = Path(workspace).resolve()
     server_name = name or f"llmwiki-{_sanitize_name(ws.name)}"
     llmwiki_path = str(REPO_ROOT / "llmwiki")
 
-    config = {
+    print(f"# Workspace: {ws}")
+    print()
+    print("## Opción A — stdio (mismo ordenador):")
+    config_stdio = {
         "mcpServers": {
             server_name: {
                 "command": llmwiki_path,
@@ -277,12 +337,20 @@ def cmd_mcp_config(workspace: str, name: str | None = None) -> None:
             }
         }
     }
+    print(json.dumps(config_stdio, indent=2))
 
-    print(f"# Add to claude_desktop_config.json:")
-    print(f"# This MCP server is scoped to: {ws}")
-    print(f"# To use another workspace, add another server entry.")
     print()
-    print(json.dumps(config, indent=2))
+    print("## Opción B — HTTP (red LAN):")
+    print("# Arranca primero: TRANSPORT=streamable-http ./start-mcp.sh <workspace>")
+    url = http_url or f"http://{_local_ip()}:8765/mcp"
+    config_http = {
+        "mcpServers": {
+            server_name: {
+                "url": url,
+            }
+        }
+    }
+    print(json.dumps(config_http, indent=2))
 
 
 def cmd_reindex(workspace: str) -> None:
@@ -322,12 +390,14 @@ def main():
 
     p_open = sub.add_parser("open", help="Init if needed + serve + open browser")
     p_open.add_argument("workspace", help="Path to workspace folder")
+    p_open.add_argument("--host", default=None, help="IP/hostname LAN (anula conf y auto-detect)")
 
     p_init = sub.add_parser("init", help="Initialize a workspace folder")
     p_init.add_argument("workspace", help="Path to workspace folder")
 
     p_serve = sub.add_parser("serve", help="Start API + web servers")
     p_serve.add_argument("workspace", help="Path to workspace folder")
+    p_serve.add_argument("--host", default=None, help="IP/hostname LAN (anula conf y auto-detect)")
 
     p_mcp = sub.add_parser("mcp", help="Run stdio MCP server")
     p_mcp.add_argument("workspace", help="Path to workspace folder")
@@ -335,6 +405,8 @@ def main():
     p_config = sub.add_parser("mcp-config", help="Print Claude MCP config snippet")
     p_config.add_argument("workspace", help="Path to workspace folder")
     p_config.add_argument("--name", help="Custom server name")
+    p_config.add_argument("--http-url", dest="http_url", default=None,
+                          help="URL del servidor MCP HTTP (default: auto-detect)")
 
     p_reindex = sub.add_parser("reindex", help="Force full rebuild of index")
     p_reindex.add_argument("workspace", help="Path to workspace folder")
@@ -346,15 +418,15 @@ def main():
         sys.exit(1)
 
     if args.command == "open":
-        cmd_open(args.workspace)
+        cmd_open(args.workspace, host=getattr(args, "host", None))
     elif args.command == "init":
         cmd_init(args.workspace)
     elif args.command == "serve":
-        cmd_serve(args.workspace)
+        cmd_serve(args.workspace, host=getattr(args, "host", None))
     elif args.command == "mcp":
         cmd_mcp(args.workspace)
     elif args.command == "mcp-config":
-        cmd_mcp_config(args.workspace, getattr(args, "name", None))
+        cmd_mcp_config(args.workspace, getattr(args, "name", None), getattr(args, "http_url", None))
     elif args.command == "reindex":
         cmd_reindex(args.workspace)
 
