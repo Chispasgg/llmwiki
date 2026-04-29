@@ -48,7 +48,7 @@ def cmd_init(workspace: str) -> None:
 
     # Initialize SQLite
     import sqlite3
-    schema_path = API_DIR / "infra" / "db" / "sqlite_schema.sql"
+    schema_path = REPO_ROOT / "shared" / "sqlite_schema.sql"
     if not schema_path.exists():
         print(f"Error: schema not found at {schema_path}", file=sys.stderr)
         sys.exit(1)
@@ -195,22 +195,27 @@ def cmd_serve(workspace: str, open_browser: bool = True) -> None:
         print(f"Workspace not initialized. Run: llmwiki init {ws}", file=sys.stderr)
         sys.exit(1)
 
+    api_port = "1503"
+    web_port = "1504"
+    app_url = f"http://localhost:{web_port}"
+    api_url = f"http://localhost:{api_port}"
+
     env = os.environ.copy()
     env["MODE"] = "local"
     env["WORKSPACE_PATH"] = str(ws)
     env["DATABASE_URL"] = ""
-    env["APP_URL"] = "http://localhost:3000"
-    env["API_URL"] = "http://localhost:8000"
+    env["APP_URL"] = app_url
+    env["API_URL"] = api_url
 
     print(f"Starting LLM Wiki for: {ws}")
-    print(f"  API: http://localhost:8000")
-    print(f"  Web: http://localhost:3000")
+    print(f"  API: {api_url}")
+    print(f"  Web: {app_url}")
     print(f"  MCP: llmwiki mcp-config {ws}")
     print()
 
     # Start API server
     api_proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"],
+        [sys.executable, "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", api_port],
         cwd=str(API_DIR),
         env=env,
     )
@@ -218,10 +223,10 @@ def cmd_serve(workspace: str, open_browser: bool = True) -> None:
     # Start web dev server
     web_env = env.copy()
     web_env["NEXT_PUBLIC_MODE"] = "local"
-    web_env["NEXT_PUBLIC_API_URL"] = "http://localhost:8000"
+    web_env["NEXT_PUBLIC_API_URL"] = api_url
     npm = shutil.which("pnpm") or shutil.which("npm")
     web_proc = subprocess.Popen(
-        [npm, "run", "dev"],
+        [npm, "run", "dev", "--", "--port", web_port],
         cwd=str(WEB_DIR),
         env=web_env,
     )
@@ -229,7 +234,7 @@ def cmd_serve(workspace: str, open_browser: bool = True) -> None:
     if open_browser:
         import time
         time.sleep(3)
-        webbrowser.open("http://localhost:3000/wikis")
+        webbrowser.open(f"{app_url}/wikis")
 
     try:
         api_proc.wait()
