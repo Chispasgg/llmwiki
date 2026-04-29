@@ -4,8 +4,11 @@ Copies uploaded files directly into the workspace and indexes them.
 """
 
 import hashlib
+import logging
 import uuid
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form
 
@@ -65,8 +68,8 @@ async def upload_file(
     if ext in simple_text_types:
         try:
             text_content = content_bytes.decode("utf-8", errors="replace")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("No se pudo decodificar el contenido de %s como UTF-8: %s", file.filename, e)
 
     # Index into SQLite
     from infra.db.sqlite import SQLiteDocumentRepository, SQLiteChunkRepository

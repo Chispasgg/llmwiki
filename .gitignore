@@ -1,3 +1,6 @@
+# Lock files
+*.lock
+
 # Dependencies
 node_modules/
 .venv/

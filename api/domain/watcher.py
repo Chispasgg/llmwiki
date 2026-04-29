@@ -20,6 +20,8 @@ from pathlib import Path
 
 import aiosqlite
 
+from config import settings
+
 logger = logging.getLogger(__name__)
 
 IGNORE_DIRS = frozenset({
@@ -142,15 +144,15 @@ async def _index_file(db: aiosqlite.Connection, workspace: Path, file_path: Path
     if ext in TEXT_EXTENSIONS:
         try:
             content = file_path.read_text(encoding="utf-8", errors="replace")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("No se pudo leer el contenido de %s: %s", file_path, e)
 
     content_hash = None
-    if stat.st_size < 100_000_000:
+    if stat.st_size < settings.WATCHER_MAX_HASH_BYTES:
         try:
             content_hash = hashlib.sha256(file_path.read_bytes()).hexdigest()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("No se pudo calcular el hash de %s: %s", file_path, e)
 
     # Check if document already exists at this path
     cursor = await db.execute(

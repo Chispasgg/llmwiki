@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from deps import get_scoped_db
+from deps import get_scoped_db, require_admin
 from config import settings
 from scoped_db import ScopedDB
 
@@ -23,7 +23,10 @@ class GlobalStatsResponse(BaseModel):
 
 
 @router.get("/stats", response_model=GlobalStatsResponse)
-async def global_stats(db: Annotated[ScopedDB, Depends(get_scoped_db)]):
+async def global_stats(
+    _admin: Annotated[str, Depends(require_admin)],
+    db: Annotated[ScopedDB, Depends(get_scoped_db)],
+):
     row = await db.fetchrow(
         "SELECT "
         "  (SELECT COUNT(DISTINCT id) FROM users) AS total_users, "

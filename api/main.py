@@ -1,24 +1,9 @@
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware as _BaseCORSMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
-
-
-class CORSMiddleware(_BaseCORSMiddleware):
-    """CORS middleware that passes WebSocket connections through.
-
-    WebSocket auth is handled by JWT verification in the handler, not by
-    origin checks. HTTP requests still get full CORS protection.
-    """
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "websocket":
-            await self.app(scope, receive, send)
-            return
-        await super().__call__(scope, receive, send)
 
 from config import settings
 
@@ -38,139 +23,38 @@ if settings.LOGFIRE_TOKEN:
     logfire.configure(token=settings.LOGFIRE_TOKEN, service_name="supavault-api")
     logfire.instrument_asyncpg()
 
-from routes.health import router as health_router
-from routes.knowledge_bases import router as knowledge_bases_router
-from routes.documents import router as documents_router
-from routes.me import router as me_router
-from routes.usage import router as usage_router
+
+class CORSMiddleware(_BaseCORSMiddleware):
+    """CORS middleware that passes WebSocket connections through.
+
+    WebSocket auth is handled by JWT verification in the handler, not by
+    origin checks. HTTP requests still get full CORS protection.
+    """
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "websocket":
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if settings.MODE == "local":
-        async with _local_lifespan(app):
+        from startup.local import local_lifespan
+        async with local_lifespan(app):
             yield
-        return
-
-    # ── Hosted mode ──
-    import asyncpg
-    pool = await asyncpg.create_pool(settings.DATABASE_URL, min_size=2, max_size=10)
-    app.state.pool = pool
-    app.state.mode = "hosted"
-
-    s3_service = None
-    ocr_service = None
-    if settings.AWS_ACCESS_KEY_ID and settings.S3_BUCKET:
-        from services.s3 import S3Service
-        s3_service = S3Service()
-    if s3_service:
-        from services.ocr import OCRService
-        ocr_service = OCRService(s3_service, pool)
-
-    app.state.s3_service = s3_service
-    app.state.ocr_service = ocr_service
-    app.state.auth_provider = None  # Uses Supabase JWKS auth via deps.py
-
-    from services.hosted import HostedServiceFactory
-    app.state.factory = HostedServiceFactory(pool, s3_service, ocr_service)
-
-    # Real-time document change notifications via WebSocket
-    from routes.ws import setup_listener
-    listener_task = await setup_listener(settings.DATABASE_URL)
-
-    from infra.tus import cleanup_stale_uploads
-    cleanup_task = asyncio.create_task(cleanup_stale_uploads())
-
-    if ocr_service:
-        rows = await pool.fetch(
-            "SELECT id::text, user_id::text FROM documents "
-            "WHERE status IN ('pending', 'processing') AND NOT archived"
-        )
-        for row in rows:
-            logger.info("Recovering stuck document %s", row["id"][:8])
-            asyncio.create_task(ocr_service.process_document(row["id"], row["user_id"]))
-
-    yield
-
-    cleanup_task.cancel()
-    listener_task.cancel()
-    await pool.close()
+    else:
+        from startup.hosted import hosted_lifespan
+        async with hosted_lifespan(app):
+            yield
 
 
-async def _local_lifespan_inner(app: FastAPI):
-    """Local mode: SQLite + local filesystem + single-user auth."""
-    import uuid
-    from pathlib import Path
-    from infra.db.sqlite import create_pool as create_sqlite_pool
-    from infra.storage.local import LocalStorageService
-    from infra.auth.local import LocalAuthProvider
-
-    workspace = Path(settings.WORKSPACE_PATH).resolve()
-    workspace.mkdir(parents=True, exist_ok=True)
-    (workspace / "wiki").mkdir(exist_ok=True)
-    (workspace / ".llmwiki").mkdir(exist_ok=True)
-    (workspace / ".llmwiki" / "cache").mkdir(exist_ok=True)
-
-    db_path = str(workspace / ".llmwiki" / "index.db")
-    db = await create_sqlite_pool(db_path)
-
-    local_user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, "local"))
-    auth_provider = LocalAuthProvider(local_user_id)
-    storage = LocalStorageService(str(workspace), settings.API_URL)
-
-    # Ensure workspace row exists
-    cursor = await db.execute("SELECT id FROM workspace LIMIT 1")
-    if not await cursor.fetchone():
-        ws_id = str(uuid.uuid4())
-        await db.execute(
-            "INSERT INTO workspace (id, name, description, user_id) VALUES (?, ?, '', ?)",
-            (ws_id, workspace.name, local_user_id),
-        )
-        await db.commit()
-        logger.info("Initialized local workspace: %s", workspace)
-
-    app.state.mode = "local"
-    app.state.pool = None  # No asyncpg pool in local mode
-    app.state.sqlite_db = db
-    app.state.s3_service = None
-    app.state.storage_service = storage
-    app.state.ocr_service = None
-    app.state.auth_provider = auth_provider
-    app.state.workspace_path = str(workspace)
-
-    from services.local import LocalServiceFactory
-    app.state.factory = LocalServiceFactory(db, storage, local_user_id)
-
-    logger.info("Local mode — workspace: %s", workspace)
-    return db
-
-
-@asynccontextmanager
-async def _local_lifespan(app: FastAPI):
-    db = await _local_lifespan_inner(app)
-
-    # Start file watcher
-    watcher_task = None
-    try:
-        from domain.watcher import watch_workspace
-        from pathlib import Path
-        workspace = Path(app.state.workspace_path)
-        watcher_task = asyncio.create_task(watch_workspace(db, workspace))
-        logger.info("File watcher started")
-    except ImportError:
-        logger.warning("watchfiles not installed — file watcher disabled")
-
-    try:
-        yield
-    finally:
-        if watcher_task:
-            watcher_task.cancel()
-            try:
-                await watcher_task
-            except asyncio.CancelledError:
-                pass
-        await db.close()
-
+from routes.health import router as health_router
+from routes.knowledge_bases import router as knowledge_bases_router
+from routes.documents import router as documents_router
+from routes.me import router as me_router
+from routes.usage import router as usage_router
 
 app = FastAPI(title="LLM Wiki API", lifespan=lifespan)
 
