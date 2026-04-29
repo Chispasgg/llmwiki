@@ -1,115 +1,138 @@
-# LLM Wiki
+# 📚 LLM Wiki
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-green)](https://opensource.org/licenses/Apache-2.0)
+[![Licencia](https://img.shields.io/badge/licencia-Apache%202.0-green)](https://opensource.org/licenses/Apache-2.0)
+[![Python](https://img.shields.io/badge/Python-3.12+-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-20+-black?logo=next.js)](https://nextjs.org/)
 
-Open-source implementation of [Karpathy's LLM Wiki](https://x.com/karpathy/status/2039805659525644595) ([spec](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)).
+Fork local de [LLM Wiki](https://x.com/karpathy/status/2039805659525644595) ([spec original](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)), con mejoras de arquitectura, migración de herramientas y configuración centralizada.
 
-I built this because research folders accumulate useful material faster than I can keep summaries, links, and citations current by hand. LLM Wiki offloads that editing work to Claude so I can focus on source selection and analysis instead.
+Apunta el sistema a una carpeta con tus documentos, arranca la app local y conecta Claude vía MCP. Desde ahí, Claude lee tus fuentes, escribe páginas wiki y mantiene enlaces y citas en sincronía automáticamente.
 
-Point it at a folder, start the local app, and connect Claude over MCP. From there, Claude reads your sources, writes wiki pages, and keeps links and citations in sync.
+![LLM Wiki — página wiki compilada con citas y tabla de contenidos](wiki-page.png)
 
-![LLM Wiki — a compiled wiki page with citations and table of contents](wiki-page.png)
+---
 
-## What actually happens
+## ¿Qué hace?
 
-1. **You have a folder** — PDFs, notes, articles, spreadsheets. Your existing research.
-2. **LLM Wiki indexes it** — extracts text, chunks for search, builds a local SQLite index. Source files stay where they are.
-3. **Claude connects via MCP** — reads sources, writes wiki pages under `wiki/`, maintains cross-references and footnote citations.
-4. **The wiki improves** as Claude reads more of the workspace and writes more pages. Summaries, entity pages, and cross-references accumulate instead of being re-derived from scratch each conversation.
+1. **📁 Tienes una carpeta** — PDFs, notas, artículos, hojas de cálculo. Tu investigación existente.
+2. **🔍 LLM Wiki la indexa** — extrae texto, trocea para búsqueda, construye un índice SQLite local. Los archivos fuente no se tocan.
+3. **🤖 Claude se conecta vía MCP** — lee fuentes, escribe páginas wiki en `wiki/`, mantiene referencias cruzadas y citas en notas al pie.
+4. **📈 La wiki mejora sola** — a medida que Claude lee más del workspace y escribe más páginas, los resúmenes, páginas de entidades y referencias cruzadas se acumulan en lugar de derivarse desde cero en cada conversación.
 
-## Quick Start
+---
 
-**Requirements:** Python 3.11+, Node.js 20+
+## 🚀 Inicio rápido
+
+**Requisitos:** Python 3.12+, Node.js 20+, [`uv`](https://astral.sh/uv)
 
 ```bash
-git clone https://github.com/lucasastorian/llmwiki.git
+git clone https://github.com/Chispasgg/llmwiki.git
 cd llmwiki
 
-# Install Python deps
-cd api && python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cd ..
+# Instalar dependencias Python (API)
+cd api && uv sync && cd ..
 
-# Install web deps
+# Instalar dependencias Python (MCP)
+cd mcp && uv sync && cd ..
+
+# Instalar dependencias web
 cd web && npm install && cd ..
 
-# Initialize a workspace (point at any folder with your files)
-./llmwiki init ~/research
+# Inicializar un workspace (apunta a cualquier carpeta con tus archivos)
+./llmwiki init ~/investigacion
 
-# Start the app
-./llmwiki serve ~/research
+# Arrancar la app
+./llmwiki serve ~/investigacion
 ```
 
-Open [localhost:3000](http://localhost:3000). Your files are indexed, wiki is scaffolded, ready to go.
+Abre [localhost:3000](http://localhost:3000). Los archivos están indexados y la wiki está lista.
 
-### Connect Claude
+---
+
+## 🔌 Conectar Claude
 
 ```bash
-./llmwiki mcp-config ~/research
+./llmwiki mcp-config ~/investigacion
 ```
 
-This prints a JSON snippet for `claude_desktop_config.json` (Claude Desktop) or `.claude/settings.json` (Claude Code). One workspace runs as one MCP server entry, so if you have multiple research folders, add one entry per folder.
+Imprime el fragmento JSON para `claude_desktop_config.json` (Claude Desktop) o `.claude/settings.json` (Claude Code). Cada workspace funciona como una entrada MCP independiente — si trabajas con varias carpetas de investigación, añade una entrada por carpeta.
 
-Then tell Claude: *"Read the guide, then ingest my sources and start building the wiki."*
+Luego dile a Claude: *"Lee la guía, ingiere mis fuentes y empieza a construir la wiki."*
 
-### One-command start
+### Lanzador todo-en-uno
 
 ```bash
-./llmwiki open ~/research
+./llmwiki open ~/investigacion
 ```
 
-Does everything: init if needed, start servers, open browser, print MCP config hint.
+Hace todo de una vez: inicializa si es necesario, arranca los servidores, abre el navegador e imprime el hint de configuración MCP.
 
-## CLI
+#### Lanzador interactivo (multi-workspace)
 
-| Command | What it does |
+Si tienes varios workspaces, usa el lanzador interactivo con configuración centralizada:
+
+```bash
+./launch_llmwiki.sh
+```
+
+Carga la configuración desde `config/llmwiki-launcher.conf`, lista los workspaces disponibles y permite elegir por número.
+
+---
+
+## 🖥️ CLI
+
+| Comando | Descripción |
 |---------|-------------|
-| `llmwiki open <folder>` | Init + serve + open browser |
-| `llmwiki init <folder>` | Create `.llmwiki/` + `wiki/`, index existing files |
-| `llmwiki serve <folder>` | Start API on :8000 + web on :3000 |
-| `llmwiki mcp <folder>` | Run stdio MCP server (for Claude config) |
-| `llmwiki mcp-config <folder>` | Print `claude_desktop_config.json` snippet |
-| `llmwiki reindex <folder>` | Rebuild the index from disk |
+| `llmwiki open <carpeta>` | Init + serve + abrir navegador |
+| `llmwiki init <carpeta>` | Crear `.llmwiki/` + `wiki/`, indexar archivos existentes |
+| `llmwiki serve <carpeta>` | Arrancar API en :8000 + web en :3000 |
+| `llmwiki mcp <carpeta>` | Ejecutar servidor MCP stdio (para configuración de Claude) |
+| `llmwiki mcp-config <carpeta>` | Imprimir fragmento `claude_desktop_config.json` |
+| `llmwiki reindex <carpeta>` | Reconstruir el índice desde disco |
 
-## What happens on disk
+---
 
-LLM Wiki adds two things to your folder. Source files are not moved or modified.
+## 📂 Qué ocurre en disco
+
+LLM Wiki añade dos cosas a tu carpeta. Los archivos fuente no se mueven ni modifican.
 
 ```
-~/research/                  # Your existing files (untouched)
+~/investigacion/              # Tus archivos existentes (intactos)
   papers/paper.pdf
-  notes.md
-  data.xlsx
-  wiki/                      # Generated pages (created by LLM Wiki)
+  notas.md
+  datos.xlsx
+  wiki/                       # Páginas generadas (creadas por LLM Wiki)
     overview.md
     log.md
-    concepts/
+    conceptos/
       attention.md
-  .llmwiki/                  # Index + cache (hidden, rebuildable)
+  .llmwiki/                   # Índice + caché (oculto, reconstruible)
     index.db
     cache/
 ```
 
-- `wiki/` — ordinary markdown files. Edit them in any editor. Claude writes and updates them via MCP.
-- `.llmwiki/` — SQLite search index and processed artifacts. Delete it anytime; `llmwiki reindex` rebuilds from the source files.
+- `wiki/` — archivos markdown normales. Edítalos en cualquier editor. Claude los escribe y actualiza vía MCP.
+- `.llmwiki/` — índice SQLite y artefactos procesados. Bórralo cuando quieras; `llmwiki reindex` lo reconstruye desde los archivos fuente.
 
-By default, indexing, storage, and file writes happen on your machine. No cloud services required.
+Por defecto, indexación, almacenamiento y escritura de archivos ocurren en tu máquina. **No se requieren servicios cloud.**
 
-## How Claude interacts with the workspace
+---
 
-Once connected, Claude has these tools:
+## 🤖 Herramientas MCP disponibles para Claude
 
-| Tool | Description |
-|------|-------------|
-| `guide` | Explains how the wiki works, lists what's in the workspace |
-| `search` | Browse files (`list`) or full-text search (`search`) |
-| `read` | Read documents — PDFs with page ranges, glob batch reads |
-| `write` | Create wiki pages, edit with `str_replace`, append. SVG/CSV assets |
-| `delete` | Delete documents by path or glob pattern |
+| Herramienta | Descripción |
+|-------------|-------------|
+| `guide` | Explica cómo funciona la wiki y lista el contenido del workspace |
+| `search` | Navega archivos (`list`) o búsqueda de texto completo (`search`) |
+| `read` | Lee documentos — PDFs con rangos de página, lecturas batch por glob |
+| `write` | Crea páginas wiki, edita con `str_replace`, añade al final. Assets SVG/CSV |
+| `delete` | Elimina documentos por ruta o patrón glob |
 
-All writes go to disk first, then update the search index. If Claude creates `/wiki/concepts/attention.md`, that file appears on disk immediately.
+Todas las escrituras van a disco primero, luego actualizan el índice de búsqueda.
 
-## Architecture
+---
+
+## 🏗️ Arquitectura
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
@@ -123,49 +146,100 @@ All writes go to disk first, then update the search index. If Claude creates `/w
                      └──────────────┘
                             │
                      ┌──────┴───────┐
-                     │  Filesystem  │  ← source of truth
+                     │  Filesystem  │  ← fuente de verdad
                      └──────────────┘
 ```
 
-The filesystem is the source of truth. SQLite is a derived index — it accelerates search and stores extracted page data, but it can always be rebuilt from the files. A background file watcher picks up changes you make outside the app.
+El filesystem es la fuente de verdad. SQLite es un índice derivado — acelera la búsqueda y almacena datos extraídos, pero siempre puede reconstruirse desde los archivos. Un file watcher en segundo plano detecta cambios realizados fuera de la app.
 
-## Document processing
+### Mejoras respecto al upstream
 
-All processing runs locally. No API keys required for basic usage.
+Esta versión incorpora las siguientes mejoras sobre el proyecto original:
 
-| Format | Parser | Notes |
-|--------|--------|-------|
-| PDF | pdf-oxide | Rust-based text extraction. Works well for text-heavy papers. Scanned PDFs still benefit from real OCR. |
-| Markdown/Text | native | Indexed and chunked directly |
-| HTML | webmd | Strips nav/ads, extracts clean markdown |
-| Excel/CSV | openpyxl | Sheet-by-sheet extraction |
-| Images | native | Stored as-is, viewable inline |
-| Word/PowerPoint | LibreOffice | Optional. Install LibreOffice for office conversion; without it, these formats are stored but not extracted. |
+- **📦 Migración a `uv` + `pyproject.toml`** — gestión de dependencias reproducible y rápida para API y MCP; eliminados `requirements.txt` y `requirements.lock`.
+- **🔧 Configuración centralizada** — `api/config.py` con `pydantic-settings`; todos los parámetros configurables desde variables de entorno o `.env`.
+- **🏗️ Startup modular** — separación limpia entre modo `local` (`api/startup/local.py`) y modo `hosted` (`api/startup/hosted.py`).
+- **🔒 Mejoras de seguridad** — validación de entradas, gestión segura de secretos y cabeceras HTTP endurecidas.
+- **🚀 `start-mcp.sh` mejorado** — script de arranque del servidor MCP con `uv sync` automático y logging estructurado.
+- **🎛️ Lanzador interactivo** — `launch_llmwiki.sh` con configuración en `config/` para entornos multi-workspace.
 
-Set `MISTRAL_API_KEY` for higher-quality PDF OCR with better table and layout detection. pdf-oxide is the free default and handles most text-heavy documents well enough.
+---
 
-## Limitations and tradeoffs
+## 📄 Procesamiento de documentos
 
-- **One workspace = one MCP server.** If you work across multiple research projects, each gets its own folder and its own MCP entry. This is intentional — it keeps context and file access scoped.
-- **PDF table extraction is rough.** pdf-oxide extracts prose reliably but tables come through as messy text. For financial filings or data-heavy PDFs, Mistral OCR is significantly better.
-- **LibreOffice adds setup friction.** Office file conversion requires a local LibreOffice install. If you mostly work with PDFs and markdown, you can skip it entirely.
-- **No vector search in local mode.** Full-text search uses SQLite FTS5 (porter stemming). It works well for keyword queries but does not do semantic/embedding search. The hosted version at llmwiki.app uses PGroonga for ranked search.
+Todo el procesamiento se ejecuta localmente. No se requieren claves API para uso básico.
 
-## Self-hosting the multi-tenant version
+| Formato | Parser | Notas |
+|---------|--------|-------|
+| PDF | opendataloader-pdf | Extracción de texto basada en Rust. Funciona bien para documentos de texto. |
+| Markdown / Texto | nativo | Indexado y troceado directamente |
+| HTML | BeautifulSoup | Elimina nav/anuncios, extrae markdown limpio |
+| Excel / CSV | openpyxl | Extracción hoja a hoja |
+| Imágenes | nativo | Almacenadas tal cual, visualizables inline |
+| Word / PowerPoint | LibreOffice | Opcional. Instala LibreOffice para conversión de oficina; sin él, estos formatos se almacenan pero no se extraen. |
 
-If you want to run the hosted version (like [llmwiki.app](https://llmwiki.app)) with Postgres, Supabase auth, and S3:
+Configura `MISTRAL_API_KEY` para OCR de PDF de mayor calidad con mejor detección de tablas y maquetación.
+
+---
+
+## ⚙️ Variables de entorno
+
+**API** (archivo `.env` en la raíz del proyecto):
+
+```env
+MODE=local                         # "local" o "hosted"
+WORKSPACE_PATH=.                   # ruta al workspace (modo local)
+
+# Modo hosted (opcional)
+DATABASE_URL=postgresql://...
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_JWT_SECRET=...
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+S3_BUCKET=tu-bucket
+
+# Opcional
+MISTRAL_API_KEY=                   # OCR avanzado para PDFs
+CONVERTER_URL=                     # Conversión de archivos Office
+LOGFIRE_TOKEN=                     # Observabilidad con Logfire
+SENTRY_DSN=                        # Tracking de errores con Sentry
+```
+
+**Web** (variables de entorno Next.js):
+
+```env
+NEXT_PUBLIC_MODE=local
+NEXT_PUBLIC_API_URL=http://localhost:8000
+# Solo en modo hosted:
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=tu-anon-key
+```
+
+---
+
+## ⚠️ Limitaciones
+
+- **Un workspace = un servidor MCP.** Si trabajas con varios proyectos de investigación, cada uno tiene su propia carpeta y su propia entrada MCP. Es intencional — mantiene el contexto y el acceso a archivos acotado.
+- **Extracción de tablas en PDF es aproximada.** opendataloader extrae prosa de forma fiable pero las tablas salen como texto desordenado. Para documentos financieros o PDFs con muchos datos, Mistral OCR es significativamente mejor.
+- **LibreOffice añade fricción de configuración.** La conversión de archivos Office requiere una instalación local de LibreOffice. Si trabajas principalmente con PDFs y markdown, puedes omitirlo.
+- **Sin búsqueda vectorial en modo local.** La búsqueda de texto completo usa SQLite FTS5 (porter stemming). Funciona bien para consultas por palabras clave pero no hace búsqueda semántica/embeddings.
+
+---
+
+## 🌐 Auto-hospedaje (versión multi-tenant)
+
+Si quieres ejecutar la versión hospedada con Postgres, Supabase Auth y S3:
 
 <details>
-<summary>Hosted setup instructions</summary>
+<summary>Instrucciones de configuración hospedada</summary>
 
-### Prerequisites
+### Requisitos previos
 
-- Python 3.11+
-- Node.js 20+
-- A [Supabase](https://supabase.com) project
-- An S3-compatible bucket
+- Python 3.12+, Node.js 20+, `uv`
+- Un proyecto [Supabase](https://supabase.com)
+- Un bucket compatible con S3
 
-### Database
+### Base de datos
 
 ```bash
 psql $DATABASE_URL -f supabase/migrations/001_initial.sql
@@ -175,16 +249,16 @@ psql $DATABASE_URL -f supabase/migrations/001_initial.sql
 
 ```bash
 cd api
-pip install -r requirements.txt
-MODE=hosted DATABASE_URL=postgresql://... uvicorn main:app --port 8000
+uv sync
+MODE=hosted DATABASE_URL=postgresql://... uv run uvicorn main:app --port 8000
 ```
 
-### MCP Server
+### Servidor MCP
 
 ```bash
 cd mcp
-pip install -r requirements.txt
-MODE=hosted DATABASE_URL=postgresql://... uvicorn server:app --port 8080
+uv sync
+MODE=hosted DATABASE_URL=postgresql://... uv run uvicorn server:app --port 8080
 ```
 
 ### Web
@@ -193,42 +267,16 @@ MODE=hosted DATABASE_URL=postgresql://... uvicorn server:app --port 8080
 cd web
 npm install
 NEXT_PUBLIC_MODE=hosted \
-NEXT_PUBLIC_SUPABASE_URL=https://your-ref.supabase.co \
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key \
+NEXT_PUBLIC_SUPABASE_URL=https://tu-ref.supabase.co \
+NEXT_PUBLIC_SUPABASE_ANON_KEY=tu-anon-key \
 NEXT_PUBLIC_API_URL=http://localhost:8000 \
 npm run dev
 ```
 
-### Environment Variables
-
-**API**
-```
-MODE=hosted
-DATABASE_URL=postgresql://...
-SUPABASE_URL=https://your-ref.supabase.co
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-S3_BUCKET=your-bucket
-MISTRAL_API_KEY=              # optional, for better PDF OCR
-CONVERTER_URL=                # optional, for office conversion
-```
-
-**Web**
-```
-NEXT_PUBLIC_MODE=hosted
-NEXT_PUBLIC_SUPABASE_URL=https://your-ref.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
 </details>
 
-## Why this beats a static notes folder
+---
 
-Personal wikis usually fail on maintenance, not intent. Someone has to update links, fix stale summaries, merge overlapping pages, and keep citations aligned with the source material. That work scales with the number of sources, and people stop doing it.
+## 📜 Licencia
 
-LLM Wiki offloads that editing work. You choose the source material and direct the analysis. Claude handles the repetitive bookkeeping — updating cross-references, keeping summaries current, flagging contradictions, touching the 15 pages that a single new source affects.
-
-## License
-
-Apache 2.0
+Apache 2.0 — ver [LICENSE](LICENSE)
