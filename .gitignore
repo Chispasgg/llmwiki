@@ -33,6 +33,9 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# Local docs
+docs/
+
 # LLM Wiki local workspace artifacts
 .llmwiki/
 /wiki/
