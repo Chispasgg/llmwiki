@@ -53,7 +53,21 @@ if [[ ! -x "${MCP_PYTHON}" ]]; then
 fi
 log "Python MCP: $(${MCP_PYTHON} --version)"
 
+# ── Transporte MCP ────────────────────────────────────────────────────────────
+TRANSPORT="${TRANSPORT:-stdio}"
+MCP_HOST="${MCP_HOST:-0.0.0.0}"
+MCP_PORT="${MCP_PORT:-8765}"
+
+log "Transporte MCP: ${TRANSPORT}"
+if [[ "${TRANSPORT}" == "streamable-http" ]]; then
+  log "  Escuchando en: http://${MCP_HOST}:${MCP_PORT}/mcp"
+fi
+
 # ── Lanzar servidor MCP ────────────────────────────────────────────────────────
 
-log "Iniciando servidor MCP local para workspace: ${WORKSPACE}"
-PYTHONPATH="${MCP_DIR}" exec "${MCP_PYTHON}" -m local_server --workspace "${WORKSPACE}"
+log "Iniciando servidor MCP — workspace: ${WORKSPACE}"
+PYTHONPATH="${MCP_DIR}" exec "${MCP_PYTHON}" -m local_server \
+  --workspace "${WORKSPACE}" \
+  --transport "${TRANSPORT}" \
+  --host "${MCP_HOST}" \
+  --port "${MCP_PORT}"

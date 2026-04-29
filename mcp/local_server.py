@@ -25,7 +25,24 @@ os.environ["SUPAVAULT_USER_ID"] = _LOCAL_USER_ID
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="LLM Wiki local MCP server")
     parser.add_argument("workspace", nargs="?", default=".", help="Path to workspace folder")
-    parser.add_argument("--workspace", dest="workspace_flag", default=None, help="Path to workspace folder")
+    parser.add_argument("--workspace", dest="workspace_flag", default=None)
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "streamable-http"],
+        default="stdio",
+        help="Transporte MCP: stdio (default, local) o streamable-http (red LAN)",
+    )
+    parser.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="Host para streamable-http (default: 0.0.0.0)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        help="Puerto para streamable-http (default: 8765)",
+    )
     return parser.parse_args()
 
 
@@ -88,6 +105,8 @@ def main():
 
     mcp = FastMCP(
         name="LLM Wiki",
+        host=args.host,
+        port=args.port,
         instructions=(
             "You are connected to an LLM Wiki workspace. The user has uploaded files, notes, "
             "and documents that you can read, search, edit, and organize. "
@@ -104,8 +123,15 @@ def main():
     async def ping() -> str:
         return "pong"
 
-    logger.info("Local MCP server ready — workspace: %s", workspace)
-    asyncio.run(mcp.run_stdio_async())
+    if args.transport == "streamable-http":
+        logger.info(
+            "Local MCP server ready (HTTP) — workspace: %s — http://%s:%s/mcp",
+            workspace, args.host, args.port,
+        )
+        asyncio.run(mcp.run_streamable_http_async())
+    else:
+        logger.info("Local MCP server ready (stdio) — workspace: %s", workspace)
+        asyncio.run(mcp.run_stdio_async())
 
 
 if __name__ == "__main__":
