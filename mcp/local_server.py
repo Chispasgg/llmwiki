@@ -89,15 +89,15 @@ async def _init_workspace(workspace_path: str) -> None:
         logger.info("Workspace ready: %s", ws)
 
 
-def main():
-    args = _parse_args()
+async def _main_async(args: argparse.Namespace) -> None:
     workspace = args.workspace_flag or args.workspace
     workspace = str(Path(workspace).resolve())
 
+    # sys.modules trick: allows "python -m local_server" to find this module
+    # when tools/ and vaultfs/ import from it using the module name.
     sys.modules["local_server"] = sys.modules[__name__]
 
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(_init_workspace(workspace))
+    await _init_workspace(workspace)
 
     from mcp.server.fastmcp import FastMCP
     from tools import register
@@ -128,10 +128,20 @@ def main():
             "Local MCP server ready (HTTP) — workspace: %s — http://%s:%s/mcp",
             workspace, args.host, args.port,
         )
-        asyncio.run(mcp.run_streamable_http_async())
+        try:
+            await mcp.run_streamable_http_async()
+        except OSError as exc:
+            logger.error("No se pudo arrancar el servidor HTTP: %s", exc)
+            logger.error("Comprueba que el puerto %s no está en uso.", args.port)
+            sys.exit(1)
     else:
         logger.info("Local MCP server ready (stdio) — workspace: %s", workspace)
-        asyncio.run(mcp.run_stdio_async())
+        await mcp.run_stdio_async()
+
+
+def main():
+    args = _parse_args()
+    asyncio.run(_main_async(args))
 
 
 if __name__ == "__main__":
