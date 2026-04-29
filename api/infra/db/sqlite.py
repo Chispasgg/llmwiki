@@ -32,13 +32,13 @@ def _row_to_dict(cursor: aiosqlite.Cursor, row: tuple) -> dict:
     if "metadata" in d and isinstance(d["metadata"], str):
         try:
             d["metadata"] = json.loads(d["metadata"])
-        except (json.JSONDecodeError, TypeError):
-            pass
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.debug("No se pudo parsear JSON de metadata en fila: %s", e)
     if "elements" in d and isinstance(d["elements"], str):
         try:
             d["elements"] = json.loads(d["elements"])
-        except (json.JSONDecodeError, TypeError):
-            pass
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.debug("No se pudo parsear JSON de elements en fila: %s", e)
     # Compatibility: add archived=False for local docs (never archived, just deleted)
     if "status" in d:
         d.setdefault("archived", False)
@@ -56,11 +56,22 @@ async def create_pool(db_path: str) -> aiosqlite.Connection:
     return db
 
 
+_ALLOWED_DOC_UPDATE_FIELDS = frozenset({
+    "filename", "path", "title", "date", "relative_path", "source_kind",
+})
+
+
 class SQLiteDocumentRepository:
     def __init__(self, db: aiosqlite.Connection):
         self._db = db
 
     async def list_by_kb(self, kb_id: str, *, path: str | None = None, archived: bool = False) -> list[dict]:
+        """Lista documentos del workspace.
+
+        kb_id e archived se ignoran intencionalmente: en modo local hay exactamente
+        un workspace (que actúa como KB único) y los documentos se borran físicamente
+        en lugar de archivarse. Los parámetros existen para conformidad con DocumentService ABC.
+        """
         if path:
             cursor = await self._db.execute(
                 f"SELECT {_DOC_COLUMNS} FROM documents "
@@ -101,10 +112,11 @@ class SQLiteDocumentRepository:
     async def find_by_path(
         self, kb_id: str, user_id: str, filename: str, path: str,
     ) -> dict | None:
+        # kb_id e user_id ignorados: en modo local hay un único workspace (ver list_by_kb)
         cursor = await self._db.execute(
-            "SELECT * FROM documents WHERE knowledge_base_id = ? AND user_id = ? "
-            "AND filename = ? AND path = ? AND NOT archived",
-            (kb_id, user_id, filename, path),
+            f"SELECT {_DOC_COLUMNS} FROM documents "
+            "WHERE filename = ? AND path = ? AND status != 'failed'",
+            (filename, path),
         )
         row = await cursor.fetchone()
         return _row_to_dict(cursor, row) if row else None
@@ -145,6 +157,11 @@ class SQLiteDocumentRepository:
         return _row_to_dict(cursor, row) if row else None
 
     async def update_metadata(self, doc_id: str, user_id: str, **fields) -> dict | None:
+        allowed = _ALLOWED_DOC_UPDATE_FIELDS | {"tags", "metadata"}
+        unknown = set(fields) - allowed
+        if unknown:
+            raise ValueError(f"Disallowed field(s) in document update: {unknown}")
+
         updates = []
         params = []
         for key, value in fields.items():

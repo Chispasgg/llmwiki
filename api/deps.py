@@ -1,7 +1,9 @@
 import json
 from typing import Annotated, AsyncGenerator
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
+
+from config import settings
 
 from scoped_db import ScopedDB
 
@@ -54,7 +56,7 @@ async def get_scoped_db(
     if pool is None:
         db = request.app.state.sqlite_db
         user_id = await get_user_id(request)
-        yield ScopedDB(None, db, user_id)
+        yield ScopedDB(conn=db, user_id=user_id)
         return
 
     from auth import get_current_user
@@ -66,10 +68,22 @@ async def get_scoped_db(
         claims = json.dumps({"sub": user_id})
         await conn.execute("SET LOCAL ROLE authenticated")
         await conn.execute("SELECT set_config('request.jwt.claims', $1, true)", claims)
-        yield ScopedDB(pool, conn, user_id)
+        yield ScopedDB(conn=conn, user_id=user_id)
         await tr.commit()
     except Exception:
         await tr.rollback()
         raise
     finally:
         await pool.release(conn)
+
+
+async def require_admin(request: Request) -> str:
+    """Verifica que el usuario autenticado tiene rol admin.
+
+    Si ADMIN_USER_IDS está vacío, cualquier usuario autenticado puede acceder
+    (compatibilidad con instalaciones sin config de admin).
+    """
+    user_id = await get_user_id(request)
+    if settings.ADMIN_USER_IDS and user_id not in settings.ADMIN_USER_IDS:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user_id

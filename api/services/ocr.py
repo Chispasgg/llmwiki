@@ -11,12 +11,12 @@ import httpx
 
 from config import settings
 from services.s3 import S3Service
-from services.chunker import chunk_text, chunk_pages, store_chunks
+from services.chunker import chunk_text, chunk_pages
+from services.hosted import store_chunks
 from services.pdf_extract import extract_pdf
 
 logger = logging.getLogger(__name__)
 
-MISTRAL_OCR_URL = "https://api.mistral.ai/v1/ocr"
 MAX_RETRIES = 3
 RETRY_BACKOFF = [2, 5, 10]
 
@@ -473,7 +473,7 @@ class OCRService:
             try:
                 async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
                     resp = await client.post(
-                        MISTRAL_OCR_URL,
+                        settings.MISTRAL_OCR_URL,
                         headers={
                             "Authorization": f"Bearer {settings.MISTRAL_API_KEY}",
                             "Content-Type": "application/json",

@@ -1,11 +1,14 @@
-import asyncpg
-
-
 class ScopedDB:
+    """Wrapper de conexión DB con user_id vinculado.
+
+    En modo local (SQLite), conn es una aiosqlite.Connection.
+    En modo hosted (Postgres), conn es una asyncpg.Connection con RLS configurado.
+    """
     __slots__ = ("_conn", "_user_id")
 
-    def __init__(self, pool: asyncpg.Pool, conn: asyncpg.Connection, user_id: str):
-        assert user_id
+    def __init__(self, conn, user_id: str):
+        if not user_id:
+            raise ValueError("user_id is required and cannot be empty")
         self._conn = conn
         self._user_id = user_id
 
@@ -14,7 +17,7 @@ class ScopedDB:
         return self._user_id
 
     @property
-    def conn(self) -> asyncpg.Connection:
+    def conn(self):
         return self._conn
 
     async def fetchrow(self, sql: str, *args) -> dict | None:

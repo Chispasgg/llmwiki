@@ -8,7 +8,6 @@ from fastapi import HTTPException
 
 from config import settings
 from domain.watcher import mark_written
-from infra.db.sqlite import SQLiteDocumentRepository, SQLiteChunkRepository
 from services.chunker import chunk_text
 from .base import UserService, KBService, DocumentService, ServiceFactory
 from .types import parse_frontmatter, title_from_filename, extract_tags
@@ -117,11 +116,10 @@ def _doc_to_disk_path(doc: dict) -> Path | None:
 
 class LocalDocumentService(DocumentService):
 
-    def __init__(self, db, user_id: str):
-        self.db = db
+    def __init__(self, user_id: str, doc_repo, chunk_repo):
         self.user_id = user_id
-        self.doc_repo = SQLiteDocumentRepository(db)
-        self.chunk_repo = SQLiteChunkRepository(db)
+        self.doc_repo = doc_repo
+        self.chunk_repo = chunk_repo
 
     async def list(self, kb_id: str, path: str | None = None) -> list[dict]:
         return await self.doc_repo.list_by_kb(kb_id, path=path)
@@ -238,9 +236,12 @@ class LocalDocumentService(DocumentService):
 class LocalServiceFactory(ServiceFactory):
 
     def __init__(self, db, storage=None, user_id: str = ""):
+        from infra.db.sqlite import SQLiteDocumentRepository, SQLiteChunkRepository
         self.db = db
         self.storage = storage
         self.user_id = user_id
+        self._doc_repo = SQLiteDocumentRepository(db)
+        self._chunk_repo = SQLiteChunkRepository(db)
 
     def user_service(self, user_id: str) -> LocalUserService:
         return LocalUserService(self.db, user_id)
@@ -249,4 +250,8 @@ class LocalServiceFactory(ServiceFactory):
         return LocalKBService(self.db, user_id)
 
     def document_service(self, user_id: str) -> LocalDocumentService:
-        return LocalDocumentService(self.db, user_id)
+        return LocalDocumentService(
+            user_id=user_id,
+            doc_repo=self._doc_repo,
+            chunk_repo=self._chunk_repo,
+        )

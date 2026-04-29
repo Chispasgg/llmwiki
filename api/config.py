@@ -1,5 +1,6 @@
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -39,6 +40,23 @@ class Settings(BaseSettings):
     GLOBAL_MAX_USERS: int = 10_000
 
     SENTRY_DSN: str = ""
+    ADMIN_USER_IDS: list[str] = []
+    MISTRAL_OCR_URL: str = "https://api.mistral.ai/v1/ocr"
+    WATCHER_MAX_HASH_BYTES: int = 100_000_000  # 100 MB — ficheros más grandes no se hashean
+
+    @field_validator("ADMIN_USER_IDS", mode="before")
+    @classmethod
+    def _parse_admin_ids(cls, v):
+        # Soporta tanto JSON (["id1","id2"]) como CSV (id1,id2) en .env
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return []
+            if v.startswith("["):
+                import json
+                return json.loads(v)
+            return [uid.strip() for uid in v.split(",") if uid.strip()]
+        return v
 
 
 settings = Settings()

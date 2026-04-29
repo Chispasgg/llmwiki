@@ -9,7 +9,7 @@ import asyncpg
 from fastapi import HTTPException
 
 from config import settings
-from services.chunker import chunk_text, store_chunks
+from services.chunker import chunk_text
 from .base import UserService, KBService, DocumentService, ServiceFactory
 from .types import parse_frontmatter, title_from_filename, extract_tags
 
@@ -418,3 +418,40 @@ class HostedServiceFactory(ServiceFactory):
 
     def document_service(self, user_id: str) -> HostedDocumentService:
         return HostedDocumentService(self.pool, user_id, self.s3)
+
+
+# ── Chunk persistence (Postgres-specific) ─────────────────────────────────────
+
+import logging as _logging
+_chunk_logger = _logging.getLogger(__name__)
+
+
+async def store_chunks(pool_or_conn, document_id: str, user_id: str, knowledge_base_id: str, chunks):
+    """Persiste chunks en Postgres. Acepta un pool asyncpg o una conexión directa."""
+    if isinstance(pool_or_conn, asyncpg.Connection):
+        await _store_chunks_on_conn(pool_or_conn, document_id, user_id, knowledge_base_id, chunks)
+    else:
+        conn = await pool_or_conn.acquire()
+        try:
+            await _store_chunks_on_conn(conn, document_id, user_id, knowledge_base_id, chunks)
+        finally:
+            await pool_or_conn.release(conn)
+
+
+async def _store_chunks_on_conn(conn, document_id: str, user_id: str, knowledge_base_id: str, chunks):
+    await conn.execute("DELETE FROM document_chunks WHERE document_id = $1", document_id)
+    if not chunks:
+        return
+
+    await conn.executemany(
+        "INSERT INTO document_chunks "
+        "(document_id, user_id, knowledge_base_id, chunk_index, content, page, "
+        "start_char, token_count, header_breadcrumb) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        [
+            (document_id, user_id, knowledge_base_id, c.index, c.content,
+             c.page, c.start_char, c.token_count, c.header_breadcrumb)
+            for c in chunks
+        ],
+    )
+    _chunk_logger.info("Stored %d chunks for doc %s", len(chunks), document_id[:8])
