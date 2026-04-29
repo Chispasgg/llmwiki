@@ -79,6 +79,62 @@ Carga la configuración desde `config/llmwiki-launcher.conf`, lista los workspac
 
 ---
 
+## 🌐 Acceso desde la red local (LAN)
+
+El sistema detecta automáticamente la IP de la máquina y configura todos los servicios para ser accesibles desde cualquier dispositivo de la red.
+
+### Web UI desde otro ordenador
+
+```bash
+# Con el lanzador (recomendado):
+./launch_llmwiki.sh
+# Imprime: Frontend: http://192.168.1.10:1504
+
+# Con el CLI:
+./llmwiki serve ~/investigacion
+# Imprime: Web: http://192.168.1.10:1504
+```
+
+Para forzar una IP concreta, editar `config/llmwiki-launcher.conf`:
+```bash
+LAN_HOST="192.168.1.10"
+```
+
+O con el CLI:
+```bash
+./llmwiki serve --host 192.168.1.10 ~/investigacion
+```
+
+### MCP desde otro ordenador (Claude Desktop / Claude Code)
+
+```bash
+# Arrancar el servidor MCP en modo HTTP:
+TRANSPORT=streamable-http ./start-mcp.sh ~/investigacion
+# Escucha en 0.0.0.0:8765
+
+# Ver la configuración para Claude:
+./llmwiki mcp-config ~/investigacion
+# Imprime opción A (stdio, local) y opción B (HTTP, red LAN)
+```
+
+En Claude Desktop / Claude Code del otro ordenador:
+```json
+{
+  "mcpServers": {
+    "llmwiki-investigacion": {
+      "url": "http://192.168.1.10:8765/mcp"
+    }
+  }
+}
+```
+
+Para activar MCP HTTP de forma permanente, editar `config/llmwiki-launcher.conf`:
+```bash
+MCP_TRANSPORT="streamable-http"
+```
+
+---
+
 ## 🖥️ CLI
 
 | Comando | Descripción |
