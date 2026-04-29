@@ -247,14 +247,15 @@ def _index_existing_files(ws: Path, db_path: Path, user_id: str, ws_id: str) -> 
         print(f"✓ Indexed {indexed} existing file(s)")
 
 
-def cmd_serve(workspace: str, open_browser: bool = True, host: str | None = None) -> None:
+def cmd_serve(workspace: str, open_browser: bool = False, host: str | None = None) -> None:
     ws = Path(workspace).resolve()
     if not (ws / ".llmwiki" / "index.db").exists():
         print(f"Workspace not initialized. Run: llmwiki init {ws}", file=sys.stderr)
         sys.exit(1)
 
-    api_port = "1503"
-    web_port = "1504"
+    conf = _load_conf()
+    api_port = conf.get("API_PORT", "1503")
+    web_port = conf.get("WEB_PORT", "1504")
     app_url, api_url, cors_origin = _resolve_network(host, api_port, web_port)
 
     env = os.environ.copy()
@@ -281,9 +282,14 @@ def cmd_serve(workspace: str, open_browser: bool = True, host: str | None = None
     web_env = env.copy()
     web_env["NEXT_PUBLIC_MODE"] = "local"
     web_env["NEXT_PUBLIC_API_URL"] = api_url
-    npm = shutil.which("pnpm") or shutil.which("npm")
+    npm = shutil.which("bun") or shutil.which("pnpm") or shutil.which("npm")
+    if not npm:
+        print("Error: se requiere bun, pnpm o npm para arrancar el frontend.", file=sys.stderr)
+        sys.exit(1)
+    web_env["PORT"] = web_port
+    web_env["HOSTNAME"] = "0.0.0.0"
     web_proc = subprocess.Popen(
-        [npm, "run", "dev", "--", "--port", web_port, "--hostname", "0.0.0.0"],
+        [npm, "run", "dev"],
         cwd=str(WEB_DIR),
         env=web_env,
     )

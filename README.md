@@ -45,7 +45,7 @@ cd web && npm install && cd ..
 ./llmwiki serve ~/investigacion
 ```
 
-Abre [localhost:3000](http://localhost:3000). Los archivos están indexados y la wiki está lista.
+Abre [localhost:1504](http://localhost:1504). Los archivos están indexados y la wiki está lista.
 
 ---
 
@@ -141,7 +141,7 @@ MCP_TRANSPORT="streamable-http"
 |---------|-------------|
 | `llmwiki open <carpeta>` | Init + serve + abrir navegador |
 | `llmwiki init <carpeta>` | Crear `.llmwiki/` + `wiki/`, indexar archivos existentes |
-| `llmwiki serve <carpeta>` | Arrancar API en :8000 + web en :3000 |
+| `llmwiki serve <carpeta>` | Arrancar API en :1503 + web en :1504 |
 | `llmwiki mcp <carpeta>` | Ejecutar servidor MCP stdio (para configuración de Claude) |
 | `llmwiki mcp-config <carpeta>` | Imprimir fragmento `claude_desktop_config.json` |
 | `llmwiki reindex <carpeta>` | Reconstruir el índice desde disco |
