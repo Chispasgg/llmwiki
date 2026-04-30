@@ -11,8 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
     is_active   BOOLEAN NOT NULL DEFAULT true,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_login_at TIMESTAMPTZ,
-    CONSTRAINT users_email_unique UNIQUE (email)
+    last_login_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS user_sessions (
@@ -40,8 +39,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
     CONSTRAINT api_keys_hash_unique UNIQUE (key_hash)
 );
 
-CREATE INDEX IF NOT EXISTS idx_users_email
-    ON users (email);
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique
+    ON users (lower(email));
 CREATE INDEX IF NOT EXISTS idx_sessions_token_hash
     ON user_sessions (session_token_hash);
 CREATE INDEX IF NOT EXISTS idx_sessions_user
