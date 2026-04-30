@@ -25,8 +25,9 @@ class Settings(BaseSettings):
     STAGE: str = "dev"
     APP_URL: str = "http://localhost:3000"
     API_URL: str = "http://localhost:8000"
-    MCP_URL: str = "http://localhost:8080/mcp"
+    MCP_URL: str = "http://localhost:1501"
     SENTRY_DSN: str = ""
+    SERVER_FILES_ROOT: str = "/home/ubuntu/wiki/files"
 
 
 settings = Settings()
