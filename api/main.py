@@ -90,6 +90,8 @@ if settings.MODE == "local":
     app.include_router(local_graph_router)
     set_workspace_root(settings.WORKSPACE_PATH)
 else:
+    from routes.auth import router as auth_router
+    app.include_router(auth_router)
     from routes.api_keys import router as api_keys_router
     from routes.admin import router as admin_router
     from routes.graph import router as graph_router
