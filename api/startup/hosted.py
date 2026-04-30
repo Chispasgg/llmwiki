@@ -1,4 +1,4 @@
-"""Inicialización del modo hosted: Postgres + S3 + OCR + WebSocket."""
+"""Inicialización del modo hosted: Postgres + auth local + WebSocket."""
 
 import asyncio
 import logging
@@ -44,4 +44,12 @@ async def hosted_lifespan(app: FastAPI):
 
     cleanup_task.cancel()
     listener_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        pass
     await pool.close()
