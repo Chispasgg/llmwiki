@@ -17,9 +17,7 @@ const STEPS: Step[] = ['welcome', 'create', 'connect', 'done']
 
 export default function OnboardingPage() {
   const router = useRouter()
-  const token = useUserStore((s) => s.accessToken)
   const user = useUserStore((s) => s.user)
-  const setOnboarded = useUserStore((s) => s.setOnboarded)
   const createKB = useKBStore((s) => s.createKB)
 
   const [step, setStep] = React.useState<Step>('welcome')
@@ -47,7 +45,7 @@ export default function OnboardingPage() {
   }, [user])
 
   const handleCreateWiki = async () => {
-    if (!token || !wikiName.trim()) return
+    if (!wikiName.trim()) return
     setCreating(true)
     setError(null)
     try {
@@ -71,11 +69,9 @@ export default function OnboardingPage() {
   }
 
   const handleComplete = async () => {
-    if (!token) return
     try {
-      await apiFetch('/v1/onboarding/complete', token, { method: 'POST' })
+      await apiFetch('/v1/onboarding/complete', { method: 'POST' })
     } catch { /* continue anyway */ }
-    setOnboarded(true)
     router.replace(createdSlug ? `/wikis/${createdSlug}` : '/wikis')
   }
 
@@ -187,7 +183,7 @@ export default function OnboardingPage() {
 
               <button
                 onClick={handleCreateWiki}
-                disabled={creating || !wikiName.trim() || !token}
+                disabled={creating || !wikiName.trim()}
                 className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-full bg-foreground text-background px-8 py-3 text-sm font-medium hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-40"
               >
                 {creating ? (

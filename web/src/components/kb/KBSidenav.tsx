@@ -16,7 +16,6 @@ import { cn } from '@/lib/utils'
 import { WikiSelector } from '@/components/kb/WikiSelector'
 import { SidenavUserMenu } from '@/components/kb/SidenavUserMenu'
 import { apiFetch } from '@/lib/api'
-import { useUserStore } from '@/stores'
 import type { DocumentListItem, WikiNode } from '@/lib/types'
 
 interface Usage {
@@ -404,16 +403,14 @@ function WikiTreeNode({
 
 
 function PageUsageBar() {
-  const token = useUserStore((s) => s.accessToken)
   const [usage, setUsage] = React.useState<Usage | null>(null)
   const [modalOpen, setModalOpen] = React.useState(false)
 
   React.useEffect(() => {
-    if (!token) return
-    apiFetch<Usage>('/v1/usage', token)
+    apiFetch<Usage>('/v1/usage')
       .then(setUsage)
       .catch(() => {})
-  }, [token])
+  }, [])
 
   if (!usage) return null
 

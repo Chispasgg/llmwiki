@@ -11,7 +11,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { FileText, Copy, Download, Check, Network } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
-import { useUserStore } from '@/stores'
 import { MermaidBlock } from './MermaidBlock'
 import { ExpandableMedia } from './DiagramViewer'
 import type { DocumentListItem } from '@/lib/types'
@@ -241,13 +240,12 @@ function WikiImage({
   documents?: DocumentListItem[]
   wikiActivePath?: string
 }) {
-  const token = useUserStore((s) => s.accessToken)
   const [svgContent, setSvgContent] = React.useState<string | null>(null)
   const [imageUrl, setImageUrl] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(false)
 
   React.useEffect(() => {
-    if (!src || !documents || !token) return
+    if (!src || !documents) return
     // Only resolve relative paths (not http:// or data: URIs)
     if (src.startsWith('http') || src.startsWith('data:')) return
 
@@ -267,7 +265,7 @@ function WikiImage({
 
     if (isSvg || isTextAsset) {
       // Text-based assets stored in the content column — fetch via API
-      apiFetch<{ content: string }>(`/v1/documents/${doc.id}/content`, token)
+      apiFetch<{ content: string }>(`/v1/documents/${doc.id}/content`)
         .then((res) => {
           if (isSvg && res.content) {
             setSvgContent(res.content)
@@ -281,14 +279,14 @@ function WikiImage({
         .finally(() => setLoading(false))
     } else if (isImageBinary) {
       // Binary images stored in S3 — use the /url endpoint
-      apiFetch<{ url: string }>(`/v1/documents/${doc.id}/url`, token)
+      apiFetch<{ url: string }>(`/v1/documents/${doc.id}/url`)
         .then((res) => setImageUrl(res.url))
         .catch(() => { /* silent fail */ })
         .finally(() => setLoading(false))
     } else {
       setLoading(false)
     }
-  }, [src, documents, token, wikiActivePath])
+  }, [src, documents, wikiActivePath])
 
   // Inline SVG rendering
   if (svgContent) {

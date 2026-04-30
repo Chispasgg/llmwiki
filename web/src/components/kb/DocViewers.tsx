@@ -2,7 +2,6 @@
 
 import * as React from 'react'
 import { Loader2, FileText } from 'lucide-react'
-import { useUserStore } from '@/stores'
 import { apiFetch } from '@/lib/api'
 import dynamic from 'next/dynamic'
 
@@ -10,18 +9,16 @@ const PdfViewer = dynamic(() => import('@/components/viewer/PdfViewer'), { ssr: 
 const HtmlViewer = dynamic(() => import('@/components/viewer/HtmlViewer'), { ssr: false })
 
 function useDocumentUrl(documentId: string) {
-  const token = useUserStore((s) => s.accessToken)
   const [url, setUrl] = React.useState<string | null>(null)
   const [error, setError] = React.useState(false)
 
   React.useEffect(() => {
-    if (!token) return
     let cancelled = false
-    apiFetch<{ url: string }>(`/v1/documents/${documentId}/url`, token)
+    apiFetch<{ url: string }>(`/v1/documents/${documentId}/url`)
       .then((res) => { if (!cancelled) setUrl(res.url) })
       .catch(() => { if (!cancelled) setError(true) })
     return () => { cancelled = true }
-  }, [documentId, token])
+  }, [documentId])
 
   return { url, error }
 }
@@ -70,18 +67,16 @@ export function HtmlDocViewer({ documentId, title }: { documentId: string; title
 }
 
 export function ContentViewer({ documentId, title, fileType }: { documentId: string; title: string; fileType: string }) {
-  const token = useUserStore((s) => s.accessToken)
   const [content, setContent] = React.useState<string | null>(null)
   const [error, setError] = React.useState(false)
 
   React.useEffect(() => {
-    if (!token) return
     let cancelled = false
-    apiFetch<{ content: string }>(`/v1/documents/${documentId}/content`, token)
+    apiFetch<{ content: string }>(`/v1/documents/${documentId}/content`)
       .then((res) => { if (!cancelled) setContent(res.content ?? '') })
       .catch(() => { if (!cancelled) setError(true) })
     return () => { cancelled = true }
-  }, [documentId, token])
+  }, [documentId])
 
   if (error) return <ErrorMessage message="Failed to load content" />
   if (content === null) return <LoadingSpinner />

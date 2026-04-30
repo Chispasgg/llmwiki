@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
 import { buildOAuthMcpConfig, MCP_URL } from '@/lib/mcp'
-import { useUserStore } from '@/stores'
 
 interface Usage {
   total_pages: number
@@ -26,7 +25,6 @@ function formatBytes(bytes: number): string {
 
 export default function SettingsPage() {
   const router = useRouter()
-  const token = useUserStore((s) => s.accessToken)
   const [usage, setUsage] = React.useState<Usage | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [configCopied, setConfigCopied] = React.useState(false)
@@ -34,12 +32,11 @@ export default function SettingsPage() {
   const oauthConfigJson = buildOAuthMcpConfig()
 
   React.useEffect(() => {
-    if (!token) return
-    apiFetch<Usage>('/v1/usage', token)
+    apiFetch<Usage>('/v1/usage')
       .then((u) => setUsage(u))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [token])
+  }, [])
 
   const handleCopyConfig = async () => {
     try {
