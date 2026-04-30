@@ -1,12 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { login } from '@/lib/auth'
 import { useUserStore } from '@/stores/useUserStore'
 
 export function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const setUser = useUserStore((s) => s.setUser)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -20,7 +21,8 @@ export function LoginForm() {
     try {
       const user = await login(email, password)
       setUser(user)
-      router.push('/wikis')
+      const nextPath = searchParams.get('next') || '/wikis'
+      router.push(nextPath)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error desconocido')
     } finally {
