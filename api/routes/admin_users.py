@@ -5,10 +5,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from deps import get_user_id, require_admin
+from deps import require_admin
 from infra.auth.password import hash_password
 
 router = APIRouter(prefix="/v1/admin/users", tags=["admin-users"])
+
+# Columns that can be patched via PATCH /users/{user_id}
+PATCHABLE_COLUMNS = {"role", "is_active", "display_name"}
 
 
 class CreateUserRequest(BaseModel):
@@ -55,7 +58,7 @@ async def create_user(
     request: Request,
 ):
     if body.role not in ("admin", "editor", "viewer"):
-        raise HTTPException(status_code=422, detail="Invalid role")
+        raise HTTPException(status_code=422, detail={"message": "Invalid role"})
     pool = request.app.state.pool
     try:
         row = await pool.fetchrow(
@@ -68,7 +71,7 @@ async def create_user(
         )
     except Exception as e:
         if "users_email_unique" in str(e):
-            raise HTTPException(status_code=409, detail="Email already exists")
+            raise HTTPException(status_code=409, detail={"message": "Email already exists"})
         raise
     return dict(row)
 
@@ -81,11 +84,12 @@ async def update_user(
     request: Request,
 ):
     pool = request.app.state.pool
-    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    updates = {k: v for k, v in body.model_dump().items()
+               if v is not None and k in PATCHABLE_COLUMNS}
     if not updates:
-        raise HTTPException(status_code=422, detail="Nothing to update")
+        raise HTTPException(status_code=422, detail={"message": "Nothing to update"})
     if "role" in updates and updates["role"] not in ("admin", "editor", "viewer"):
-        raise HTTPException(status_code=422, detail="Invalid role")
+        raise HTTPException(status_code=422, detail={"message": "Invalid role"})
 
     set_clause = ", ".join(f"{k} = ${i+2}" for i, k in enumerate(updates))
     values = list(updates.values())
@@ -97,5 +101,5 @@ async def update_user(
         str(user_id), *values,
     )
     if not row:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail={"message": "User not found"})
     return dict(row)
