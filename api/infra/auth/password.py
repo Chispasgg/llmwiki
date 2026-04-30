@@ -1,7 +1,13 @@
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHashError
 
-_ph = PasswordHasher()
+from config import settings
+
+_ph = PasswordHasher(
+    time_cost=settings.ARGON2_TIME_COST,
+    memory_cost=settings.ARGON2_MEMORY_COST,
+    parallelism=settings.ARGON2_PARALLELISM,
+)
 
 
 def hash_password(plain: str) -> str:
@@ -16,4 +22,7 @@ def verify_password(hashed: str, plain: str) -> bool:
 
 
 def needs_rehash(hashed: str) -> bool:
-    return _ph.check_needs_rehash(hashed)
+    try:
+        return _ph.check_needs_rehash(hashed)
+    except (InvalidHashError, ValueError):
+        return False
