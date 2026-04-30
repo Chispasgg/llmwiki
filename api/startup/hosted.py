@@ -29,7 +29,10 @@ async def hosted_lifespan(app: FastAPI):
     app.state.auth_provider = auth_provider
     app.state.s3_service = None          # No S3 en modo servidor
     app.state.ocr_service = None         # Se añade en T15
-    app.state.storage_service = None     # Se añade en T9 (ServerStorageService)
+
+    from infra.storage.server import ServerStorageService
+    storage = ServerStorageService(settings.SERVER_FILES_ROOT, settings.API_URL)
+    app.state.storage_service = storage
 
     app.state.factory = HostedServiceFactory(pool, None, None)
 
@@ -39,7 +42,7 @@ async def hosted_lifespan(app: FastAPI):
     from infra.tus import cleanup_stale_uploads
     cleanup_task = asyncio.create_task(cleanup_stale_uploads())
 
-    logger.info("Hosted mode started — auth: cookie-session, storage: pending T9")
+    logger.info("Hosted mode started — auth: cookie-session, storage: ServerStorageService (T9)")
     yield
 
     cleanup_task.cancel()
