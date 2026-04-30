@@ -10,8 +10,13 @@ COOKIE_NAME = "wiki_session"
 def generate_session_token() -> tuple[str, str]:
     """Returns (raw_token, token_hash). Send raw to client, store hash in DB."""
     raw = secrets.token_urlsafe(32)
-    hashed = hashlib.sha256(raw.encode()).hexdigest()
+    hashed = hash_session_token(raw)
     return raw, hashed
+
+
+def hash_session_token(raw: str) -> str:
+    """Hash a raw session token for storage or lookup."""
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 class CookieSessionAuthProvider:
@@ -23,7 +28,7 @@ class CookieSessionAuthProvider:
         token = request.cookies.get(COOKIE_NAME)
         if not token:
             raise HTTPException(status_code=401, detail="Not authenticated")
-        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        token_hash = hash_session_token(token)
         row = await self._pool.fetchrow(
             "SELECT user_id::text FROM user_sessions "
             "WHERE session_token_hash = $1 "

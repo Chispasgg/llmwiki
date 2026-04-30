@@ -84,8 +84,8 @@ async def update_user(
     request: Request,
 ):
     pool = request.app.state.pool
-    updates = {k: v for k, v in body.model_dump().items()
-               if v is not None and k in PATCHABLE_COLUMNS}
+    updates = {k: v for k, v in body.model_dump(exclude_none=True).items()
+               if k in PATCHABLE_COLUMNS}
     if not updates:
         raise HTTPException(status_code=422, detail={"message": "Nothing to update"})
     if "role" in updates and updates["role"] not in ("admin", "editor", "viewer"):

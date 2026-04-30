@@ -13,14 +13,14 @@ MIGRATIONS_DIR = Path(__file__).parent
 async def run_migrations(database_url: str) -> None:
     conn = await asyncpg.connect(database_url)
     try:
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS _migrations (
-                name TEXT PRIMARY KEY,
-                applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-            )
-        """)
         await conn.execute("SELECT pg_advisory_lock(hashtext('migrations'))")
         try:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS _migrations (
+                    name TEXT PRIMARY KEY,
+                    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+            """)
             for sql_file in sorted(MIGRATIONS_DIR.glob("*.sql")):
                 name = sql_file.name
                 already = await conn.fetchval(

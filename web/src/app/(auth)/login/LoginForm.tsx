@@ -21,7 +21,8 @@ export function LoginForm() {
     try {
       const user = await login(email, password)
       setUser(user)
-      const nextPath = searchParams.get('next') || '/wikis'
+      const rawNext = searchParams.get('next') || '/wikis'
+      const nextPath = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/wikis'
       router.push(nextPath)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error desconocido')

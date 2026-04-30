@@ -1,5 +1,4 @@
 """Auth endpoints: login, logout, me."""
-import hashlib
 from datetime import datetime, timezone, timedelta
 from typing import Annotated
 
@@ -9,7 +8,7 @@ from pydantic import BaseModel
 from config import settings
 from deps import get_user_id
 from infra.auth.password import verify_password, needs_rehash, hash_password
-from infra.auth.server import generate_session_token, COOKIE_NAME
+from infra.auth.server import generate_session_token, COOKIE_NAME, hash_session_token
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
@@ -81,13 +80,18 @@ async def logout(request: Request, response: Response):
     token = request.cookies.get(COOKIE_NAME)
     if token:
         pool = request.app.state.pool
-        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        token_hash = hash_session_token(token)
         await pool.execute(
             "UPDATE user_sessions SET revoked_at = now() "
             "WHERE session_token_hash = $1 AND revoked_at IS NULL",
             token_hash,
         )
-    response.delete_cookie(key=COOKIE_NAME)
+    response.delete_cookie(
+        key=COOKIE_NAME,
+        httponly=True,
+        samesite="lax",
+        secure=settings.COOKIE_SECURE,
+    )
 
 
 @router.get("/me", response_model=MeResponse)
