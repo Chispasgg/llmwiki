@@ -2,12 +2,8 @@ import type { Metadata } from 'next'
 import { LoginForm } from './LoginForm'
 
 export const metadata: Metadata = {
-  title: 'Sign In | LLM Wiki',
-  description: 'Sign in to LLM Wiki to manage your knowledge bases and wikis.',
-  openGraph: {
-    title: 'Sign In | LLM Wiki',
-    description: 'Sign in to LLM Wiki to manage your knowledge bases and wikis.',
-  },
+  title: 'Iniciar sesión | LLM Wiki',
+  description: 'Inicia sesión en LLM Wiki para gestionar tus wikis.',
 }
 
 export default function LoginPage() {
