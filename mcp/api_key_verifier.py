@@ -3,6 +3,7 @@
 Clients send: Authorization: Bearer wk_<key>
 This verifier hashes the key and looks it up in the api_keys table.
 """
+import asyncio
 import hashlib
 import logging
 
@@ -35,11 +36,13 @@ class ApiKeyVerifier(TokenVerifier):
         if not row:
             return None
 
-        # Actualizar last_used_at (fire-and-forget)
+        # Fire-and-forget last_used_at update
         try:
-            await self._pool.execute(
-                "UPDATE api_keys SET last_used_at = now() WHERE key_hash = $1",
-                key_hash,
+            asyncio.ensure_future(
+                self._pool.execute(
+                    "UPDATE api_keys SET last_used_at = now() WHERE key_hash = $1",
+                    key_hash,
+                )
             )
         except Exception:
             pass

@@ -6,9 +6,12 @@ Usage:
 import contextlib
 import logging
 import os
+from urllib.parse import urlparse
 
 import asyncpg
 import uvicorn
+from mcp.server.auth.provider import AccessToken, TokenVerifier
+from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
@@ -23,12 +26,27 @@ logger = logging.getLogger(__name__)
 _pool: asyncpg.Pool | None = None
 
 
+class _DeferredVerifier(TokenVerifier):
+    """Lazy wrapper that populates after pool is ready."""
+
+    def __init__(self) -> None:
+        self._inner: ApiKeyVerifier | None = None
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        if self._inner is None:
+            return None
+        return await self._inner.verify_token(token)
+
+
+_verifier = _DeferredVerifier()
+
+
 @contextlib.asynccontextmanager
 async def _lifespan(server: FastMCP):
     """Create the DB pool and wire the token verifier before serving requests."""
     global _pool
     _pool = await asyncpg.create_pool(settings.DATABASE_URL, min_size=1, max_size=5)
-    server._token_verifier = ApiKeyVerifier(_pool)  # type: ignore[attr-defined]
+    _verifier._inner = ApiKeyVerifier(_pool)
     logger.info("MCP server_main started — auth: api-key, db: postgres")
     try:
         yield
@@ -43,7 +61,11 @@ mcp = FastMCP(
         "You are connected to the team LLM Wiki. "
         "Call the `guide` tool first to see the wiki and learn the workflow."
     ),
-    token_verifier=None,  # Se asigna en lifespan tras crear el pool
+    auth=AuthSettings(
+        issuer_url=settings.MCP_URL,  # type: ignore[arg-type]
+        resource_server_url=settings.MCP_URL,  # type: ignore[arg-type]
+    ),
+    token_verifier=_verifier,
     lifespan=_lifespan,
 )
 
@@ -68,5 +90,5 @@ app.router.routes.insert(0, Route("/health", health))
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", settings.MCP_URL.split(":")[-1] or "1501"))
+    port = int(os.getenv("PORT", str(urlparse(settings.MCP_URL).port or 1501)))
     uvicorn.run(app, host="0.0.0.0", port=port)
