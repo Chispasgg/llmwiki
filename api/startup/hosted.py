@@ -27,12 +27,14 @@ async def hosted_lifespan(app: FastAPI):
 
     auth_provider = CookieSessionAuthProvider(pool)
     app.state.auth_provider = auth_provider
-    app.state.s3_service = None          # No S3 en modo servidor
-    app.state.ocr_service = None         # Se añade en T15
+    app.state.s3_service = None
 
     from infra.storage.server import ServerStorageService
     storage = ServerStorageService(settings.SERVER_FILES_ROOT, settings.API_URL)
     app.state.storage_service = storage
+
+    from services.ocr import OCRService
+    app.state.ocr_service = OCRService(storage, pool)
 
     app.state.factory = HostedServiceFactory(pool, None, None)
 
