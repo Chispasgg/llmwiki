@@ -23,6 +23,7 @@ dependencies = [
     "opendataloader-pdf==2.3.0",
     "aiosqlite==0.21.0",
     "watchfiles==1.1.0",
+    "argon2-cffi==25.1.0",
 ]
 
 [dependency-groups]

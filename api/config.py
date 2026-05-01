@@ -58,5 +58,15 @@ class Settings(BaseSettings):
             return [uid.strip() for uid in v.split(",") if uid.strip()]
         return v
 
+    SERVER_FILES_ROOT: str = "/home/ubuntu/wiki/files"
+    SERVER_DATA_ROOT: str = "/home/ubuntu/wiki/data"
+    SESSION_EXPIRE_SECONDS: int = 86400
+    COOKIE_SECURE: bool = False
+    MCP_URL: str = "http://localhost:1501"
+
+    ARGON2_TIME_COST: int = 3
+    ARGON2_MEMORY_COST: int = 65536  # 64 MB — OWASP Argon2id minimum
+    ARGON2_PARALLELISM: int = 4
+
 
 settings = Settings()

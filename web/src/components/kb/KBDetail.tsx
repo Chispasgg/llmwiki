@@ -114,7 +114,6 @@ type Props = {
 
 export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Props) {
   const searchParams = useSearchParams()
-  const token = useUserStore((s) => s.accessToken)
   const userId = useUserStore((s) => s.user?.id)
   const { documents, setDocuments, loading } = useKBDocuments(kbId)
 
@@ -224,8 +223,8 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   React.useEffect(() => {
     let cancelled = false
     setIndexLoaded(false)
-    if (indexDoc && token) {
-      apiFetch<{ content: string }>(`/v1/documents/${indexDoc.id}/content`, token)
+    if (indexDoc) {
+      apiFetch<{ content: string }>(`/v1/documents/${indexDoc.id}/content`)
         .then((res) => {
           if (cancelled) return
           try {
@@ -246,7 +245,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
       setIndexLoaded(true)
     }
     return () => { cancelled = true }
-  }, [indexDoc?.id, token, wikiDocIds, wikiDocs])
+  }, [indexDoc?.id, wikiDocIds, wikiDocs])
 
   // Auto-select first wiki page when none is selected
   React.useEffect(() => {
@@ -278,7 +277,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   const activeWikiDocId = activeWikiDoc?.id ?? null
 
   React.useEffect(() => {
-    if (!wikiActivePath || !token) {
+    if (!wikiActivePath) {
       setPageLoadedPath(null)
       return
     }
@@ -295,7 +294,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
       setPageLoadedPath(null)
     }
     const controller = new AbortController()
-    apiFetch<{ content: string }>(`/v1/documents/${activeWikiDoc.id}/content`, token, { signal: controller.signal })
+    apiFetch<{ content: string }>(`/v1/documents/${activeWikiDoc.id}/content`, { signal: controller.signal })
       .then((res) => {
         if (!controller.signal.aborted) setPageContent(res.content || '')
       })
@@ -309,13 +308,12 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
         }
       })
     return () => controller.abort()
-  }, [wikiActivePath, token, activeWikiDocId, activeWikiVersion])
+  }, [wikiActivePath, activeWikiDocId, activeWikiVersion])
 
-  // ─── Token helper ────────────────────────────────────────────
-  const getToken = () => {
-    const t = useUserStore.getState().accessToken
-    if (!t) { toast.error('Not authenticated'); return null }
-    return t
+  // ─── Auth guard ───────────────────────────────────────────────
+  const requireUser = () => {
+    if (!userId) { toast.error('Not authenticated'); return false }
+    return true
   }
 
   // ─── Multi-selection ─────────────────────────────────────────
@@ -360,11 +358,10 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   }, [selectedIds.size, clearSelection])
 
   const handleDeleteSelected = async () => {
-    const t = getToken()
-    if (!t) return
+    if (!requireUser()) return
     const ids = Array.from(selectedIds)
     if (!window.confirm(`Delete ${ids.length} selected document${ids.length > 1 ? 's' : ''}?`)) return
-    const results = await Promise.allSettled(ids.map((id) => apiFetch(`/v1/documents/${id}`, t, { method: 'DELETE' })))
+    const results = await Promise.allSettled(ids.map((id) => apiFetch(`/v1/documents/${id}`, { method: 'DELETE' })))
     const succeeded = ids.filter((_, i) => results[i].status === 'fulfilled')
     const failed = ids.filter((_, i) => results[i].status === 'rejected')
     if (succeeded.length > 0) setDocuments((prev) => prev.filter((d) => !succeeded.includes(d.id)))
@@ -512,10 +509,9 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
 
   // ─── Document CRUD ───────────────────────────────────────────
   const handleCreateNote = async (targetPath: string = '/') => {
-    const t = getToken()
-    if (!t || !userId) return
+    if (!requireUser() || !userId) return
     try {
-      const data = await apiFetch<DocumentListItem>(`/v1/knowledge-bases/${kbId}/documents/note`, t, {
+      const data = await apiFetch<DocumentListItem>(`/v1/knowledge-bases/${kbId}/documents/note`, {
         method: 'POST',
         body: JSON.stringify({ filename: 'Untitled.md', path: targetPath }),
       })
@@ -530,10 +526,9 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   }
 
   const handleCreateFolder = (folderName: string, parentPath: string = '/') => {
-    const t = getToken()
-    if (!t || !userId) return
+    if (!requireUser() || !userId) return
     const path = parentPath.replace(/\/$/, '') + '/' + folderName + '/'
-    apiFetch<DocumentListItem>(`/v1/knowledge-bases/${kbId}/documents/note`, t, {
+    apiFetch<DocumentListItem>(`/v1/knowledge-bases/${kbId}/documents/note`, {
       method: 'POST',
       body: JSON.stringify({ filename: 'Untitled.md', path }),
     })
@@ -548,28 +543,25 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   }
 
   const handleMoveDocument = async (docId: string, targetPath: string) => {
-    const t = getToken()
-    if (!t) return
+    if (!requireUser()) return
     try {
-      await apiFetch(`/v1/documents/${docId}`, t, { method: 'PATCH', body: JSON.stringify({ path: targetPath }) })
+      await apiFetch(`/v1/documents/${docId}`, { method: 'PATCH', body: JSON.stringify({ path: targetPath }) })
       setDocuments((prev) => prev.map((d) => d.id === docId ? { ...d, path: targetPath } : d))
     } catch { toast.error('Failed to move document') }
   }
 
   const handleDeleteDocument = async (docId: string) => {
-    const t = getToken()
-    if (!t) return
+    if (!requireUser()) return
     try {
-      await apiFetch(`/v1/documents/${docId}`, t, { method: 'DELETE' })
+      await apiFetch(`/v1/documents/${docId}`, { method: 'DELETE' })
       setDocuments((prev) => prev.filter((d) => d.id !== docId))
     } catch { toast.error('Failed to delete document') }
   }
 
   const handleRenameDocument = async (docId: string, newTitle: string) => {
-    const t = getToken()
-    if (!t) return
+    if (!requireUser()) return
     try {
-      await apiFetch(`/v1/documents/${docId}`, t, { method: 'PATCH', body: JSON.stringify({ title: newTitle }) })
+      await apiFetch(`/v1/documents/${docId}`, { method: 'PATCH', body: JSON.stringify({ title: newTitle }) })
       setDocuments((prev) => prev.map((d) => d.id === docId ? { ...d, title: newTitle } : d))
     } catch { toast.error('Failed to rename document') }
   }
@@ -587,14 +579,12 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   }
 
   const tusUploadFile = React.useCallback((file: File, targetPath: string = '/'): Promise<void> => {
-    const t = getToken()
-    if (!t) return Promise.reject(new Error('Not authenticated'))
     return new Promise((resolve, reject) => {
       const upload = new tus.Upload(file, {
         endpoint: `${API_URL}/v1/uploads`,
         retryDelays: [0, 1000, 3000, 5000],
         metadata: { filename: file.name, knowledge_base_id: kbId, path: targetPath },
-        headers: { Authorization: `Bearer ${t}` },
+        // Cookies are sent automatically — no Authorization header needed
         onError: (error) => { toast.error(`Upload failed: ${file.name}`); reject(error) },
         onSuccess: () => { toast.success(`${file.name} uploaded, processing...`); resolve() },
       })
@@ -603,8 +593,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   }, [kbId])
 
   const uploadFiles = React.useCallback((files: File[], targetPath: string = '/') => {
-    const t = getToken()
-    if (!t || !userId) return
+    if (!requireUser() || !userId) return
 
     // Client-side duplicate check — documents are already loaded
     const existingNames = new Set(
@@ -626,7 +615,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
         const content = await file.text()
         const title = file.name.replace(/\.(md|txt)$/i, '')
         try {
-          const data = await apiFetch<DocumentListItem>(`/v1/knowledge-bases/${kbId}/documents/note`, t, {
+          const data = await apiFetch<DocumentListItem>(`/v1/knowledge-bases/${kbId}/documents/note`, {
             method: 'POST',
             body: JSON.stringify({ filename: file.name, title, content, path: targetPath }),
           })

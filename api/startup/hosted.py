@@ -1,4 +1,4 @@
-"""Inicialización del modo hosted: Postgres + S3 + OCR + WebSocket."""
+"""Inicialización del modo hosted: Postgres + auth local + WebSocket."""
 
 import asyncio
 import logging
@@ -11,29 +11,30 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def hosted_lifespan(app: FastAPI):
-    """Lifespan para modo hosted: Postgres pool, S3, OCR, WebSocket listener."""
+    """Lifespan para modo hosted: Postgres pool + auth local + storage local."""
     from config import settings
+    from db.migrations.run import run_migrations
+    from infra.auth.server import CookieSessionAuthProvider
+    from services.hosted import HostedServiceFactory
     import asyncpg
+
+    # Ejecutar migraciones en arranque
+    await run_migrations(settings.DATABASE_URL)
 
     pool = await asyncpg.create_pool(settings.DATABASE_URL, min_size=2, max_size=10)
     app.state.pool = pool
     app.state.mode = "hosted"
 
-    s3_service = None
-    ocr_service = None
-    if settings.AWS_ACCESS_KEY_ID and settings.S3_BUCKET:
-        from services.s3 import S3Service
-        s3_service = S3Service()
-    if s3_service:
-        from services.ocr import OCRService
-        ocr_service = OCRService(s3_service, pool)
+    auth_provider = CookieSessionAuthProvider(pool)
+    app.state.auth_provider = auth_provider
+    app.state.s3_service = None          # No S3 en modo servidor
+    app.state.ocr_service = None         # Se añade en T15
 
-    app.state.s3_service = s3_service
-    app.state.ocr_service = ocr_service
-    app.state.auth_provider = None
+    from infra.storage.server import ServerStorageService
+    storage = ServerStorageService(settings.SERVER_FILES_ROOT, settings.API_URL)
+    app.state.storage_service = storage
 
-    from services.hosted import HostedServiceFactory
-    app.state.factory = HostedServiceFactory(pool, s3_service, ocr_service)
+    app.state.factory = HostedServiceFactory(pool, None, None)
 
     from routes.ws import setup_listener
     listener_task = await setup_listener(settings.DATABASE_URL)
@@ -41,17 +42,17 @@ async def hosted_lifespan(app: FastAPI):
     from infra.tus import cleanup_stale_uploads
     cleanup_task = asyncio.create_task(cleanup_stale_uploads())
 
-    if ocr_service:
-        rows = await pool.fetch(
-            "SELECT id::text, user_id::text FROM documents "
-            "WHERE status IN ('pending', 'processing') AND NOT archived"
-        )
-        for row in rows:
-            logger.info("Recovering stuck document %s", row["id"][:8])
-            asyncio.create_task(ocr_service.process_document(row["id"], row["user_id"]))
-
+    logger.info("Hosted mode started — auth: cookie-session, storage: ServerStorageService (T9)")
     yield
 
     cleanup_task.cancel()
     listener_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        pass
     await pool.close()

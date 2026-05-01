@@ -1,0 +1,87 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wiki_biklabs
+      POSTGRES_USER: wiki_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    secrets:
+      - pg_password
+    volumes:
+      - /home/ubuntu/wiki/data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wiki_user -d wiki_biklabs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: /home/ubuntu/wiki/config/env/api.env
+    volumes:
+      - /home/ubuntu/wiki/files:/home/ubuntu/wiki/files
+      - /home/ubuntu/wiki/data:/home/ubuntu/wiki/data
+      - /home/ubuntu/wiki/logs/app:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    expose:
+      - "1502"
+
+  mcp:
+    build:
+      context: ./mcp
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: /home/ubuntu/wiki/config/env/mcp.env
+    volumes:
+      - /home/ubuntu/wiki/files:/home/ubuntu/wiki/files
+      - /home/ubuntu/wiki/data:/home/ubuntu/wiki/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    ports:
+      - "1501:1501"
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: /home/ubuntu/wiki/config/env/web.env
+    networks:
+      - internal
+    expose:
+      - "1503"
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - /home/ubuntu/wiki/config/nginx:/etc/nginx/conf.d:ro
+      - /home/ubuntu/wiki/logs/nginx:/var/log/nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - web
+      - api
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
+secrets:
+  pg_password:
+    file: /home/ubuntu/wiki/config/env/pg_password.txt

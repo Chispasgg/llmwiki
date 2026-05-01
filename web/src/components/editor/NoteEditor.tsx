@@ -72,8 +72,8 @@ interface NoteEditorProps {
   titleChangeRef?: React.MutableRefObject<((title: string) => void) | null>
 }
 
-function getAccessToken(): string | null {
-  return useUserStore.getState().accessToken
+function isAuthenticated(): boolean {
+  return useUserStore.getState().user !== null
 }
 
 export function NoteEditor({
@@ -177,13 +177,11 @@ export function NoteEditor({
 
     const load = async () => {
       setLoaded(false)
-      const token = await getAccessToken()
-      if (!token || cancelled) return
+      if (!isAuthenticated() || cancelled) return
 
       try {
         const { content } = await apiFetch<{ id: string; content: string; version: number }>(
           `/v1/documents/${documentId}/content`,
-          token,
         )
 
         if (cancelled) return
@@ -225,8 +223,7 @@ export function NoteEditor({
     metaDirtyRef.current = false
     setSaveStatus('saving')
 
-    const token = await getAccessToken()
-    if (!token) {
+    if (!isAuthenticated()) {
       dirtyRef.current = true
       setSaveStatus('idle')
       return
@@ -234,7 +231,7 @@ export function NoteEditor({
 
     try {
       const promises: Promise<unknown>[] = [
-        apiFetch(`/v1/documents/${documentId}/content`, token, {
+        apiFetch(`/v1/documents/${documentId}/content`, {
           method: 'PUT',
           body: JSON.stringify({ content: frontmatterRef.current + latestContentRef.current }),
         }),
@@ -243,7 +240,7 @@ export function NoteEditor({
       if (shouldPatchMeta) {
         const hasProps = Object.keys(latestPropertiesRef.current).length > 0
         promises.push(
-          apiFetch(`/v1/documents/${documentId}`, token, {
+          apiFetch(`/v1/documents/${documentId}`, {
             method: 'PATCH',
             body: JSON.stringify({
               title: latestTitleRef.current || null,
@@ -299,12 +296,11 @@ export function NoteEditor({
         const docId = documentId
 
         ;(async () => {
-          const token = await getAccessToken()
-          if (!token) return
+          if (!isAuthenticated()) return
 
           try {
             const promises: Promise<unknown>[] = [
-              apiFetch(`/v1/documents/${docId}/content`, token, {
+              apiFetch(`/v1/documents/${docId}/content`, {
                 method: 'PUT',
                 body: JSON.stringify({ content: frontmatter + contentToSave }),
               }),
@@ -313,7 +309,7 @@ export function NoteEditor({
             if (shouldPatchMeta) {
               const hasProps = Object.keys(propsToSave).length > 0
               promises.push(
-                apiFetch(`/v1/documents/${docId}`, token, {
+                apiFetch(`/v1/documents/${docId}`, {
                   method: 'PATCH',
                   body: JSON.stringify({
                     title: titleToSave || null,

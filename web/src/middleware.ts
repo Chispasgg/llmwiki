@@ -1,26 +1,36 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from 'next/server'
 
-const isLocal = process.env.NEXT_PUBLIC_MODE === "local";
+const isLocal = process.env.NEXT_PUBLIC_MODE === 'local'
+const PUBLIC_PATHS = ['/login', '/_next', '/favicon.ico']
 
-export async function middleware(request: NextRequest) {
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
   if (isLocal) {
-    // Local mode: no auth, all routes accessible
-    // Redirect root to /wikis
-    if (request.nextUrl.pathname === "/") {
-      const url = request.nextUrl.clone();
-      url.pathname = "/wikis";
-      return NextResponse.redirect(url);
+    if (pathname === '/') {
+      return NextResponse.redirect(new URL('/wikis', request.url))
     }
-    return NextResponse.next();
+    return NextResponse.next()
   }
 
-  // Hosted mode: Supabase session management
-  const { updateSession } = await import("@/lib/supabase/middleware");
-  return await updateSession(request);
+  // Hosted: dejar pasar rutas públicas
+  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+    return NextResponse.next()
+  }
+
+  // Verificar que la cookie de sesión existe
+  const sessionCookie = request.cookies.get('wiki_session')
+  if (!sessionCookie) {
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('next', pathname)
+    return NextResponse.redirect(loginUrl)
+  }
+
+  return NextResponse.next()
 }
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
-};
+}

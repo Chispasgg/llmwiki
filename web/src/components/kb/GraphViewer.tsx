@@ -2,7 +2,6 @@
 
 import * as React from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
-import { useUserStore } from '@/stores'
 import { apiFetch } from '@/lib/api'
 import { toast } from 'sonner'
 import dynamic from 'next/dynamic'
@@ -48,7 +47,6 @@ const EDGE_COLOR = 'rgba(140, 140, 150, 0.18)'
 const EDGE_COLOR_HOVER = 'rgba(100, 100, 110, 0.5)'
 
 export function GraphViewer({ kbId, focusNodeId, onNavigateToDoc }: Props) {
-  const token = useUserStore((s) => s.accessToken)
   const containerRef = React.useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const graphRef = React.useRef<any>(null)
@@ -65,17 +63,15 @@ export function GraphViewer({ kbId, focusNodeId, onNavigateToDoc }: Props) {
   const [showSources, setShowSources] = React.useState(false)
 
   const fetchGraph = React.useCallback(() => {
-    if (!token) return
     setLoading(true)
     setError(false)
     apiFetch<{ nodes: GraphNode[]; edges: GraphEdge[] }>(
       `/v1/knowledge-bases/${kbId}/graph`,
-      token,
     )
       .then(setGraphData)
       .catch(() => setError(true))
       .finally(() => setLoading(false))
-  }, [kbId, token])
+  }, [kbId])
 
   React.useEffect(() => { fetchGraph() }, [fetchGraph])
 
@@ -96,12 +92,11 @@ export function GraphViewer({ kbId, focusNodeId, onNavigateToDoc }: Props) {
   }, [])
 
   const handleRebuild = React.useCallback(async () => {
-    if (!token || rebuilding) return
+    if (rebuilding) return
     setRebuilding(true)
     try {
       const res = await apiFetch<{ citations: number; links: number }>(
         `/v1/knowledge-bases/${kbId}/graph/rebuild`,
-        token,
         { method: 'POST' },
       )
       const total = res.citations + res.links
@@ -116,7 +111,7 @@ export function GraphViewer({ kbId, focusNodeId, onNavigateToDoc }: Props) {
     } finally {
       setRebuilding(false)
     }
-  }, [kbId, token, rebuilding, fetchGraph])
+  }, [kbId, rebuilding, fetchGraph])
 
   // Connection counts for tooltip
   const connectionCounts = React.useMemo(() => {

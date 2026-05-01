@@ -3,8 +3,6 @@ from typing import Annotated, AsyncGenerator
 
 from fastapi import Depends, HTTPException, Request
 
-from config import settings
-
 from scoped_db import ScopedDB
 
 
@@ -59,8 +57,7 @@ async def get_scoped_db(
         yield ScopedDB(conn=db, user_id=user_id)
         return
 
-    from auth import get_current_user
-    user_id = await get_current_user(request)
+    user_id = await get_user_id(request)
     conn = await pool.acquire()
     tr = conn.transaction()
     await tr.start()
@@ -80,10 +77,15 @@ async def get_scoped_db(
 async def require_admin(request: Request) -> str:
     """Verifica que el usuario autenticado tiene rol admin.
 
-    Si ADMIN_USER_IDS está vacío, cualquier usuario autenticado puede acceder
-    (compatibilidad con instalaciones sin config de admin).
+    En hosted mode (pool disponible) consulta el rol en la tabla users.
+    En local mode (pool=None) el único usuario existente tiene acceso total.
     """
     user_id = await get_user_id(request)
-    if settings.ADMIN_USER_IDS and user_id not in settings.ADMIN_USER_IDS:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    pool = request.app.state.pool
+    if pool is not None:
+        row = await pool.fetchrow(
+            "SELECT role FROM users WHERE id = $1 AND is_active = true", user_id
+        )
+        if not row or row["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Admin access required")
     return user_id

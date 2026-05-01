@@ -3,7 +3,6 @@
 import * as React from 'react'
 import { toast } from 'sonner'
 import { apiFetch, getDocumentsWsUrl } from '@/lib/api'
-import { useUserStore } from '@/stores'
 import type { DocumentListItem } from '@/lib/types'
 
 const isLocal = process.env.NEXT_PUBLIC_MODE === 'local'
@@ -15,24 +14,22 @@ const DEBOUNCE_MS = 300
 export function useKBDocuments(knowledgeBaseId: string) {
   const [documents, setDocuments] = React.useState<DocumentListItem[]>([])
   const [loading, setLoading] = React.useState(true)
-  const accessToken = useUserStore((s) => s.accessToken)
   const wsRef = React.useRef<WebSocket | null>(null)
   const reconnectTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectDelay = React.useRef(WS_RECONNECT_BASE)
   const debounceTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const fetchDocs = React.useCallback(async () => {
-    if (!knowledgeBaseId || !accessToken) return
+    if (!knowledgeBaseId) return
     try {
       const data = await apiFetch<DocumentListItem[]>(
         `/v1/knowledge-bases/${knowledgeBaseId}/documents`,
-        accessToken,
       )
       setDocuments(data)
     } catch (err) {
       console.error('Failed to load documents:', err)
     }
-  }, [knowledgeBaseId, accessToken])
+  }, [knowledgeBaseId])
 
   // Initial load — always use the API
   React.useEffect(() => {
@@ -47,7 +44,7 @@ export function useKBDocuments(knowledgeBaseId: string) {
 
   // Real-time updates: WebSocket (hosted) or polling (local)
   React.useEffect(() => {
-    if (!knowledgeBaseId || !accessToken) return
+    if (!knowledgeBaseId) return
 
     if (isLocal) {
       const interval = setInterval(fetchDocs, POLL_INTERVAL)
@@ -65,8 +62,6 @@ export function useKBDocuments(knowledgeBaseId: string) {
       wsRef.current = ws
 
       ws.onopen = () => {
-        // Send token as first message — keeps JWT out of URLs and logs
-        ws.send(accessToken!)
         reconnectDelay.current = WS_RECONNECT_BASE
       }
 
@@ -107,7 +102,7 @@ export function useKBDocuments(knowledgeBaseId: string) {
         wsRef.current = null
       }
     }
-  }, [knowledgeBaseId, accessToken, fetchDocs])
+  }, [knowledgeBaseId, fetchDocs])
 
   const refetchDocuments = React.useCallback(() => {
     fetchDocs()
