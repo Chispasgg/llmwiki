@@ -12,7 +12,6 @@ class Settings(BaseSettings):
     WORKSPACE_PATH: str = "."
 
     DATABASE_URL: str = ""
-    SUPABASE_URL: str = ""
     VOYAGE_API_KEY: str = ""
     TURBOPUFFER_API_KEY: str = ""
     EMBEDDING_MODEL: str = "voyage-4-lite"
