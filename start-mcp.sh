@@ -17,7 +17,7 @@ die() {
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MCP_DIR="${SCRIPT_DIR}/mcp"
-WORKSPACE="${1:-${SCRIPT_DIR}/../workspace}"
+WORKSPACE="${1:-${SCRIPT_DIR}/../workspaces/}"
 WORKSPACE="$(cd "${WORKSPACE}" 2>/dev/null && pwd)" \
   || die "El directorio de workspace no existe: ${WORKSPACE}"
 
