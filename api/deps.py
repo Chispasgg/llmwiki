@@ -13,7 +13,7 @@ async def get_user_id(request: Request) -> str:
     """Authenticate and return user_id.
 
     In local mode, auth_provider is a LocalAuthProvider (always returns the fixed user).
-    In hosted mode, auth_provider is None and we fall through to Supabase JWKS.
+    In hosted mode, auth_provider is a CookieSessionAuthProvider (validates HttpOnly cookie).
     The auth path is determined at startup, not here.
     """
     auth_provider = request.app.state.auth_provider

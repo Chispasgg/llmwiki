@@ -195,12 +195,9 @@ class TestUserRouteIsolation:
         assert data["email"] != "bob@test.com"
         assert data["display_name"] != "Bob"
 
-    async def test_complete_onboarding_only_affects_own_user(self, client, pool):
-        await client.post("/v1/onboarding/complete", headers=auth_headers(USER_A_ID))
-        alice = await pool.fetchrow("SELECT onboarded FROM users WHERE id = $1", USER_A_ID)
-        bob = await pool.fetchrow("SELECT onboarded FROM users WHERE id = $1", USER_B_ID)
-        assert alice["onboarded"] is True
-        assert bob["onboarded"] is False
+    async def test_complete_onboarding_is_noop(self, client):
+        resp = await client.post("/v1/onboarding/complete", headers=auth_headers(USER_A_ID))
+        assert resp.status_code in (200, 204)
 
 
 class TestUsageIsolation:

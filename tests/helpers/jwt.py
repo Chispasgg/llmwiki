@@ -1,47 +1,35 @@
-"""Generate ES256 test JWTs and seed the auth module's JWKS cache."""
+"""Test authentication helpers.
 
-import jwt as pyjwt
-from jwt import PyJWK
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives import serialization
+Replaces the old Supabase JWT Bearer auth. Integration tests use a simple
+TestAuthProvider that reads user-id directly from the Authorization header.
+"""
+
 from uuid import UUID
 
-_private_key = ec.generate_private_key(ec.SECP256R1())
-_public_key = _private_key.public_key()
-TEST_KID = "test-kid-001"
+from fastapi import HTTPException, Request
 
-_public_jwk = _public_key.public_bytes(
-    encoding=serialization.Encoding.PEM,
-    format=serialization.PublicFormat.SubjectPublicKeyInfo,
-)
+_PREFIX = "test-user:"
 
 
-def seed_jwks_cache():
-    """Pre-seed the auth module's JWKS cache with our test key."""
-    import auth
-    from jwt.algorithms import ECAlgorithm
-    pub_numbers = _public_key.public_numbers()
-    jwk_dict = ECAlgorithm.to_jwk(_public_key, as_dict=True)
-    jwk_dict["kid"] = TEST_KID
-    jwk_dict["use"] = "sig"
-    jwk_dict["alg"] = "ES256"
-    auth._jwks_cache[TEST_KID] = PyJWK(jwk_dict)
+class TestAuthProvider:
+    """Auth provider for integration tests: parses user-id from Authorization header."""
+
+    async def get_current_user(self, request: Request) -> str:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith(f"Bearer {_PREFIX}"):
+            user_id = auth[len(f"Bearer {_PREFIX}"):]
+            if user_id:
+                return user_id
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
 
-def make_token(user_id: str | UUID, **extra_claims) -> str:
-    payload = {
-        "sub": str(user_id),
-        "aud": "authenticated",
-        "role": "authenticated",
-        **extra_claims,
-    }
-    return pyjwt.encode(
-        payload,
-        _private_key,
-        algorithm="ES256",
-        headers={"kid": TEST_KID},
-    )
+def auth_headers(user_id: str | UUID) -> dict[str, str]:
+    return {"Authorization": f"Bearer {_PREFIX}{user_id}"}
 
 
-def auth_headers(user_id: str | UUID, **extra_claims) -> dict[str, str]:
-    return {"Authorization": f"Bearer {make_token(user_id, **extra_claims)}"}
+def make_token(user_id: str | UUID, **_kwargs) -> str:
+    return f"{_PREFIX}{user_id}"
+
+
+def seed_jwks_cache() -> None:
+    pass

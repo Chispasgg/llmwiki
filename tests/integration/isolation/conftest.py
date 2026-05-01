@@ -6,7 +6,7 @@ import pytest
 from fastapi import Request
 
 from scoped_db import ScopedDB
-from tests.helpers.jwt import auth_headers, seed_jwks_cache
+from tests.helpers.jwt import TestAuthProvider, auth_headers
 
 USER_A_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 USER_A_EMAIL = "alice@test.com"
@@ -48,11 +48,11 @@ async def seed_two_tenants(pool):
     await pool.execute("DELETE FROM users")
 
     await pool.execute(
-        "INSERT INTO users (id, email, display_name) VALUES ($1, $2, 'Alice')",
+        "INSERT INTO users (id, email, display_name, role) VALUES ($1, $2, 'Alice', 'editor')",
         USER_A_ID, USER_A_EMAIL,
     )
     await pool.execute(
-        "INSERT INTO users (id, email, display_name) VALUES ($1, $2, 'Bob')",
+        "INSERT INTO users (id, email, display_name, role) VALUES ($1, $2, 'Bob', 'editor')",
         USER_B_ID, USER_B_EMAIL,
     )
 
@@ -179,16 +179,17 @@ async def client_no_rls(pool):
     from main import app
     from services.hosted import HostedServiceFactory
 
+    _auth = TestAuthProvider()
+
     async def _unscoped_db(request: Request):
-        from auth import get_current_user
-        user_id = await get_current_user(request)
+        user_id = await _auth.get_current_user(request)
         _pool = request.app.state.pool
         conn = await _pool.acquire()
         tr = conn.transaction()
         await tr.start()
         try:
             # Intentionally NO role switch or JWT claims — RLS is inactive
-            yield ScopedDB(_pool, conn, user_id)
+            yield ScopedDB(conn=conn, user_id=user_id)
             await tr.commit()
         except Exception:
             await tr.rollback()
@@ -199,9 +200,8 @@ async def client_no_rls(pool):
     app.state.pool = pool
     app.state.s3_service = None
     app.state.ocr_service = None
-    app.state.auth_provider = None
+    app.state.auth_provider = _auth
     app.state.factory = HostedServiceFactory(pool)
-    seed_jwks_cache()
 
     app.dependency_overrides[deps.get_scoped_db] = _unscoped_db
     try:

@@ -1,4 +1,4 @@
--- Test schema: mock Supabase auth functions + main migration (no PGroonga)
+-- Test schema: PostgreSQL + RLS test helpers (no PGroonga extension)
 
 DROP SCHEMA IF EXISTS auth CASCADE;
 CREATE SCHEMA auth;
@@ -35,14 +35,26 @@ END $$;
 CREATE TYPE document_status AS ENUM ('pending', 'processing', 'ready', 'failed', 'archived');
 
 CREATE TABLE users (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT NOT NULL UNIQUE,
     display_name TEXT,
-    onboarded BOOLEAN NOT NULL DEFAULT false,
-    page_limit INTEGER NOT NULL DEFAULT 500,
-    storage_limit_bytes BIGINT NOT NULL DEFAULT 1073741824,
+    password_hash TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin', 'editor', 'viewer')),
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    last_login_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+
+CREATE TABLE user_sessions (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    session_token_hash TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    ip_address TEXT,
+    user_agent TEXT
 );
 
 CREATE TABLE api_keys (
@@ -312,8 +324,7 @@ CREATE UNIQUE INDEX idx_documents_kb_number ON documents(knowledge_base_id, docu
 
 GRANT USAGE ON SCHEMA public TO authenticated;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO authenticated;
--- Supabase grants full CRUD to authenticated by default; mirror those grants
--- so RLS write tests and scoped_execute work correctly.
+-- Grant full CRUD to authenticated role for RLS write tests.
 GRANT INSERT, UPDATE, DELETE ON document_references TO authenticated;
 GRANT INSERT, UPDATE, DELETE ON documents TO authenticated;
 GRANT INSERT, UPDATE, DELETE ON knowledge_bases TO authenticated;

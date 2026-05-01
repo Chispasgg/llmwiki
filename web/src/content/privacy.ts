@@ -7,7 +7,7 @@ LLM Wiki is operated by Polybius, L.L.C., a Delaware limited liability company (
 ## What we collect
 
 ### Account information
-When you sign up, we collect your email address and display name via Supabase Auth. If you sign in with Google OAuth, we receive your name, email, and profile photo from Google. We do not store your Google password.
+When you sign up, we collect your email address and display name. Passwords are stored as a secure one-way hash (Argon2id) and are never readable by us.
 
 ### Content you upload
 Documents, notes, PDFs, and other files you add to your knowledge bases are stored on our infrastructure. This includes the original files, extracted text, and generated wiki pages. This is the core function of the service — we store your content so you and your connected AI tools can access it.
@@ -25,7 +25,7 @@ We collect basic usage analytics: page views, feature usage, and error logs. We 
 
 | Component | Provider | Location | Purpose |
 |-----------|----------|----------|---------|
-| Database | Supabase (Postgres) | AWS US regions | Account data, documents, wiki pages, metadata |
+| Database | PostgreSQL | Server infrastructure | Account data, documents, wiki pages, metadata |
 | File storage | Amazon S3 | US East | Raw uploaded files (PDFs, images) |
 | API hosting | Railway | US regions | API and MCP servers |
 | Frontend hosting | Netlify | Global CDN | Web application |
@@ -36,7 +36,6 @@ All data is encrypted at rest (AES-256) and in transit (TLS 1.2+). Database acce
 
 | Service | What it sees | Why |
 |---------|-------------|-----|
-| Supabase | All stored data | Database and authentication provider |
 | Amazon S3 | Raw uploaded files | File storage |
 | Railway | All data in transit through API | API and MCP server hosting |
 | Netlify | Frontend assets, request logs | Web application hosting |
@@ -79,7 +78,7 @@ When you delete content:
 
 When you delete your account:
 - All knowledge bases, documents, wiki pages, and uploaded files are permanently deleted
-- Your authentication credentials are removed from Supabase
+- Your account credentials and session data are permanently deleted
 - This process is irreversible
 
 To request account deletion, email lucas@llmwiki.app.

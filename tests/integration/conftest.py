@@ -5,7 +5,7 @@ import asyncpg
 import httpx
 import pytest
 
-from tests.helpers.jwt import seed_jwks_cache
+from tests.helpers.jwt import TestAuthProvider
 
 DB_URL = os.environ["DATABASE_URL"]
 
@@ -32,10 +32,8 @@ async def client(pool):
     app.state.pool = pool
     app.state.s3_service = None
     app.state.ocr_service = None
-    app.state.auth_provider = None
+    app.state.auth_provider = TestAuthProvider()
     app.state.factory = HostedServiceFactory(pool)
-
-    seed_jwks_cache()
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:

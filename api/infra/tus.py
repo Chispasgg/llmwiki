@@ -218,11 +218,7 @@ async def tus_create(request: Request):
     )
     if kb_owner != user_id:
         raise HTTPException(status_code=403, detail="Knowledge base not found or not owned by you")
-    user_limits = await pool.fetchrow(
-        "SELECT storage_limit_bytes FROM users WHERE id = $1",
-        user_id,
-    )
-    storage_limit = user_limits["storage_limit_bytes"] if user_limits else settings.QUOTA_MAX_STORAGE_BYTES
+    storage_limit = settings.QUOTA_MAX_STORAGE_BYTES
 
     current_bytes = await pool.fetchval(
         "SELECT COALESCE(SUM(file_size), 0) FROM documents WHERE user_id = $1",

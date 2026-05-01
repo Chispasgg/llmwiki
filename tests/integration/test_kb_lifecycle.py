@@ -12,7 +12,7 @@ USER_EMAIL = "alice@test.com"
 async def seed_user(pool):
     await pool.execute("TRUNCATE users CASCADE")
     await pool.execute(
-        "INSERT INTO users (id, email, display_name) VALUES ($1, $2, 'Alice')",
+        "INSERT INTO users (id, email, display_name, role) VALUES ($1, $2, 'Alice', 'admin')",
         USER_ID, USER_EMAIL,
     )
     yield

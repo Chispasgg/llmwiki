@@ -124,7 +124,7 @@ export default function SettingsPage() {
         <p className="mt-2 text-sm text-muted-foreground">
           {process.env.NEXT_PUBLIC_MODE === 'local'
             ? 'Run this command to get the Claude Desktop / Claude Code MCP config for this workspace:'
-            : 'Add this configuration to your MCP client. On first connection, it should prompt you to sign in with Supabase.'
+            : 'Add this configuration to your MCP client. On first connection, authenticate with your account API key.'
           }
         </p>
         <div className="relative mt-4">
