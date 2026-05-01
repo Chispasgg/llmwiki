@@ -249,7 +249,7 @@ async def tus_create(request: Request):
     )
     _uploads[upload_id] = upload
 
-    location = f"/v1/uploads/{upload_id}"
+    location = f"{settings.API_URL}/v1/uploads/{upload_id}"
     return Response(status_code=201, headers=_tus_headers({"Location": location}))
 
 
