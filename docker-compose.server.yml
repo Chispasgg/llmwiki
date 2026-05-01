@@ -26,15 +26,14 @@ services:
     env_file: /home/ubuntu/wiki/config/env/api.env
     volumes:
       - /home/ubuntu/wiki/files:/home/ubuntu/wiki/files
-      - /home/ubuntu/wiki/data:/home/ubuntu/wiki/data
       - /home/ubuntu/wiki/logs/app:/app/logs
+    ports:
+      - "127.0.0.1:1502:1502"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - internal
-    expose:
-      - "1502"
 
   mcp:
     build:
@@ -44,14 +43,13 @@ services:
     env_file: /home/ubuntu/wiki/config/env/mcp.env
     volumes:
       - /home/ubuntu/wiki/files:/home/ubuntu/wiki/files
-      - /home/ubuntu/wiki/data:/home/ubuntu/wiki/data
+    ports:
+      - "127.0.0.1:1501:1501"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - internal
-    ports:
-      - "1501:1501"
 
   web:
     build:
@@ -59,22 +57,8 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file: /home/ubuntu/wiki/config/env/web.env
-    networks:
-      - internal
-    expose:
-      - "1503"
-
-  nginx:
-    image: nginx:1.27-alpine
-    restart: unless-stopped
-    volumes:
-      - /home/ubuntu/wiki/config/nginx:/etc/nginx/conf.d:ro
-      - /home/ubuntu/wiki/logs/nginx:/var/log/nginx
     ports:
-      - "80:80"
-    depends_on:
-      - web
-      - api
+      - "127.0.0.1:1503:1503"
     networks:
       - internal
 

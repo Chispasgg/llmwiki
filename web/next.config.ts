@@ -3,6 +3,7 @@ import path from "path";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
+  basePath: '/wiki',
   output: "standalone",
   outputFileTracingRoot: path.join(__dirname),
 };
