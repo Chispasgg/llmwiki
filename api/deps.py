@@ -1,4 +1,3 @@
-import json
 from typing import Annotated, AsyncGenerator
 
 from fastapi import Depends, HTTPException, Request
@@ -18,10 +17,9 @@ async def get_user_id(request: Request) -> str:
     The auth path is determined at startup, not here.
     """
     auth_provider = request.app.state.auth_provider
-    if auth_provider:
-        return await auth_provider.get_current_user(request)
-    from auth import get_current_user
-    return await get_current_user(request)
+    if not auth_provider:
+        raise HTTPException(status_code=503, detail="Auth provider not configured")
+    return await auth_provider.get_current_user(request)
 
 
 async def get_user_service(request: Request):
@@ -62,9 +60,6 @@ async def get_scoped_db(
     tr = conn.transaction()
     await tr.start()
     try:
-        claims = json.dumps({"sub": user_id})
-        await conn.execute("SET LOCAL ROLE authenticated")
-        await conn.execute("SELECT set_config('request.jwt.claims', $1, true)", claims)
         yield ScopedDB(conn=conn, user_id=user_id)
         await tr.commit()
     except Exception:

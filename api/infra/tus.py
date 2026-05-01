@@ -9,8 +9,8 @@ from dataclasses import dataclass, field
 
 from fastapi import APIRouter, Request, HTTPException, Response
 
-from auth import get_current_user
 from config import settings
+from deps import get_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +156,7 @@ async def cleanup_stale_uploads():
 
 
 async def _get_user_id(request: Request) -> str:
-    return await get_current_user(request)
+    return await get_user_id(request)
 
 
 @router.options("")

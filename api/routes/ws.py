@@ -11,7 +11,7 @@ import logging
 import asyncpg
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from auth import verify_token
+from infra.auth.server import hash_session_token
 
 logger = logging.getLogger(__name__)
 
@@ -107,22 +107,31 @@ async def _handle_notify(payload: str) -> None:
         })
 
 
+async def _ws_get_user_id(websocket: WebSocket) -> str | None:
+    """Authenticate a WebSocket connection via the session cookie or local mode."""
+    pool = websocket.app.state.pool
+    if pool is None:
+        # Local mode: fixed user, no auth needed
+        return "local"
+    token = websocket.cookies.get("wiki_session")
+    if not token:
+        return None
+    token_hash = hash_session_token(token)
+    row = await pool.fetchrow(
+        "SELECT user_id::text FROM user_sessions "
+        "WHERE session_token_hash = $1 AND revoked_at IS NULL AND expires_at > now()",
+        token_hash,
+    )
+    return row["user_id"] if row else None
+
+
 @router.websocket("/v1/ws/documents/{kb_id}")
 async def document_ws(websocket: WebSocket, kb_id: str):
     await websocket.accept()
 
-    # First-message auth: client sends the token, we verify before registering.
-    # Keeps the JWT out of URLs and logs.
-    try:
-        token = await asyncio.wait_for(websocket.receive_text(), timeout=5)
-    except (asyncio.TimeoutError, WebSocketDisconnect):
-        await websocket.close(code=4001, reason="Auth timeout")
-        return
-
-    try:
-        user_id = await verify_token(token)
-    except ValueError:
-        await websocket.close(code=4001, reason="Invalid token")
+    user_id = await _ws_get_user_id(websocket)
+    if not user_id:
+        await websocket.close(code=4001, reason="Not authenticated")
         return
 
     await manager.connect(user_id, kb_id, websocket)
