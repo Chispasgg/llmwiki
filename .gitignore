@@ -1,5 +1,5 @@
-# Lock files
-*.lock
+# Lock files — internals de .venv, no de paquetes
+.venv/**/*.lock
 
 # Dependencies
 node_modules/
