@@ -112,10 +112,10 @@ async def _finalize(upload: TusUpload, app_state) -> str:
     title = upload.filename.rsplit(".", 1)[0] if "." in upload.filename else upload.filename
     file_size = upload.upload_length
 
-    s3_service = app_state.s3_service
-    if not s3_service:
+    storage = getattr(app_state, "storage_service", None) or getattr(app_state, "s3_service", None)
+    if not storage:
         raise ValueError("File storage not configured")
-    await s3_service.upload_file(s3_key, str(upload.temp_path), CONTENT_TYPES.get(ext, "application/octet-stream"))
+    await storage.upload_file(s3_key, str(upload.temp_path), CONTENT_TYPES.get(ext, "application/octet-stream"), user_id=user_id)
 
     pool = app_state.pool
     try:
