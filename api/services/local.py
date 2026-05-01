@@ -24,7 +24,7 @@ class LocalUserService(UserService):
             "id": self.user_id,
             "email": "local@localhost",
             "display_name": "Local User",
-            "onboarded": True,
+            "role": "admin",
         }
 
     async def complete_onboarding(self) -> None:

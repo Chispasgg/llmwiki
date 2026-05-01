@@ -72,7 +72,7 @@ class MeResponse(BaseModel):
     id: str
     email: str
     display_name: str | None
-    onboarded: bool
+    role: str
 
 
 class UsageResponse(BaseModel):

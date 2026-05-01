@@ -22,18 +22,15 @@ class HostedUserService(UserService):
 
     async def get_profile(self) -> dict:
         row = await self.pool.fetchrow(
-            "SELECT id::text, email, display_name, onboarded FROM users WHERE id = $1",
+            "SELECT id::text, email, display_name, role FROM users WHERE id = $1",
             self.user_id,
         )
         if not row:
-            return {"id": "", "email": "", "display_name": None, "onboarded": False}
+            return {"id": "", "email": "", "display_name": None, "role": "viewer"}
         return dict(row)
 
     async def complete_onboarding(self) -> None:
-        await self.pool.execute(
-            "UPDATE users SET onboarded = true, updated_at = now() WHERE id = $1",
-            self.user_id,
-        )
+        pass
 
     async def get_usage(self) -> dict:
         row = await self.pool.fetchrow(
@@ -45,17 +42,12 @@ class HostedUserService(UserService):
             self.user_id,
         )
 
-        limits = await self.pool.fetchrow(
-            "SELECT page_limit, storage_limit_bytes FROM users WHERE id = $1",
-            self.user_id,
-        )
-
         return {
             "total_pages": row["total_pages"],
             "total_storage_bytes": row["total_storage_bytes"],
             "document_count": row["document_count"],
-            "max_pages": limits["page_limit"] if limits else settings.QUOTA_MAX_PAGES,
-            "max_storage_bytes": limits["storage_limit_bytes"] if limits else settings.QUOTA_MAX_STORAGE_BYTES,
+            "max_pages": settings.QUOTA_MAX_PAGES,
+            "max_storage_bytes": settings.QUOTA_MAX_STORAGE_BYTES,
         }
 
 
