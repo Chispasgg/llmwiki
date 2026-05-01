@@ -13,6 +13,17 @@ RUN uv sync --frozen --no-dev
 FROM python:3.12-slim-bookworm AS runtime
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    default-jre-headless \
+    tesseract-ocr \
+    tesseract-ocr-spa \
+    tesseract-ocr-eng \
+    libreoffice-calc \
+    libreoffice-impress \
+    libreoffice-writer \
+    ocrmypdf \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN useradd -m -u 1000 appuser
 
 COPY --from=builder /app/.venv /app/.venv
