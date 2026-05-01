@@ -1,26 +1,15 @@
-import { redirect } from 'next/navigation'
 import { AppShell } from '@/components/layout/AppShell'
 import { AuthProvider } from '@/components/auth/AuthProvider'
 
 const isLocal = process.env.NEXT_PUBLIC_MODE === 'local'
 
-export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  if (isLocal) {
-    return (
-      <AuthProvider userId="local" email="local@localhost">
-        <AppShell>{children}</AppShell>
-      </AuthProvider>
-    )
-  }
-
-  // Hosted mode: require Supabase session
-  const { createClient } = await import('@/lib/supabase/server')
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  // Local mode: static session. Hosted mode: AuthProvider validates cookie via /v1/me.
+  const userId = isLocal ? 'local' : ''
+  const email = isLocal ? 'local@localhost' : ''
 
   return (
-    <AuthProvider userId={user.id} email={user.email!}>
+    <AuthProvider userId={userId} email={email}>
       <AppShell>{children}</AppShell>
     </AuthProvider>
   )

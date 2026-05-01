@@ -9,6 +9,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { logout } from '@/lib/auth'
 const isLocal = process.env.NEXT_PUBLIC_MODE === 'local'
 
 export function UserMenu() {
@@ -21,11 +22,7 @@ export function UserMenu() {
   React.useEffect(() => { setMounted(true) }, [])
 
   const handleSignOut = async () => {
-    if (!isLocal) {
-      const { createClient } = await import('@/lib/supabase/client')
-      const supabase = createClient()
-      await supabase.auth.signOut()
-    }
+    if (!isLocal) await logout()
     signOutLocal()
     if (isLocal) return
     router.push('/login')
