@@ -55,6 +55,9 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        NEXT_PUBLIC_MODE: ${NEXT_PUBLIC_MODE:-hosted}
     restart: unless-stopped
     env_file: /home/ubuntu/wiki/config/env/web.env
     ports:
