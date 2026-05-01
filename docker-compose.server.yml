@@ -28,7 +28,7 @@ services:
       - /home/ubuntu/wiki/files:/home/ubuntu/wiki/files
       - /home/ubuntu/wiki/logs/app:/app/logs
     ports:
-      - "127.0.0.1:1502:1502"
+      - "1502:1502"
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,7 +44,7 @@ services:
     volumes:
       - /home/ubuntu/wiki/files:/home/ubuntu/wiki/files
     ports:
-      - "127.0.0.1:1501:1501"
+      - "1501:1501"
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,7 +58,7 @@ services:
     restart: unless-stopped
     env_file: /home/ubuntu/wiki/config/env/web.env
     ports:
-      - "127.0.0.1:1503:1503"
+      - "1503:1503"
     networks:
       - internal
 
