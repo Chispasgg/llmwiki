@@ -9,6 +9,7 @@ Never raises — all failures are logged and swallowed.
 import asyncio
 import json
 import logging
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -53,15 +54,17 @@ async def log_action(
         "metadata": metadata,
         "ip_address": ip_address,
     }
-    # File write (synchronous, fast)
-    _write_to_file(entry)
+    # File write (non-blocking via executor)
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, _write_to_file, entry)
     # DB write
     try:
+        uid = uuid.UUID(user_id) if user_id else None
         await pool.execute(
             "INSERT INTO usage_logs "
             "(user_id, action, resource_type, resource_id, kb_id, metadata, ip_address) "
             "VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)",
-            user_id, action, resource_type, resource_id, kb_id,
+            uid, action, resource_type, resource_id, kb_id,
             json.dumps(metadata) if metadata else None,
             ip_address,
         )
@@ -71,4 +74,9 @@ async def log_action(
 
 def log_action_bg(pool, **kwargs) -> None:
     """Schedule log_action as a fire-and-forget background task."""
-    asyncio.create_task(log_action(pool, **kwargs))
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        logger.warning("log_action_bg: no running event loop, skipping log")
+        return
+    loop.create_task(log_action(pool, **kwargs))
