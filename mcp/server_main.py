@@ -40,21 +40,6 @@ class _DeferredVerifier(TokenVerifier):
 
 _verifier = _DeferredVerifier()
 
-
-@contextlib.asynccontextmanager
-async def _lifespan(server: FastMCP):
-    """Create the DB pool and wire the token verifier before serving requests."""
-    global _pool
-    _pool = await asyncpg.create_pool(settings.DATABASE_URL, min_size=1, max_size=5)
-    _verifier._inner = ApiKeyVerifier(_pool)
-    logger.info("MCP server_main started — auth: api-key, db: postgres")
-    try:
-        yield
-    finally:
-        await _pool.close()
-        logger.info("MCP server_main stopped — db pool closed")
-
-
 mcp = FastMCP(
     "LLM Wiki",
     instructions=(
@@ -66,7 +51,6 @@ mcp = FastMCP(
         resource_server_url=settings.MCP_URL,  # type: ignore[arg-type]
     ),
     token_verifier=_verifier,
-    lifespan=_lifespan,
 )
 
 
@@ -86,6 +70,28 @@ async def health(request):
 
 
 app = mcp.streamable_http_app()
+
+# streamable_http_app() hardcodes its own lifespan (session_manager.run()) and ignores
+# the lifespan= param passed to FastMCP. We capture the SDK lifespan and wrap it so our
+# pool/verifier init runs first, then the SDK lifespan continues normally.
+_sdk_lifespan = app.router.lifespan_context
+
+
+@contextlib.asynccontextmanager
+async def _combined_lifespan(scope):
+    global _pool
+    _pool = await asyncpg.create_pool(settings.DATABASE_URL, min_size=1, max_size=5)
+    _verifier._inner = ApiKeyVerifier(_pool)
+    logger.info("MCP server_main started — auth: api-key, db: postgres")
+    try:
+        async with _sdk_lifespan(scope):
+            yield
+    finally:
+        await _pool.close()
+        logger.info("MCP server_main stopped — db pool closed")
+
+
+app.router.lifespan_context = _combined_lifespan
 app.router.routes.insert(0, Route("/health", health))
 
 
