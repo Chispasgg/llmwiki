@@ -4,7 +4,7 @@ type User = {
   id: string
   email: string
   display_name: string
-  role: 'admin' | 'editor' | 'viewer'
+  role: 'superadmin' | 'admin' | 'editor' | 'viewer'
 }
 
 type UserState = {

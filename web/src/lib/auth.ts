@@ -4,7 +4,7 @@ export type AuthUser = {
   id: string
   email: string
   display_name: string
-  role: 'admin' | 'editor' | 'viewer'
+  role: 'superadmin' | 'admin' | 'editor' | 'viewer'
 }
 
 export async function login(email: string, password: string): Promise<AuthUser> {

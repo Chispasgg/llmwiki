@@ -33,7 +33,7 @@ export function AuthProvider({ userId, email, children }: AuthProviderProps) {
     }
 
     // Hosted mode: cookie-based session — fetch current user from API
-    apiFetch<{ id: string; email: string; display_name: string; role: 'admin' | 'editor' | 'viewer' }>('/v1/me')
+    apiFetch<{ id: string; email: string; display_name: string; role: 'superadmin' | 'admin' | 'editor' | 'viewer' }>('/v1/me')
       .then((me) => {
         setUser({ id: me.id, email: me.email, display_name: me.display_name, role: me.role })
         fetchKBs()
