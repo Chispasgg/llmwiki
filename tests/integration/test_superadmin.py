@@ -8,9 +8,11 @@ async def test_schema_allows_superadmin_role(pool):
         "INSERT INTO users (email,password_hash,display_name,role) "
         "VALUES ('sa_schema@test.com','x','SA','superadmin') RETURNING id::text"
     )
-    row = await pool.fetchrow("SELECT role FROM users WHERE id::text=$1", uid)
-    assert row["role"] == "superadmin"
-    await pool.execute("DELETE FROM users WHERE id::text=$1", uid)
+    try:
+        row = await pool.fetchrow("SELECT role FROM users WHERE id::text=$1", uid)
+        assert row["role"] == "superadmin"
+    finally:
+        await pool.execute("DELETE FROM users WHERE id::text=$1", uid)
 
 
 @pytest.mark.asyncio
