@@ -1,5 +1,3 @@
-import json
-
 import asyncpg
 
 from config import settings
@@ -17,13 +15,7 @@ async def get_pool() -> asyncpg.Pool:
 
 
 async def _set_rls(conn, user_id: str, claims: dict | None = None):
-    if claims:
-        jwt_claims = {k: v for k, v in claims.items() if k in ("sub", "aud", "role", "client_id", "scope")}
-        jwt_claims.setdefault("sub", user_id)
-    else:
-        jwt_claims = {"sub": user_id}
-    await conn.execute("SET LOCAL ROLE authenticated")
-    await conn.execute("SELECT set_config('request.jwt.claims', $1, true)", json.dumps(jwt_claims))
+    pass  # no-op: queries use explicit user_id filters; no Supabase RLS in this deployment
 
 
 async def scoped_query(user_id: str, sql: str, *args, claims: dict | None = None) -> list[dict]:
