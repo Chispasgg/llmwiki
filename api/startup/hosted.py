@@ -36,7 +36,7 @@ async def hosted_lifespan(app: FastAPI):
     from services.ocr import OCRService
     app.state.ocr_service = OCRService(storage, pool)
 
-    app.state.factory = HostedServiceFactory(pool, None, None)
+    app.state.factory = HostedServiceFactory(pool, storage, None)
 
     from routes.ws import setup_listener
     listener_task = await setup_listener(settings.DATABASE_URL)

@@ -201,10 +201,10 @@ _DOC_COLUMNS = (
 
 class HostedDocumentService(DocumentService):
 
-    def __init__(self, pool, user_id: str, s3=None):
+    def __init__(self, pool, user_id: str, storage=None):
         self.pool = pool
         self.user_id = user_id
-        self.s3 = s3
+        self.storage = storage
 
     async def list(self, kb_id: str, path: str | None = None) -> list[dict]:
         if path:
@@ -242,17 +242,19 @@ class HostedDocumentService(DocumentService):
         )
         if not row:
             return None
-        if not self.s3:
+        if not self.storage:
             raise HTTPException(status_code=501, detail="File storage not configured")
 
-        ext = row["filename"].rsplit(".", 1)[-1].lower() if "." in row["filename"] else row["file_type"]
+        doc_id = str(row["id"])
+        filename = row["filename"]
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else row["file_type"]
         if ext in {"pptx", "ppt", "docx", "doc"}:
-            s3_key = f"{row['user_id']}/{row['id']}/converted.pdf"
+            key = f"{doc_id}/converted.pdf"
         elif ext in {"html", "htm"}:
-            s3_key = f"{row['user_id']}/{row['id']}/tagged.html"
+            key = f"{doc_id}/tagged.html"
         else:
-            s3_key = f"{row['user_id']}/{row['id']}/source.{ext}"
-        url = await self.s3.generate_presigned_get(s3_key)
+            key = f"{doc_id}/{filename}"
+        url = await self.storage.generate_presigned_get(key, user_id=str(row["user_id"]))
         return {"url": url}
 
     async def create_note(self, kb_id: str, filename: str, path: str, content: str) -> dict:
@@ -347,7 +349,7 @@ class HostedDocumentService(DocumentService):
         # Wiki pages are archived to preserve slugs and cross-references;
         # source documents are hard-deleted so the filename can be re-used.
         row = await self.pool.fetchrow(
-            "SELECT path FROM documents WHERE id = $1 AND user_id = $2",
+            "SELECT path, filename FROM documents WHERE id = $1 AND user_id = $2",
             doc_id, self.user_id,
         )
         if not row:
@@ -365,17 +367,20 @@ class HostedDocumentService(DocumentService):
             "DELETE FROM documents WHERE id = $1 AND user_id = $2",
             doc_id, self.user_id,
         )
+        if result != "DELETE 0" and self.storage:
+            await self._delete_storage_files(doc_id, row["filename"])
         return result != "DELETE 0"
 
     async def bulk_delete(self, doc_ids: list[str]) -> int:
         if not doc_ids:
             return 0
         rows = await self.pool.fetch(
-            "SELECT id::text, path FROM documents WHERE id = ANY($1::uuid[]) AND user_id = $2",
+            "SELECT id::text, path, filename FROM documents WHERE id = ANY($1::uuid[]) AND user_id = $2",
             doc_ids, self.user_id,
         )
         wiki_ids = [r["id"] for r in rows if (r["path"] or "").startswith("/wiki/")]
-        source_ids = [r["id"] for r in rows if not (r["path"] or "").startswith("/wiki/")]
+        source_rows = [r for r in rows if not (r["path"] or "").startswith("/wiki/")]
+        source_ids = [r["id"] for r in source_rows]
         count = 0
         if wiki_ids:
             result = await self.pool.execute(
@@ -392,14 +397,43 @@ class HostedDocumentService(DocumentService):
                 source_ids, self.user_id,
             )
             count += int(result.split()[-1]) if result else 0
+            if self.storage:
+                for r in source_rows:
+                    await self._delete_storage_files(r["id"], r["filename"])
         return count
+
+    async def _delete_storage_files(self, doc_id: str, filename: str) -> None:
+        import asyncio
+        from pathlib import Path
+        import logging
+        _log = logging.getLogger(__name__)
+        keys = [
+            f"{doc_id}/{filename}",
+            f"{doc_id}/converted.pdf",
+            f"{doc_id}/tagged.html",
+            f"{doc_id}/ocr.json",
+        ]
+        for key in keys:
+            try:
+                path = self.storage._resolve(self.user_id, key)
+                if path.exists():
+                    await asyncio.to_thread(path.unlink)
+            except Exception:
+                _log.warning("Could not delete storage file %s/%s", doc_id, key)
+        # Remove empty doc directory
+        try:
+            doc_dir = self.storage._resolve(self.user_id, f"{doc_id}").parent
+            if doc_dir.exists() and not any(doc_dir.iterdir()):
+                await asyncio.to_thread(doc_dir.rmdir)
+        except Exception:
+            pass
 
 
 class HostedServiceFactory(ServiceFactory):
 
-    def __init__(self, pool, s3=None, ocr=None):
+    def __init__(self, pool, storage=None, ocr=None):
         self.pool = pool
-        self.s3 = s3
+        self.storage = storage
         self.ocr = ocr
 
     def user_service(self, user_id: str) -> HostedUserService:
@@ -409,7 +443,7 @@ class HostedServiceFactory(ServiceFactory):
         return HostedKBService(self.pool, user_id)
 
     def document_service(self, user_id: str) -> HostedDocumentService:
-        return HostedDocumentService(self.pool, user_id, self.s3)
+        return HostedDocumentService(self.pool, user_id, self.storage)
 
 
 # ── Chunk persistence (Postgres-specific) ─────────────────────────────────────

@@ -64,7 +64,7 @@ class OCRService:
 
             ext = doc["filename"].rsplit(".", 1)[-1].lower() if "." in doc["filename"] else doc["file_type"]
             kb_id = doc["kb_id"]
-            s3_source_key = f"{user_id}/{document_id}/source.{ext}"
+            s3_source_key = f"{document_id}/{doc['filename']}"
 
             if ext in OFFICE_TYPES:
                 await self._process_office(document_id, user_id, kb_id, s3_source_key, ext)
