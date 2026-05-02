@@ -42,6 +42,7 @@ _verifier = _DeferredVerifier()
 
 mcp = FastMCP(
     "LLM Wiki",
+    host="0.0.0.0",  # avoids auto-enabling DNS rebinding protection (default is 127.0.0.1)
     instructions=(
         "You are connected to the team LLM Wiki. "
         "Call the `guide` tool first to see the wiki and learn the workflow."
