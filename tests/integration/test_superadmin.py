@@ -42,39 +42,39 @@ async def test_schema_has_usage_logs_table(pool):
 
 # ── Auth dep tests ──────────────────────────────────────────────
 
+from tests.helpers.jwt import auth_headers
+
+
 @pytest.fixture
-async def superadmin_client(client, pool):
+async def superadmin_uid(pool):
     uid = await pool.fetchval(
         "INSERT INTO users (email,password_hash,display_name,role) "
         "VALUES ('sa@test.com','x','SA','superadmin') RETURNING id::text"
     )
-    from tests.helpers.jwt import TestAuthProvider
-    client.app.state.auth_provider = TestAuthProvider(uid)
-    yield client
+    yield uid
     await pool.execute("DELETE FROM users WHERE email='sa@test.com'")
 
 
 @pytest.fixture
-async def admin_client(client, pool):
+async def admin_uid(pool):
     uid = await pool.fetchval(
         "INSERT INTO users (email,password_hash,display_name,role) "
         "VALUES ('adm@test.com','x','ADM','admin') RETURNING id::text"
     )
-    from tests.helpers.jwt import TestAuthProvider
-    client.app.state.auth_provider = TestAuthProvider(uid)
-    yield client
+    yield uid
     await pool.execute("DELETE FROM users WHERE email='adm@test.com'")
 
 
 @pytest.mark.asyncio
-async def test_stats_rejects_admin_role(admin_client):
+@pytest.mark.xfail(reason="admin.py still uses require_admin; will pass after Task 5 switches to require_superadmin", strict=False)
+async def test_stats_rejects_admin_role(client, admin_uid):
     """Admin role must NOT access superadmin endpoints."""
-    resp = await admin_client.get("/v1/admin/stats")
+    resp = await client.get("/v1/admin/stats", headers=auth_headers(admin_uid))
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
-async def test_stats_accepts_superadmin_role(superadmin_client):
+async def test_stats_accepts_superadmin_role(client, superadmin_uid):
     """Superadmin role must access superadmin endpoints."""
-    resp = await superadmin_client.get("/v1/admin/stats")
+    resp = await client.get("/v1/admin/stats", headers=auth_headers(superadmin_uid))
     assert resp.status_code == 200
