@@ -61,6 +61,14 @@ async def create_api_key(
         "RETURNING id, name, key_prefix, created_at, last_used_at, revoked_at",
         user_id, body.name, key_hash, key_prefix,
     )
+    from services.log import log_action_bg
+    log_action_bg(
+        pool,
+        user_id=user_id,
+        action="api_key.create",
+        resource_type="api_key",
+        resource_id=str(row["id"]),
+    )
     return {**dict(row), "key": raw_key}
 
 
@@ -77,3 +85,11 @@ async def revoke_api_key(
     )
     if result == "UPDATE 0":
         raise HTTPException(status_code=404, detail="API key not found")
+    from services.log import log_action_bg
+    log_action_bg(
+        pool,
+        user_id=user_id,
+        action="api_key.revoke",
+        resource_type="api_key",
+        resource_id=str(key_id),
+    )
