@@ -78,3 +78,69 @@ async def test_stats_accepts_superadmin_role(client, superadmin_uid):
     """Superadmin role must access superadmin endpoints."""
     resp = await client.get("/v1/admin/stats", headers=auth_headers(superadmin_uid))
     assert resp.status_code == 200
+
+
+# ── User management tests ───────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_access_user_list(client, admin_uid):
+    resp = await client.get("/v1/admin/users", headers=auth_headers(admin_uid))
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_superadmin_can_list_users(client, superadmin_uid):
+    resp = await client.get("/v1/admin/users", headers=auth_headers(superadmin_uid))
+    assert resp.status_code == 200
+    assert isinstance(resp.json(), list)
+
+
+@pytest.mark.asyncio
+async def test_superadmin_can_create_superadmin_user(client, superadmin_uid, pool):
+    resp = await client.post("/v1/admin/users", headers=auth_headers(superadmin_uid), json={
+        "email": "newsup@test.com",
+        "password": "pass1234",
+        "display_name": "New SA",
+        "role": "superadmin",
+    })
+    assert resp.status_code == 201
+    assert resp.json()["role"] == "superadmin"
+    await pool.execute("DELETE FROM users WHERE email='newsup@test.com'")
+
+
+@pytest.mark.asyncio
+async def test_superadmin_can_delete_regular_user(client, superadmin_uid, pool):
+    uid = await pool.fetchval(
+        "INSERT INTO users (email,password_hash,display_name,role) "
+        "VALUES ('todel@test.com','x','ToDel','viewer') RETURNING id::text"
+    )
+    resp = await client.delete(f"/v1/admin/users/{uid}", headers=auth_headers(superadmin_uid))
+    assert resp.status_code == 204
+    row = await pool.fetchrow("SELECT id FROM users WHERE id::text=$1", uid)
+    assert row is None
+
+
+@pytest.mark.asyncio
+async def test_cannot_delete_patxigg(client, superadmin_uid, pool):
+    """patxigg@biklabs.ai must never be deletable."""
+    uid = await pool.fetchval(
+        "INSERT INTO users (email,password_hash,display_name,role) "
+        "VALUES ('patxigg@biklabs.ai','x','Patxi','superadmin') "
+        "ON CONFLICT (lower(email)) DO UPDATE SET display_name=EXCLUDED.display_name "
+        "RETURNING id::text"
+    )
+    resp = await client.delete(f"/v1/admin/users/{uid}", headers=auth_headers(superadmin_uid))
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_cannot_demote_patxigg(client, superadmin_uid, pool):
+    """patxigg@biklabs.ai role must never change."""
+    uid = await pool.fetchval(
+        "SELECT id::text FROM users WHERE lower(email)='patxigg@biklabs.ai'"
+    )
+    if uid is None:
+        pytest.skip("patxigg not seeded")
+    resp = await client.patch(f"/v1/admin/users/{uid}", headers=auth_headers(superadmin_uid), json={"role": "admin"})
+    assert resp.status_code == 403
