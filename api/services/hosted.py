@@ -53,7 +53,7 @@ class HostedUserService(UserService):
 
 _KB_LIST_QUERY = (
     "SELECT kb.id, kb.user_id, kb.name, kb.slug, kb.description, "
-    "kb.created_at, kb.updated_at, "
+    "kb.is_shared, kb.created_at, kb.updated_at, "
     "(SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.path NOT LIKE '/wiki/%%' AND NOT d.archived) AS source_count, "
     "(SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.path LIKE '/wiki/%%' AND NOT d.archived) AS wiki_page_count "
     "FROM knowledge_bases kb"
@@ -94,10 +94,21 @@ class HostedKBService(KBService):
 
     async def list(self) -> list[dict]:
         rows = await self.pool.fetch(
-            f"{_KB_LIST_QUERY} WHERE kb.user_id = $1 ORDER BY kb.updated_at DESC",
+            f"{_KB_LIST_QUERY} "
+            "LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
+            "WHERE kb.user_id = $1 OR ks.shared_with = $1::uuid "
+            "ORDER BY kb.created_at DESC",
             self.user_id,
         )
-        return [dict(r) for r in rows]
+        # Deduplicate by id in case a user owns AND has an explicit share entry
+        seen: set[str] = set()
+        result = []
+        for r in rows:
+            row_id = str(r["id"])
+            if row_id not in seen:
+                seen.add(row_id)
+                result.append(dict(r))
+        return result
 
     async def get(self, kb_id: str) -> dict | None:
         row = await self.pool.fetchrow(

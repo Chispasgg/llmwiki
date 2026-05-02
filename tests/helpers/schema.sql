@@ -39,7 +39,7 @@ CREATE TABLE users (
     email TEXT NOT NULL UNIQUE,
     display_name TEXT,
     password_hash TEXT NOT NULL DEFAULT '',
-    role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin', 'editor', 'viewer')),
+    role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('superadmin', 'admin', 'editor', 'viewer')),
     is_active BOOLEAN NOT NULL DEFAULT true,
     last_login_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
@@ -69,16 +69,44 @@ CREATE TABLE api_keys (
 );
 
 CREATE TABLE knowledge_bases (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    slug TEXT NOT NULL,
+    id        UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name      TEXT NOT NULL,
+    slug      TEXT NOT NULL,
     description TEXT,
+    is_shared BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
     UNIQUE(user_id, slug),
     UNIQUE(user_id, name)
 );
+
+CREATE TABLE kb_shares (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    kb_id        UUID NOT NULL REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+    shared_with  UUID REFERENCES users(id) ON DELETE CASCADE,
+    access_level TEXT NOT NULL DEFAULT 'viewer'
+                     CHECK (access_level IN ('viewer', 'editor')),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT kb_shares_unique UNIQUE (kb_id, shared_with)
+);
+CREATE INDEX idx_kb_shares_kb   ON kb_shares (kb_id);
+CREATE INDEX idx_kb_shares_user ON kb_shares (shared_with);
+
+CREATE TABLE usage_logs (
+    id            BIGSERIAL PRIMARY KEY,
+    user_id       UUID REFERENCES users(id) ON DELETE SET NULL,
+    action        TEXT NOT NULL,
+    resource_type TEXT,
+    resource_id   TEXT,
+    kb_id         UUID REFERENCES knowledge_bases(id) ON DELETE SET NULL,
+    metadata      JSONB,
+    ip_address    TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_usage_logs_user    ON usage_logs (user_id);
+CREATE INDEX idx_usage_logs_created ON usage_logs (created_at DESC);
+CREATE INDEX idx_usage_logs_action  ON usage_logs (action);
 
 CREATE TABLE documents (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,

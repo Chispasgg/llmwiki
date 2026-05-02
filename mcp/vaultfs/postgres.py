@@ -34,14 +34,21 @@ class PostgresVaultFS(VaultFS):
     async def resolve_kb(self, slug: str) -> dict | None:
         return await scoped_queryrow(
             self.user_id,
-            "SELECT id, name, slug FROM knowledge_bases WHERE slug = $1 AND user_id = $2",
+            "SELECT kb.id, kb.name, kb.slug "
+            "FROM knowledge_bases kb "
+            "LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
+            "WHERE kb.slug = $1 AND (kb.user_id = $2 OR ks.shared_with = $2::uuid)",
             slug, self.user_id,
         )
 
     async def list_knowledge_bases(self) -> list[dict]:
         return await scoped_query(
             self.user_id,
-            "SELECT name, slug, created_at FROM knowledge_bases WHERE user_id = $1 ORDER BY created_at DESC",
+            "SELECT DISTINCT kb.name, kb.slug, kb.created_at "
+            "FROM knowledge_bases kb "
+            "LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
+            "WHERE kb.user_id = $1 OR ks.shared_with = $1::uuid "
+            "ORDER BY kb.created_at DESC",
             self.user_id,
         )
 

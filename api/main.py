@@ -95,6 +95,7 @@ else:
     from routes.api_keys import router as api_keys_router
     from routes.admin import router as admin_router
     from routes.admin_users import router as admin_users_router
+    from routes.superadmin import router as superadmin_router
     from routes.graph import router as graph_router
     from routes.ws import router as ws_router
     from infra.tus import router as tus_router
@@ -102,6 +103,7 @@ else:
     app.include_router(api_keys_router)
     app.include_router(admin_router)
     app.include_router(admin_users_router)
+    app.include_router(superadmin_router)
     app.include_router(tus_router)
     app.include_router(graph_router)
     app.include_router(ws_router)

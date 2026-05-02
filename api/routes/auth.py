@@ -64,6 +64,14 @@ async def login(body: LoginRequest, request: Request, response: Response):
         "UPDATE users SET last_login_at = now() WHERE id = $1", user["id"]
     )
 
+    from services.log import log_action_bg
+    log_action_bg(
+        pool,
+        user_id=user["id"],
+        action="login",
+        ip_address=request.client.host if request.client else None,
+    )
+
     response.set_cookie(
         key=COOKIE_NAME,
         value=raw_token,

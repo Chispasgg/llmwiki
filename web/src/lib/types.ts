@@ -4,6 +4,7 @@ export interface KnowledgeBase {
   name: string
   slug: string
   description: string | null
+  is_shared: boolean
   source_count: number
   wiki_page_count: number
   created_at: string

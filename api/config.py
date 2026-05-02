@@ -58,6 +58,7 @@ class Settings(BaseSettings):
 
     SERVER_FILES_ROOT: str = "/home/ubuntu/wiki/files"
     SERVER_DATA_ROOT: str = "/home/ubuntu/wiki/data"
+    USAGE_LOG_FILE: str = ""  # absolute path to JSONL audit log; empty = disabled
     SESSION_EXPIRE_SECONDS: int = 86400
     COOKIE_SECURE: bool = False
     MCP_URL: str = "http://localhost:1501"
