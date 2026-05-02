@@ -69,11 +69,24 @@ async def get_scoped_db(
         await pool.release(conn)
 
 
-async def require_admin(request: Request) -> str:
-    """Verifica que el usuario autenticado tiene rol admin.
+async def require_superadmin(request: Request) -> str:
+    """Requires role=superadmin. Only the superadmin account passes."""
+    user_id = await get_user_id(request)
+    pool = request.app.state.pool
+    if pool is not None:
+        row = await pool.fetchrow(
+            "SELECT role FROM users WHERE id = $1 AND is_active = true", user_id
+        )
+        if not row or row["role"] != "superadmin":
+            raise HTTPException(status_code=403, detail="Superadmin access required")
+    return user_id
 
-    En hosted mode (pool disponible) consulta el rol en la tabla users.
-    En local mode (pool=None) el único usuario existente tiene acceso total.
+
+async def require_admin(request: Request) -> str:
+    """Requires role=admin OR superadmin.
+
+    Used for endpoints that admins and superadmins can both access.
+    In local mode (pool=None) every user has full access.
     """
     user_id = await get_user_id(request)
     pool = request.app.state.pool
@@ -81,6 +94,6 @@ async def require_admin(request: Request) -> str:
         row = await pool.fetchrow(
             "SELECT role FROM users WHERE id = $1 AND is_active = true", user_id
         )
-        if not row or row["role"] != "admin":
+        if not row or row["role"] not in ("admin", "superadmin"):
             raise HTTPException(status_code=403, detail="Admin access required")
     return user_id

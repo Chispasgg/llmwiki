@@ -38,3 +38,43 @@ async def test_schema_has_usage_logs_table(pool):
         "SELECT table_name FROM information_schema.tables WHERE table_name='usage_logs'"
     )
     assert row is not None
+
+
+# ── Auth dep tests ──────────────────────────────────────────────
+
+@pytest.fixture
+async def superadmin_client(client, pool):
+    uid = await pool.fetchval(
+        "INSERT INTO users (email,password_hash,display_name,role) "
+        "VALUES ('sa@test.com','x','SA','superadmin') RETURNING id::text"
+    )
+    from tests.helpers.jwt import TestAuthProvider
+    client.app.state.auth_provider = TestAuthProvider(uid)
+    yield client
+    await pool.execute("DELETE FROM users WHERE email='sa@test.com'")
+
+
+@pytest.fixture
+async def admin_client(client, pool):
+    uid = await pool.fetchval(
+        "INSERT INTO users (email,password_hash,display_name,role) "
+        "VALUES ('adm@test.com','x','ADM','admin') RETURNING id::text"
+    )
+    from tests.helpers.jwt import TestAuthProvider
+    client.app.state.auth_provider = TestAuthProvider(uid)
+    yield client
+    await pool.execute("DELETE FROM users WHERE email='adm@test.com'")
+
+
+@pytest.mark.asyncio
+async def test_stats_rejects_admin_role(admin_client):
+    """Admin role must NOT access superadmin endpoints."""
+    resp = await admin_client.get("/v1/admin/stats")
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_stats_accepts_superadmin_role(superadmin_client):
+    """Superadmin role must access superadmin endpoints."""
+    resp = await superadmin_client.get("/v1/admin/stats")
+    assert resp.status_code == 200
