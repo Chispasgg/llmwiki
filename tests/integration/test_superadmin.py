@@ -211,3 +211,47 @@ async def test_superadmin_can_list_usage_logs(client, superadmin_uid):
     resp = await client.get("/v1/superadmin/logs", headers=auth_headers(superadmin_uid))
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
+
+
+# ── Shared wikis tests ──────────────────────────────────────────
+
+
+@pytest.fixture
+async def two_users(pool):
+    uid_a = await pool.fetchval(
+        "INSERT INTO users (email,password_hash,display_name,role) "
+        "VALUES ('userA@test.com','x','A','editor') RETURNING id::text"
+    )
+    uid_b = await pool.fetchval(
+        "INSERT INTO users (email,password_hash,display_name,role) "
+        "VALUES ('userB@test.com','x','B','editor') RETURNING id::text"
+    )
+    kb_id = await pool.fetchval(
+        "INSERT INTO knowledge_bases (user_id, name, slug, is_shared) "
+        "VALUES ($1::uuid, 'Shared KB', 'shared-kb', true) RETURNING id::text",
+        uid_a,
+    )
+    await pool.execute(
+        "INSERT INTO kb_shares (kb_id, shared_with) VALUES ($1::uuid, $2::uuid)",
+        kb_id, uid_b,
+    )
+    yield uid_a, uid_b, kb_id
+    await pool.execute("DELETE FROM users WHERE email IN ('userA@test.com','userB@test.com')")
+
+
+@pytest.mark.asyncio
+async def test_shared_kb_appears_in_recipient_list(client, pool, two_users):
+    uid_a, uid_b, kb_id = two_users
+    resp = await client.get("/v1/knowledge-bases", headers=auth_headers(uid_b))
+    assert resp.status_code == 200
+    ids = [kb["id"] for kb in resp.json()]
+    assert kb_id in ids
+
+
+@pytest.mark.asyncio
+async def test_owned_kb_not_duplicated(client, pool, two_users):
+    uid_a, uid_b, kb_id = two_users
+    resp = await client.get("/v1/knowledge-bases", headers=auth_headers(uid_a))
+    assert resp.status_code == 200
+    ids = [kb["id"] for kb in resp.json()]
+    assert ids.count(kb_id) == 1
