@@ -18,7 +18,7 @@ type UserState = {
 export const useUserStore = create<UserState>()((set) => ({
   user: null,
   authLoading: true,
-  setUser: (user) => set({ user }),
+  setUser: (user) => set({ user, authLoading: false }),
   setAuthLoading: (authLoading) => set({ authLoading }),
   signOut: () => set({ user: null, authLoading: false }),
 }))

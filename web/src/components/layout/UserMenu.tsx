@@ -4,7 +4,7 @@ import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { useUserStore } from '@/stores'
-import { Settings, LogOut, Moon, Sun } from 'lucide-react'
+import { Settings, LogOut, Moon, Sun, ShieldCheck } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -44,6 +44,15 @@ export function UserMenu() {
           {user.email}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {user.role === 'superadmin' && (
+          <>
+            <DropdownMenuItem onClick={() => router.push('/admin')}>
+              <ShieldCheck className="mr-2 h-4 w-4" />
+              Administración
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <DropdownMenuItem onClick={() => router.push('/settings')}>
           <Settings className="mr-2 h-4 w-4" />
           Settings

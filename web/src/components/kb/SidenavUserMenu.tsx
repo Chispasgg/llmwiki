@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { Settings, LogOut, Moon, Sun } from 'lucide-react'
+import { Settings, LogOut, Moon, Sun, ShieldCheck } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuTrigger, DropdownMenuSeparator,
@@ -43,6 +43,15 @@ export function SidenavUserMenu() {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top" className="w-48">
+        {user.role === 'superadmin' && (
+          <>
+            <DropdownMenuItem onClick={() => router.push('/admin')}>
+              <ShieldCheck className="mr-2 h-4 w-4" />
+              Administración
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <DropdownMenuItem onClick={() => router.push('/settings')}>
           <Settings className="mr-2 h-4 w-4" />
           Settings

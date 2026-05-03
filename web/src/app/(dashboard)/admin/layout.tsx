@@ -1,13 +1,23 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { usePathname, useRouter } from 'next/navigation'
 import { useUserStore } from '@/stores'
+
+const NAV_LINKS = [
+  { href: '/admin', label: 'Resumen' },
+  { href: '/admin/users', label: 'Usuarios' },
+  { href: '/admin/tokens', label: 'Tokens' },
+  { href: '/admin/wikis', label: 'Wikis' },
+  { href: '/admin/logs', label: 'Logs' },
+]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = useUserStore((s) => s.user)
   const authLoading = useUserStore((s) => s.authLoading)
   const router = useRouter()
+  const pathname = usePathname()
 
   useEffect(() => {
     if (!authLoading && user && user.role !== 'superadmin') {
@@ -25,11 +35,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-full">
       <nav className="border-b px-6 py-3 flex gap-6 text-sm font-medium">
-        <a href="/admin" className="hover:text-foreground text-muted-foreground">Resumen</a>
-        <a href="/admin/users" className="hover:text-foreground text-muted-foreground">Usuarios</a>
-        <a href="/admin/tokens" className="hover:text-foreground text-muted-foreground">Tokens</a>
-        <a href="/admin/wikis" className="hover:text-foreground text-muted-foreground">Wikis</a>
-        <a href="/admin/logs" className="hover:text-foreground text-muted-foreground">Logs</a>
+        {NAV_LINKS.map(({ href, label }) => (
+          <Link
+            key={href}
+            href={href}
+            className={pathname === href
+              ? 'text-foreground'
+              : 'text-muted-foreground hover:text-foreground'}
+          >
+            {label}
+          </Link>
+        ))}
       </nav>
       <div className="p-6">{children}</div>
     </div>
