@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { login } from '@/lib/auth'
+import { login, getMe } from '@/lib/auth'
 import { useUserStore } from '@/stores/useUserStore'
 
 export function LoginForm() {
@@ -13,6 +13,22 @@ export function LoginForm() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [checking, setChecking] = useState(true)
+
+  // Redirect immediately if session cookie is still valid
+  useEffect(() => {
+    getMe().then((me) => {
+      if (me) {
+        setUser(me)
+        const rawNext = searchParams.get('next') || '/wikis'
+        const nextPath = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/wikis'
+        router.replace(nextPath)
+      } else {
+        setChecking(false)
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -30,6 +46,8 @@ export function LoginForm() {
       setLoading(false)
     }
   }
+
+  if (checking) return null
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background">

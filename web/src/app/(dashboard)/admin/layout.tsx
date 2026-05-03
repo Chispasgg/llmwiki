@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import Link from 'next/link'
+import { ArrowLeft } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useUserStore } from '@/stores'
 
@@ -34,7 +35,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-full">
-      <nav className="border-b px-6 py-3 flex gap-6 text-sm font-medium">
+      <nav className="border-b px-6 py-3 flex items-center gap-6 text-sm font-medium">
+        <Link
+          href="/wikis"
+          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground mr-2"
+        >
+          <ArrowLeft className="size-3.5" />
+          Wikis
+        </Link>
+        <span className="text-border select-none">|</span>
         {NAV_LINKS.map(({ href, label }) => (
           <Link
             key={href}

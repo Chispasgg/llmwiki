@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { useKBStore, useUserStore } from '@/stores'
 import {
-  Plus, Loader2, Upload, LogOut, Moon, Sun, BookOpen,
+  Plus, Loader2, Upload, LogOut, Moon, Sun, BookOpen, ShieldCheck,
 } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -287,6 +287,15 @@ function UserMenu() {
           {user.email}
         </div>
         <DropdownMenuSeparator />
+        {user.role === 'superadmin' && (
+          <>
+            <DropdownMenuItem onClick={() => router.push('/admin')}>
+              <ShieldCheck className="mr-2 h-4 w-4" />
+              Administración
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         {mounted && (
           <DropdownMenuItem onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
             {theme === 'dark' ? (
