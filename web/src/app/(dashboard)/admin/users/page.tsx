@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { KeyRound, X, Check } from 'lucide-react'
 import {
   listUsers, createUser, updateUser, deleteUser,
   type AdminUser,
@@ -17,6 +18,9 @@ export default function AdminUsersPage() {
     email: '', password: '', display_name: '', role: 'viewer',
   })
   const [creating, setCreating] = useState(false)
+  const [pwdEditId, setPwdEditId] = useState<string | null>(null)
+  const [pwdValue, setPwdValue] = useState('')
+  const [pwdSaving, setPwdSaving] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -67,6 +71,29 @@ export default function AdminUsersPage() {
       load()
     } catch (e) {
       setError((e as Error).message)
+    }
+  }
+
+  const startPwdEdit = (userId: string) => {
+    setPwdEditId(userId)
+    setPwdValue('')
+  }
+
+  const cancelPwdEdit = () => {
+    setPwdEditId(null)
+    setPwdValue('')
+  }
+
+  const handlePwdSave = async (userId: string) => {
+    if (!pwdValue.trim()) return
+    setPwdSaving(true)
+    try {
+      await updateUser(userId, { password: pwdValue })
+      cancelPwdEdit()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setPwdSaving(false)
     }
   }
 
@@ -129,6 +156,7 @@ export default function AdminUsersPage() {
         <tbody>
           {users.map((u) => {
             const isProtected = u.email.toLowerCase() === PROTECTED
+            const editingPwd = pwdEditId === u.id
             return (
               <tr key={u.id} className="border-b hover:bg-muted/40">
                 <td className="py-2 pr-4">{u.email}</td>
@@ -162,14 +190,57 @@ export default function AdminUsersPage() {
                   {u.last_login_at ? new Date(u.last_login_at).toLocaleString('es') : '—'}
                 </td>
                 <td className="py-2">
-                  {!isProtected && (
-                    <button
-                      onClick={() => handleDelete(u)}
-                      className="text-xs text-destructive hover:underline"
-                    >
-                      Eliminar
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {editingPwd ? (
+                      <>
+                        <input
+                          type="password"
+                          value={pwdValue}
+                          onChange={(e) => setPwdValue(e.target.value)}
+                          placeholder="Nueva contraseña"
+                          className="border rounded px-2 py-1 text-xs w-36"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handlePwdSave(u.id)
+                            if (e.key === 'Escape') cancelPwdEdit()
+                          }}
+                        />
+                        <button
+                          onClick={() => handlePwdSave(u.id)}
+                          disabled={pwdSaving || !pwdValue.trim()}
+                          className="p-1 rounded text-green-600 hover:bg-green-50 disabled:opacity-40"
+                          title="Guardar contraseña"
+                        >
+                          <Check className="size-3.5" />
+                        </button>
+                        <button
+                          onClick={cancelPwdEdit}
+                          className="p-1 rounded text-muted-foreground hover:bg-muted"
+                          title="Cancelar"
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => startPwdEdit(u.id)}
+                          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                          title="Cambiar contraseña"
+                        >
+                          <KeyRound className="size-3.5" />
+                        </button>
+                        {!isProtected && (
+                          <button
+                            onClick={() => handleDelete(u)}
+                            className="text-xs text-destructive hover:underline"
+                          >
+                            Eliminar
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </td>
               </tr>
             )

@@ -26,6 +26,7 @@ class UpdateUserRequest(BaseModel):
     role: str | None = None
     is_active: bool | None = None
     display_name: str | None = None
+    password: str | None = None
 
 
 class UserOut(BaseModel):
@@ -102,6 +103,8 @@ async def update_user(
 
     updates = {k: v for k, v in body.model_dump(exclude_none=True).items()
                if k in PATCHABLE_COLUMNS}
+    if body.password is not None:
+        updates["password_hash"] = hash_password(body.password)
     if not updates:
         raise HTTPException(status_code=422, detail={"message": "Nothing to update"})
     if "role" in updates and updates["role"] not in ALLOWED_ROLES:

@@ -76,7 +76,7 @@ export const createUser = (body: {
 
 export const updateUser = (
   userId: string,
-  body: { role?: string; is_active?: boolean; display_name?: string },
+  body: { role?: string; is_active?: boolean; display_name?: string; password?: string },
 ) =>
   apiFetch<AdminUser>(`/v1/admin/users/${userId}`, {
     method: 'PATCH',
