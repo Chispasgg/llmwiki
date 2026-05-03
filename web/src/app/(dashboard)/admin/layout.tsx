@@ -11,6 +11,7 @@ const NAV_LINKS = [
   { href: '/admin/users', label: 'Usuarios' },
   { href: '/admin/tokens', label: 'Tokens' },
   { href: '/admin/wikis', label: 'Wikis' },
+  { href: '/admin/shares', label: 'Compartidas' },
   { href: '/admin/logs', label: 'Logs' },
 ]
 

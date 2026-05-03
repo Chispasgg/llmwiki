@@ -102,6 +102,27 @@ export const listAllKBs = () =>
 export const deleteAnyKB = (kbId: string) =>
   apiFetch<void>(`/v1/superadmin/knowledge-bases/${kbId}`, { method: 'DELETE' })
 
+// ── Shares ──────────────────────────────────────────────────────
+
+export interface AdminShare {
+  id: string
+  kb_id: string
+  kb_name: string
+  kb_slug: string
+  owner_email: string
+  shared_with_id: string
+  shared_with_email: string
+  shared_with_display_name: string
+  access_level: 'viewer' | 'editor'
+  created_at: string
+}
+
+export const listAllShares = () =>
+  apiFetch<AdminShare[]>('/v1/superadmin/shares')
+
+export const deleteAnyShare = (shareId: string) =>
+  apiFetch<void>(`/v1/superadmin/shares/${shareId}`, { method: 'DELETE' })
+
 // ── Stats ───────────────────────────────────────────────────────
 
 export const getGlobalStats = () =>

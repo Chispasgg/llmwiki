@@ -94,6 +94,66 @@ async def delete_any_knowledge_base(
         raise HTTPException(status_code=404, detail={"message": "Knowledge base not found"})
 
 
+# ── KB Shares ────────────────────────────────────────────────────
+
+class AdminShareOut(BaseModel):
+    id: str
+    kb_id: str
+    kb_name: str
+    kb_slug: str
+    owner_email: str
+    shared_with_id: str
+    shared_with_email: str
+    shared_with_display_name: str
+    access_level: str
+    created_at: str
+
+
+@router.get("/shares", response_model=list[AdminShareOut])
+async def list_all_shares(
+    _sa: Annotated[str, Depends(require_superadmin)],
+    request: Request,
+):
+    rows = await request.app.state.pool.fetch(
+        "SELECT s.id::text, s.kb_id::text, kb.name AS kb_name, kb.slug AS kb_slug, "
+        "       owner.email AS owner_email, "
+        "       s.shared_with::text AS shared_with_id, "
+        "       target.email AS shared_with_email, "
+        "       target.display_name AS shared_with_display_name, "
+        "       s.access_level, s.created_at::text "
+        "FROM kb_shares s "
+        "JOIN knowledge_bases kb ON kb.id = s.kb_id "
+        "JOIN users owner ON owner.id = kb.user_id "
+        "JOIN users target ON target.id = s.shared_with "
+        "ORDER BY s.created_at DESC"
+    )
+    return [dict(r) for r in rows]
+
+
+@router.delete("/shares/{share_id}", status_code=204)
+async def delete_any_share(
+    share_id: UUID,
+    _sa: Annotated[str, Depends(require_superadmin)],
+    request: Request,
+):
+    pool = request.app.state.pool
+    kb_id = await pool.fetchval(
+        "SELECT kb_id FROM kb_shares WHERE id = $1", share_id
+    )
+    if not kb_id:
+        raise HTTPException(status_code=404, detail={"message": "Share not found"})
+
+    await pool.execute("DELETE FROM kb_shares WHERE id = $1", share_id)
+
+    remaining = await pool.fetchval(
+        "SELECT COUNT(*) FROM kb_shares WHERE kb_id = $1", kb_id
+    )
+    if remaining == 0:
+        await pool.execute(
+            "UPDATE knowledge_bases SET is_shared = false WHERE id = $1", kb_id
+        )
+
+
 # ── Usage Logs ────────────────────────────────────────────────────
 
 class UsageLogOut(BaseModel):

@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronRight, FileText, NotepadText, Library,
   Upload, BookOpen, ArrowUpRight, Search as SearchIcon,
-  Lightbulb, Box, ScrollText, Network, Folder,
+  Lightbulb, Box, ScrollText, Network, Folder, Users2,
 } from 'lucide-react'
 import {
   CommandDialog, CommandInput, CommandList, CommandItem,
@@ -15,7 +15,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { cn } from '@/lib/utils'
 import { WikiSelector } from '@/components/kb/WikiSelector'
 import { SidenavUserMenu } from '@/components/kb/SidenavUserMenu'
+import { ShareDialog } from '@/components/kb/ShareDialog'
 import { apiFetch } from '@/lib/api'
+import { useKBStore, useUserStore } from '@/stores'
 import type { DocumentListItem, WikiNode } from '@/lib/types'
 
 interface Usage {
@@ -61,6 +63,10 @@ export function KBSidenav({
   onOpenSourceDoc,
 }: KBSidenavProps) {
   const [searchOpen, setSearchOpen] = React.useState(false)
+  const [shareOpen, setShareOpen] = React.useState(false)
+  const currentUser = useUserStore((s) => s.user)
+  const kb = useKBStore((s) => s.knowledgeBases.find((k) => k.id === kbId))
+  const isOwner = !!currentUser && !!kb && kb.user_id === currentUser.id
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -149,7 +155,25 @@ export function KBSidenav({
         >
           <Upload className="size-3" />
         </button>
+        {isOwner && (
+          <button
+            onClick={() => setShareOpen(true)}
+            className="flex items-center justify-center px-2.5 py-1.5 text-muted-foreground/50 hover:text-muted-foreground border border-border hover:bg-accent rounded-md transition-colors cursor-pointer"
+            title="Compartir wiki"
+          >
+            <Users2 className="size-3" />
+          </button>
+        )}
       </div>
+
+      {isOwner && (
+        <ShareDialog
+          kbId={kbId}
+          kbName={kbName}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+        />
+      )}
 
       {/* Search palette */}
       <CommandDialog open={searchOpen} onOpenChange={setSearchOpen}>

@@ -92,6 +92,8 @@ if settings.MODE == "local":
 else:
     from routes.auth import router as auth_router
     app.include_router(auth_router)
+    from routes.shares import router as shares_router
+    app.include_router(shares_router)
     from routes.api_keys import router as api_keys_router
     from routes.admin import router as admin_router
     from routes.admin_users import router as admin_users_router
