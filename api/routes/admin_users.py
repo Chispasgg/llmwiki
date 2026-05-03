@@ -104,6 +104,14 @@ async def update_user(
     updates = {k: v for k, v in body.model_dump(exclude_none=True).items()
                if k in PATCHABLE_COLUMNS}
     if body.password is not None:
+        requester = await pool.fetchrow(
+            "SELECT email FROM users WHERE id = $1", UUID(_sa)
+        )
+        if not requester or not _is_protected(requester["email"]):
+            raise HTTPException(
+                status_code=403,
+                detail={"message": "Only the main superadmin can change passwords"},
+            )
         updates["password_hash"] = hash_password(body.password)
     if not updates:
         raise HTTPException(status_code=422, detail={"message": "Nothing to update"})

@@ -1,16 +1,19 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { KeyRound, X, Check } from 'lucide-react'
+import { Key, X, Check } from 'lucide-react'
 import {
   listUsers, createUser, updateUser, deleteUser,
   type AdminUser,
 } from '@/lib/admin'
+import { useUserStore } from '@/stores'
 
 const ROLES = ['superadmin', 'admin', 'editor', 'viewer'] as const
 const PROTECTED = 'patxigg@biklabs.ai'
 
 export default function AdminUsersPage() {
+  const currentUser = useUserStore((s) => s.user)
+  const canChangePasswords = currentUser?.email?.toLowerCase() === PROTECTED
   const [users, setUsers] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -223,13 +226,15 @@ export default function AdminUsersPage() {
                       </>
                     ) : (
                       <>
-                        <button
-                          onClick={() => startPwdEdit(u.id)}
-                          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
-                          title="Cambiar contraseña"
-                        >
-                          <KeyRound className="size-3.5" />
-                        </button>
+                        {canChangePasswords && (
+                          <button
+                            onClick={() => startPwdEdit(u.id)}
+                            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                            title="Cambiar contraseña"
+                          >
+                            <Key className="size-3.5" />
+                          </button>
+                        )}
                         {!isProtected && (
                           <button
                             onClick={() => handleDelete(u)}
