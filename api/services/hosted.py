@@ -112,7 +112,9 @@ class HostedKBService(KBService):
 
     async def get(self, kb_id: str) -> dict | None:
         row = await self.pool.fetchrow(
-            f"{_KB_LIST_QUERY} WHERE kb.id = $1 AND kb.user_id = $2",
+            f"{_KB_LIST_QUERY} "
+            "LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
+            "WHERE kb.id = $1 AND (kb.user_id = $2 OR ks.shared_with = $2::uuid)",
             kb_id, self.user_id,
         )
         return dict(row) if row else None
@@ -221,34 +223,49 @@ class HostedDocumentService(DocumentService):
         if path:
             rows = await self.pool.fetch(
                 f"SELECT {_DOC_COLUMNS} FROM documents "
-                "WHERE knowledge_base_id = $1 AND archived = false AND path = $2 AND user_id = $3 ORDER BY filename",
+                "WHERE knowledge_base_id = $1 AND archived = false AND path = $2 "
+                "AND EXISTS (SELECT 1 FROM knowledge_bases kb2 LEFT JOIN kb_shares ks2 ON ks2.kb_id = kb2.id "
+                "WHERE kb2.id = $1 AND (kb2.user_id = $3 OR ks2.shared_with = $3::uuid)) "
+                "ORDER BY filename",
                 kb_id, path, self.user_id,
             )
         else:
             rows = await self.pool.fetch(
                 f"SELECT {_DOC_COLUMNS} FROM documents "
-                "WHERE knowledge_base_id = $1 AND archived = false AND user_id = $2 ORDER BY filename",
+                "WHERE knowledge_base_id = $1 AND archived = false "
+                "AND EXISTS (SELECT 1 FROM knowledge_bases kb2 LEFT JOIN kb_shares ks2 ON ks2.kb_id = kb2.id "
+                "WHERE kb2.id = $1 AND (kb2.user_id = $2 OR ks2.shared_with = $2::uuid)) "
+                "ORDER BY filename",
                 kb_id, self.user_id,
             )
         return [dict(r) for r in rows]
 
     async def get(self, doc_id: str) -> dict | None:
         row = await self.pool.fetchrow(
-            f"SELECT {_DOC_COLUMNS} FROM documents WHERE id = $1 AND user_id = $2",
+            f"SELECT {_DOC_COLUMNS} FROM documents d "
+            "WHERE d.id = $1 "
+            "AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
+            "WHERE kb.id = d.knowledge_base_id AND (kb.user_id = $2 OR ks.shared_with = $2::uuid))",
             doc_id, self.user_id,
         )
         return dict(row) if row else None
 
     async def get_content(self, doc_id: str) -> dict | None:
         row = await self.pool.fetchrow(
-            "SELECT id, content, version FROM documents WHERE id = $1 AND user_id = $2",
+            "SELECT id, content, version FROM documents d "
+            "WHERE d.id = $1 "
+            "AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
+            "WHERE kb.id = d.knowledge_base_id AND (kb.user_id = $2 OR ks.shared_with = $2::uuid))",
             doc_id, self.user_id,
         )
         return dict(row) if row else None
 
     async def get_url(self, doc_id: str) -> dict | None:
         row = await self.pool.fetchrow(
-            "SELECT id, user_id, filename, file_type FROM documents WHERE id = $1 AND user_id = $2",
+            "SELECT id, user_id, filename, file_type FROM documents d "
+            "WHERE d.id = $1 "
+            "AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
+            "WHERE kb.id = d.knowledge_base_id AND (kb.user_id = $2 OR ks.shared_with = $2::uuid))",
             doc_id, self.user_id,
         )
         if not row:

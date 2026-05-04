@@ -20,21 +20,26 @@ async def serve_file(key: str, request: Request):
 
     document_id = parts[0]
 
-    # Verify the document belongs to the authenticated user
+    # Verify the user has access to the KB that owns this document
     pool = request.app.state.pool
     row = await pool.fetchrow(
-        "SELECT id FROM documents WHERE id = $1::uuid AND user_id = $2",
+        "SELECT d.user_id AS owner_id FROM documents d "
+        "WHERE d.id = $1::uuid "
+        "AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
+        "WHERE kb.id = d.knowledge_base_id AND (kb.user_id = $2 OR ks.shared_with = $2::uuid))",
         document_id, user_id,
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
+
+    owner_id = str(row["owner_id"])
 
     storage = getattr(request.app.state, "storage_service", None)
     if not storage:
         raise HTTPException(status_code=501, detail="File storage not configured")
 
     try:
-        data = await storage.download_bytes(key, user_id=user_id)
+        data = await storage.download_bytes(key, user_id=owner_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found in storage")
 
