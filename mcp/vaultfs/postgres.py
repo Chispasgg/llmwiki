@@ -88,7 +88,7 @@ class PostgresVaultFS(VaultFS):
     async def update_document(self, doc_id: str, content: str, tags: list[str] | None = None, title: str | None = None, date: str | None = None, metadata: dict | None = None) -> dict | None:
         import json as _json
         # Build SET clauses dynamically based on what's provided
-        sets = ["content = $1", "version = version + 1", "updated_at = now()"]
+        sets = ["content = $1", "version = version + 1", "updated_at = now()", "stale_since = NULL"]
         args: list = [content, doc_id, self.user_id]
         idx = 4  # next param index
 
