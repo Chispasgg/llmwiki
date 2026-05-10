@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useTheme } from 'next-themes'
 import { logout } from '@/lib/auth'
+import type { KnowledgeBase } from '@/lib/types'
 const isLocal = process.env.NEXT_PUBLIC_MODE === 'local'
 
 function relativeTime(dateStr: string): string {
@@ -41,6 +42,9 @@ export default function WikisPage() {
   const [creating, setCreating] = React.useState(false)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [name, setName] = React.useState('')
+
+  const kbHref = (kb: KnowledgeBase) =>
+    user && kb.user_id !== user.id ? `/wikis/${kb.id}` : `/wikis/${kb.slug}`
 
   const handleQuickCreate = async () => {
     setCreating(true)
@@ -185,8 +189,8 @@ export default function WikisPage() {
                   transition={{ duration: 0.3, delay: index * 0.05, ease: [0.25, 0.1, 0.25, 1] }}
                   role="button"
                   tabIndex={0}
-                  onClick={() => router.push(`/wikis/${kb.slug}`)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') router.push(`/wikis/${kb.slug}`) }}
+                  onClick={() => router.push(kbHref(kb))}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') router.push(kbHref(kb)) }}
                   className="flex flex-col items-start gap-3 p-5 rounded-xl border border-border bg-card hover:bg-accent/50 transition-colors cursor-pointer text-left group overflow-hidden"
                 >
                   <div className="flex items-center gap-3 min-w-0 w-full">
@@ -197,6 +201,9 @@ export default function WikisPage() {
                       <h2 className="text-sm font-medium text-foreground truncate">{kb.name}</h2>
                       {kb.description && (
                         <p className="text-xs text-muted-foreground mt-0.5 truncate">{kb.description}</p>
+                      )}
+                      {user?.role === 'superadmin' && kb.owner_email && kb.user_id !== user.id && (
+                        <p className="text-[10px] text-muted-foreground/50 mt-0.5 truncate">{kb.owner_email}</p>
                       )}
                     </div>
                   </div>

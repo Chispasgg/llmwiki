@@ -7,6 +7,7 @@ export interface KnowledgeBase {
   is_shared: boolean
   source_count: number
   wiki_page_count: number
+  owner_email: string | null
   created_at: string
   updated_at: string
 }

@@ -42,7 +42,7 @@ export default function KBPage() {
   const user = useUserStore((s) => s.user)
 
   const kb = React.useMemo(
-    () => knowledgeBases.find((k) => k.slug === params.slug),
+    () => knowledgeBases.find((k) => k.slug === params.slug || k.id === params.slug),
     [knowledgeBases, params.slug],
   )
 
