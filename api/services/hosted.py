@@ -234,6 +234,22 @@ class HostedDocumentService(DocumentService):
         self.is_superadmin = is_superadmin
 
     async def list(self, kb_id: str, path: str | None = None) -> list[dict]:
+        if self.is_superadmin:
+            if path:
+                rows = await self.pool.fetch(
+                    f"SELECT {_DOC_COLUMNS} FROM documents "
+                    "WHERE knowledge_base_id = $1 AND archived = false AND path = $2 "
+                    "ORDER BY filename",
+                    kb_id, path,
+                )
+            else:
+                rows = await self.pool.fetch(
+                    f"SELECT {_DOC_COLUMNS} FROM documents "
+                    "WHERE knowledge_base_id = $1 AND archived = false "
+                    "ORDER BY filename",
+                    kb_id,
+                )
+            return [dict(r) for r in rows]
         if path:
             rows = await self.pool.fetch(
                 f"SELECT {_DOC_COLUMNS} FROM documents "
@@ -255,6 +271,12 @@ class HostedDocumentService(DocumentService):
         return [dict(r) for r in rows]
 
     async def get(self, doc_id: str) -> dict | None:
+        if self.is_superadmin:
+            row = await self.pool.fetchrow(
+                f"SELECT {_DOC_COLUMNS} FROM documents d WHERE d.id = $1",
+                doc_id,
+            )
+            return dict(row) if row else None
         row = await self.pool.fetchrow(
             f"SELECT {_DOC_COLUMNS} FROM documents d "
             "WHERE d.id = $1 "
@@ -265,6 +287,12 @@ class HostedDocumentService(DocumentService):
         return dict(row) if row else None
 
     async def get_content(self, doc_id: str) -> dict | None:
+        if self.is_superadmin:
+            row = await self.pool.fetchrow(
+                "SELECT id, content, version FROM documents d WHERE d.id = $1",
+                doc_id,
+            )
+            return dict(row) if row else None
         row = await self.pool.fetchrow(
             "SELECT id, content, version FROM documents d "
             "WHERE d.id = $1 "
@@ -275,13 +303,19 @@ class HostedDocumentService(DocumentService):
         return dict(row) if row else None
 
     async def get_url(self, doc_id: str) -> dict | None:
-        row = await self.pool.fetchrow(
-            "SELECT id, user_id, filename, file_type FROM documents d "
-            "WHERE d.id = $1 "
-            "AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
-            "WHERE kb.id = d.knowledge_base_id AND (kb.user_id = $2 OR ks.shared_with = $2::uuid))",
-            doc_id, self.user_id,
-        )
+        if self.is_superadmin:
+            row = await self.pool.fetchrow(
+                "SELECT id, user_id, filename, file_type FROM documents d WHERE d.id = $1",
+                doc_id,
+            )
+        else:
+            row = await self.pool.fetchrow(
+                "SELECT id, user_id, filename, file_type FROM documents d "
+                "WHERE d.id = $1 "
+                "AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
+                "WHERE kb.id = d.knowledge_base_id AND (kb.user_id = $2 OR ks.shared_with = $2::uuid))",
+                doc_id, self.user_id,
+            )
         if not row:
             return None
         if not self.storage:

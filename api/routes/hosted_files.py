@@ -4,7 +4,7 @@ import mimetypes
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from deps import get_user_id
+from deps import get_user_id, _is_superadmin
 
 router = APIRouter(tags=["files"])
 
@@ -22,13 +22,22 @@ async def serve_file(key: str, request: Request):
 
     # Verify the user has access to the KB that owns this document
     pool = request.app.state.pool
-    row = await pool.fetchrow(
-        "SELECT d.user_id AS owner_id FROM documents d "
-        "WHERE d.id = $1::uuid "
-        "AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
-        "WHERE kb.id = d.knowledge_base_id AND (kb.user_id = $2 OR ks.shared_with = $2::uuid))",
-        document_id, user_id,
-    )
+
+    is_sa = await _is_superadmin(pool, user_id)
+
+    if is_sa:
+        row = await pool.fetchrow(
+            "SELECT d.user_id AS owner_id FROM documents d WHERE d.id = $1::uuid",
+            document_id,
+        )
+    else:
+        row = await pool.fetchrow(
+            "SELECT d.user_id AS owner_id FROM documents d "
+            "WHERE d.id = $1::uuid "
+            "AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
+            "WHERE kb.id = d.knowledge_base_id AND (kb.user_id = $2 OR ks.shared_with = $2::uuid))",
+            document_id, user_id,
+        )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
 
