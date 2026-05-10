@@ -27,27 +27,24 @@ async def get_user_service(request: Request):
     return request.app.state.factory.user_service(user_id)
 
 
+async def _is_superadmin(pool, user_id: str) -> bool:
+    if pool is None:
+        return False
+    row = await pool.fetchrow(
+        "SELECT role FROM users WHERE id = $1 AND is_active = true", user_id
+    )
+    return bool(row and row["role"] == "superadmin")
+
+
 async def get_kb_service(request: Request):
     user_id = await get_user_id(request)
-    is_superadmin = False
-    pool = request.app.state.pool
-    if pool is not None:
-        row = await pool.fetchrow(
-            "SELECT role FROM users WHERE id = $1 AND is_active = true", user_id
-        )
-        is_superadmin = bool(row and row["role"] == "superadmin")
+    is_superadmin = await _is_superadmin(request.app.state.pool, user_id)
     return request.app.state.factory.kb_service(user_id, is_superadmin=is_superadmin)
 
 
 async def get_document_service(request: Request):
     user_id = await get_user_id(request)
-    is_superadmin = False
-    pool = request.app.state.pool
-    if pool is not None:
-        row = await pool.fetchrow(
-            "SELECT role FROM users WHERE id = $1 AND is_active = true", user_id
-        )
-        is_superadmin = bool(row and row["role"] == "superadmin")
+    is_superadmin = await _is_superadmin(request.app.state.pool, user_id)
     return request.app.state.factory.document_service(user_id, is_superadmin=is_superadmin)
 
 
