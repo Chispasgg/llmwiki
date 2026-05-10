@@ -202,7 +202,7 @@ export default function WikisPage() {
                       {kb.description && (
                         <p className="text-xs text-muted-foreground mt-0.5 truncate">{kb.description}</p>
                       )}
-                      {user?.role === 'superadmin' && kb.owner_email && kb.user_id !== user.id && (
+                      {!!user && user.role === 'superadmin' && kb.owner_email && kb.user_id !== user.id && (
                         <p className="text-[10px] text-muted-foreground/50 mt-0.5 truncate">{kb.owner_email}</p>
                       )}
                     </div>
