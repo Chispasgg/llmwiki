@@ -121,9 +121,9 @@ class ServiceFactory(ABC):
         """Return a UserService scoped to user_id."""
 
     @abstractmethod
-    def kb_service(self, user_id: str) -> KBService:
+    def kb_service(self, user_id: str, *, is_superadmin: bool = False) -> KBService:
         """Return a KBService scoped to user_id."""
 
     @abstractmethod
-    def document_service(self, user_id: str) -> DocumentService:
+    def document_service(self, user_id: str, *, is_superadmin: bool = False) -> DocumentService:
         """Return a DocumentService scoped to user_id."""

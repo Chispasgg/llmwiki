@@ -246,10 +246,10 @@ class LocalServiceFactory(ServiceFactory):
     def user_service(self, user_id: str) -> LocalUserService:
         return LocalUserService(self.db, user_id)
 
-    def kb_service(self, user_id: str) -> LocalKBService:
+    def kb_service(self, user_id: str, *, is_superadmin: bool = False) -> LocalKBService:
         return LocalKBService(self.db, user_id)
 
-    def document_service(self, user_id: str) -> LocalDocumentService:
+    def document_service(self, user_id: str, *, is_superadmin: bool = False) -> LocalDocumentService:
         return LocalDocumentService(
             user_id=user_id,
             doc_repo=self._doc_repo,

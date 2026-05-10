@@ -29,12 +29,26 @@ async def get_user_service(request: Request):
 
 async def get_kb_service(request: Request):
     user_id = await get_user_id(request)
-    return request.app.state.factory.kb_service(user_id)
+    is_superadmin = False
+    pool = request.app.state.pool
+    if pool is not None:
+        row = await pool.fetchrow(
+            "SELECT role FROM users WHERE id = $1 AND is_active = true", user_id
+        )
+        is_superadmin = bool(row and row["role"] == "superadmin")
+    return request.app.state.factory.kb_service(user_id, is_superadmin=is_superadmin)
 
 
 async def get_document_service(request: Request):
     user_id = await get_user_id(request)
-    return request.app.state.factory.document_service(user_id)
+    is_superadmin = False
+    pool = request.app.state.pool
+    if pool is not None:
+        row = await pool.fetchrow(
+            "SELECT role FROM users WHERE id = $1 AND is_active = true", user_id
+        )
+        is_superadmin = bool(row and row["role"] == "superadmin")
+    return request.app.state.factory.document_service(user_id, is_superadmin=is_superadmin)
 
 
 async def get_scoped_db(

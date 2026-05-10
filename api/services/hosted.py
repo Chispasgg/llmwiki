@@ -55,7 +55,8 @@ _KB_LIST_QUERY = (
     "SELECT kb.id, kb.user_id, kb.name, kb.slug, kb.description, "
     "kb.is_shared, kb.created_at, kb.updated_at, "
     "(SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.path NOT LIKE '/wiki/%%' AND NOT d.archived) AS source_count, "
-    "(SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.path LIKE '/wiki/%%' AND NOT d.archived) AS wiki_page_count "
+    "(SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.path LIKE '/wiki/%%' AND NOT d.archived) AS wiki_page_count, "
+    "(SELECT u.email FROM users u WHERE u.id = kb.user_id) AS owner_email "
     "FROM knowledge_bases kb"
 )
 
@@ -88,11 +89,17 @@ def _slugify(name: str) -> str:
 
 class HostedKBService(KBService):
 
-    def __init__(self, pool, user_id: str):
+    def __init__(self, pool, user_id: str, is_superadmin: bool = False):
         self.pool = pool
         self.user_id = user_id
+        self.is_superadmin = is_superadmin
 
     async def list(self) -> list[dict]:
+        if self.is_superadmin:
+            rows = await self.pool.fetch(
+                f"{_KB_LIST_QUERY} ORDER BY kb.created_at DESC"
+            )
+            return [dict(r) for r in rows]
         rows = await self.pool.fetch(
             f"{_KB_LIST_QUERY} "
             "LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
@@ -111,6 +118,12 @@ class HostedKBService(KBService):
         return result
 
     async def get(self, kb_id: str) -> dict | None:
+        if self.is_superadmin:
+            row = await self.pool.fetchrow(
+                f"{_KB_LIST_QUERY} WHERE kb.id = $1",
+                kb_id,
+            )
+            return dict(row) if row else None
         row = await self.pool.fetchrow(
             f"{_KB_LIST_QUERY} "
             "LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
@@ -214,10 +227,11 @@ _DOC_COLUMNS = (
 
 class HostedDocumentService(DocumentService):
 
-    def __init__(self, pool, user_id: str, storage=None):
+    def __init__(self, pool, user_id: str, storage=None, is_superadmin: bool = False):
         self.pool = pool
         self.user_id = user_id
         self.storage = storage
+        self.is_superadmin = is_superadmin
 
     async def list(self, kb_id: str, path: str | None = None) -> list[dict]:
         if path:
@@ -467,11 +481,11 @@ class HostedServiceFactory(ServiceFactory):
     def user_service(self, user_id: str) -> HostedUserService:
         return HostedUserService(self.pool, user_id)
 
-    def kb_service(self, user_id: str) -> "HostedKBService":
-        return HostedKBService(self.pool, user_id)
+    def kb_service(self, user_id: str, *, is_superadmin: bool = False) -> "HostedKBService":
+        return HostedKBService(self.pool, user_id, is_superadmin=is_superadmin)
 
-    def document_service(self, user_id: str) -> HostedDocumentService:
-        return HostedDocumentService(self.pool, user_id, self.storage)
+    def document_service(self, user_id: str, *, is_superadmin: bool = False) -> "HostedDocumentService":
+        return HostedDocumentService(self.pool, user_id, self.storage, is_superadmin=is_superadmin)
 
 
 # ── Chunk persistence (Postgres-specific) ─────────────────────────────────────
