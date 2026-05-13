@@ -180,10 +180,12 @@ class ExportService:
         HTTPException(500)
             If pandoc exits with a non-zero return code.
         """
-        # DocumentService.list() returns metadata only in hosted mode — no content.
-        # We enrich each doc by calling get_content() when the field is missing.
-        docs = await self._doc_service.list(kb_id, path="wiki")
+        # list(path=...) uses exact equality — would miss /wiki/concepts/, /wiki/entities/, etc.
+        # Fetch all KB docs and filter to wiki path prefix in Python instead.
+        all_docs = await self._doc_service.list(kb_id)
+        docs = [d for d in all_docs if d.get("path", "").startswith("/wiki/")]
         docs = sort_wiki_docs(docs)
+        # list() omits content in hosted mode; fetch it per document.
         docs = list(await asyncio.gather(*[self._enrich_content(d) for d in docs]))
 
         prefix = f"wiki_export_{kb_id}_{user_id}_"
