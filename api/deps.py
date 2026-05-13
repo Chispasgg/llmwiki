@@ -1,8 +1,12 @@
+from pathlib import Path
 from typing import Annotated, AsyncGenerator
 
 from fastapi import Depends, HTTPException, Request
 
+from config import settings
 from scoped_db import ScopedDB
+from services.base import DocumentService
+from services.export import ExportService
 
 
 async def get_pool(request: Request):
@@ -78,6 +82,12 @@ async def get_scoped_db(
         raise
     finally:
         await pool.release(conn)
+
+
+async def get_export_service(
+    doc_service: Annotated[DocumentService, Depends(get_document_service)],
+) -> ExportService:
+    return ExportService(doc_service, Path(settings.WORKSPACE_PATH))
 
 
 async def require_superadmin(request: Request) -> str:

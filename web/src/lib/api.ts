@@ -1,6 +1,7 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:1502'
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:1502'
 const WS_URL = API_URL.replace(/^http/, 'ws')
 const isLocal = process.env.NEXT_PUBLIC_MODE === 'local'
+export const API_CREDENTIALS: RequestCredentials = isLocal ? 'omit' : 'include'
 
 export async function apiFetch<T>(
   path: string,

@@ -53,6 +53,7 @@ async def lifespan(app: FastAPI):
 from routes.health import router as health_router
 from routes.knowledge_bases import router as knowledge_bases_router
 from routes.documents import router as documents_router
+from routes.export import router as export_router
 from routes.me import router as me_router
 from routes.usage import router as usage_router
 
@@ -80,6 +81,7 @@ app.include_router(me_router)
 app.include_router(usage_router)
 app.include_router(knowledge_bases_router)
 app.include_router(documents_router)
+app.include_router(export_router)
 
 if settings.MODE == "local":
     from routes.local_upload import router as local_upload_router

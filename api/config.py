@@ -67,5 +67,7 @@ class Settings(BaseSettings):
     ARGON2_MEMORY_COST: int = 65536  # 64 MB — OWASP Argon2id minimum
     ARGON2_PARALLELISM: int = 4
 
+    LATEX_TEMPLATE_PATH: str = "config/wiki-export.tex"
+
 
 settings = Settings()

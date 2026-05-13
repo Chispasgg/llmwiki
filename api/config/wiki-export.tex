@@ -1,0 +1,91 @@
+\documentclass[12pt,a4paper]{article}
+
+% ── Fuentes y codificación ────────────────────────────────────────────────────
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\setdefaultlanguage{spanish}
+
+\setmainfont{Liberation Serif}[
+  ItalicFont  = Liberation Serif Italic,
+  BoldFont    = Liberation Serif Bold,
+]
+\setsansfont{Liberation Sans}
+\setmonofont{Liberation Mono}
+
+% ── Márgenes ──────────────────────────────────────────────────────────────────
+\usepackage[margin=2.5cm,top=3cm]{geometry}
+
+% ── Cabecera y pie de página ──────────────────────────────────────────────────
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textit{$title$}}
+\fancyhead[R]{\small $date$}
+\fancyfoot[C]{\thepage}
+\setlength{\headheight}{14pt}
+
+% ── Tablas ────────────────────────────────────────────────────────────────────
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{array}
+
+% ── Imágenes ──────────────────────────────────────────────────────────────────
+\usepackage{graphicx}
+\makeatletter
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\makeatother
+\setkeys{Gin}{width=\maxwidth,keepaspectratio}
+
+% ── Código fuente (pandoc inserta aquí las macros de color) ───────────────────
+$highlighting-macros$
+
+% ── Secciones ────────────────────────────────────────────────────────────────
+\usepackage{titlesec}
+\titleformat{\section}{\large\bfseries}{}{0em}{}[\titlerule]
+\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{}
+\titleformat{\subsubsection}{\normalsize\itshape}{}{0em}{}
+
+% ── Párrafos sin sangría ──────────────────────────────────────────────────────
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+% ── Separadores horizontales ─────────────────────────────────────────────────
+\usepackage{xcolor}
+\renewcommand{\hrulefill}{\leavevmode\leaders\hrule height 0.4pt\hfill\kern0pt}
+
+% ── Hipervínculos ────────────────────────────────────────────────────────────
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue,
+  pdfborder={0 0 0},
+  breaklinks=true,
+  pdftitle={$title$},
+}
+
+\begin{document}
+
+% ── Portada ───────────────────────────────────────────────────────────────────
+\begin{titlepage}
+  \centering
+  \vspace*{5cm}
+  {\Huge\bfseries $title$\par}
+  \vspace{1.5cm}
+  {\large $date$\par}
+  \vfill
+\end{titlepage}
+
+% ── Tabla de contenidos ───────────────────────────────────────────────────────
+$if(toc)$
+{
+  \hypersetup{linkcolor=black}
+  \tableofcontents
+  \newpage
+}
+$endif$
+
+% ── Cuerpo del documento ─────────────────────────────────────────────────────
+$body$
+
+\end{document}

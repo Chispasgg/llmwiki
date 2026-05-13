@@ -6,17 +6,19 @@ import {
   ChevronRight, FileText, NotepadText, Library,
   Upload, BookOpen, ArrowUpRight, Search as SearchIcon,
   Lightbulb, Box, ScrollText, Network, Folder, Users2,
+  FileDown, Loader2,
 } from 'lucide-react'
 import {
   CommandDialog, CommandInput, CommandList, CommandItem,
   CommandEmpty, CommandGroup, CommandSeparator,
 } from '@/components/ui/command'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { WikiSelector } from '@/components/kb/WikiSelector'
 import { SidenavUserMenu } from '@/components/kb/SidenavUserMenu'
 import { ShareDialog } from '@/components/kb/ShareDialog'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, API_URL, API_CREDENTIALS } from '@/lib/api'
 import { useKBStore, useUserStore } from '@/stores'
 import type { DocumentListItem, WikiNode } from '@/lib/types'
 
@@ -64,9 +66,47 @@ export function KBSidenav({
 }: KBSidenavProps) {
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [shareOpen, setShareOpen] = React.useState(false)
+  const [exportLoading, setExportLoading] = React.useState(false)
   const currentUser = useUserStore((s) => s.user)
   const kb = useKBStore((s) => s.knowledgeBases.find((k) => k.id === kbId))
   const isOwner = !!currentUser && !!kb && kb.user_id === currentUser.id
+
+  const handleExportPdf = async () => {
+    setExportLoading(true)
+    try {
+      const response = await fetch(
+        `${API_URL}/v1/knowledge-bases/${kbId}/export.pdf`,
+        { credentials: API_CREDENTIALS },
+      )
+      if (!response.ok) {
+        let msg = 'Error al generar el PDF'
+        try {
+          const err = await response.json() as { detail?: string | { error?: string } }
+          if (err?.detail && typeof err.detail === 'object' && err.detail.error) {
+            msg = err.detail.error
+          } else if (typeof err?.detail === 'string') {
+            msg = err.detail
+          }
+        } catch (_e) {}
+        toast.error(msg)
+        return
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${kbName || 'wiki'}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(url), 150)
+    } catch (err) {
+      console.error('[ExportPDF]', err)
+      toast.error('Error al generar el PDF')
+    } finally {
+      setExportLoading(false)
+    }
+  }
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -162,6 +202,20 @@ export function KBSidenav({
             title="Compartir wiki"
           >
             <Users2 className="size-3" />
+          </button>
+        )}
+        {!filesViewActive && !graphViewActive && (
+          <button
+            onClick={handleExportPdf}
+            disabled={exportLoading}
+            className="flex items-center justify-center px-2.5 py-1.5 text-muted-foreground/50 hover:text-muted-foreground border border-border hover:bg-accent rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            title={exportLoading ? 'Generando PDF…' : 'Exportar PDF'}
+            aria-label={exportLoading ? 'Generando PDF…' : 'Exportar PDF'}
+          >
+            {exportLoading
+              ? <Loader2 className="size-3 animate-spin" />
+              : <FileDown className="size-3" />
+            }
           </button>
         )}
       </div>
