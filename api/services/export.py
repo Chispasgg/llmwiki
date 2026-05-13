@@ -189,10 +189,24 @@ class ExportService:
         docs = list(await asyncio.gather(*[self._enrich_content(d) for d in docs]))
 
         prefix = f"wiki_export_{kb_id}_{user_id}_"
-        with tempfile.TemporaryDirectory(prefix=prefix) as tmp:
+        tmp = tempfile.mkdtemp(prefix=prefix)
+        try:
             temp_dir = Path(tmp)
             combined_md = await self._build_combined_md(docs, temp_dir)
             return await self._run_pandoc(combined_md, temp_dir, kb_name, template_path)
+        except HTTPException:
+            # Save combined.md for post-mortem inspection
+            debug_path = Path(f"/tmp/pandoc_debug_{kb_id[:8]}.md")
+            try:
+                import shutil as _shutil
+                _shutil.copy2(str(temp_dir / "combined.md"), str(debug_path))
+                logger.error("Combined markdown saved to %s for debugging", debug_path)
+            except Exception:
+                pass
+            raise
+        finally:
+            import shutil as _shutil
+            _shutil.rmtree(tmp, ignore_errors=True)
 
     # ------------------------------------------------------------------
     # Private helpers
