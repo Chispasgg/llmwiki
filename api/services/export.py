@@ -30,6 +30,9 @@ from services.base import DocumentService
 
 _MERMAID_RE = re.compile(r"```mermaid\n(.*?)```", re.DOTALL)
 
+# Puppeteer needs --no-sandbox inside Docker containers.
+_PUPPETEER_CONFIG = Path(__file__).parent.parent / "config" / "puppeteer-config.json"
+
 
 # ---------------------------------------------------------------------------
 # Public helper: sort_wiki_docs
@@ -91,10 +94,11 @@ async def patch_mermaid_blocks(
         counter += 1
         mmd_file.write_text(diagram_src, encoding="utf-8")
         try:
+            cmd = ["mmdc", "-i", str(mmd_file), "-o", str(png_file)]
+            if _PUPPETEER_CONFIG.exists():
+                cmd = ["mmdc", "-p", str(_PUPPETEER_CONFIG), "-i", str(mmd_file), "-o", str(png_file)]
             proc = await asyncio.create_subprocess_exec(
-                "mmdc",
-                "-i", str(mmd_file),
-                "-o", str(png_file),
+                *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
