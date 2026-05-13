@@ -6,7 +6,7 @@ import {
   ChevronRight, FileText, NotepadText, Library,
   Upload, BookOpen, ArrowUpRight, Search as SearchIcon,
   Lightbulb, Box, ScrollText, Network, Folder, Users2,
-  FileDown, Loader2,
+  FileDown, Loader2, MoreHorizontal,
 } from 'lucide-react'
 import {
   CommandDialog, CommandInput, CommandList, CommandItem,
@@ -67,6 +67,19 @@ export function KBSidenav({
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [shareOpen, setShareOpen] = React.useState(false)
   const [exportLoading, setExportLoading] = React.useState(false)
+  const [actionsOpen, setActionsOpen] = React.useState(false)
+  const actionsRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    if (!actionsOpen) return
+    const handler = (e: MouseEvent) => {
+      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) {
+        setActionsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [actionsOpen])
   const currentUser = useUserStore((s) => s.user)
   const kb = useKBStore((s) => s.knowledgeBases.find((k) => k.id === kbId))
   const isOwner = !!currentUser && !!kb && kb.user_id === currentUser.id
@@ -165,7 +178,7 @@ export function KBSidenav({
         <WikiSelector kbId={kbId} kbName={kbName} />
       </div>
 
-      {/* Search + Upload + Graph */}
+      {/* Search + Actions menu */}
       <div className="shrink-0 px-2 pb-1 flex items-center gap-1.5">
         <button
           onClick={() => setSearchOpen(true)}
@@ -176,48 +189,65 @@ export function KBSidenav({
           <span className="flex-1 text-left">Search</span>
           <kbd className="text-[10px] text-muted-foreground/30 bg-muted px-1 rounded">{isMac ? '⌘K' : 'Ctrl+K'}</kbd>
         </button>
-        <button
-          onClick={onGraphToggle}
-          className={cn(
-            'flex items-center justify-center px-2.5 py-1.5 border rounded-md transition-colors cursor-pointer',
-            graphViewActive
-              ? 'bg-accent text-foreground border-border'
-              : 'text-muted-foreground/50 hover:text-muted-foreground border-border hover:bg-accent',
+        <div className="relative" ref={actionsRef}>
+          <button
+            onClick={() => setActionsOpen((prev) => !prev)}
+            aria-label="Acciones"
+            title="Acciones"
+            className={cn(
+              'flex items-center justify-center px-2.5 py-1.5 border rounded-md transition-colors cursor-pointer',
+              actionsOpen
+                ? 'bg-accent text-foreground border-border'
+                : 'text-muted-foreground/50 hover:text-muted-foreground border-border hover:bg-accent',
+            )}
+          >
+            <MoreHorizontal className="size-3" />
+          </button>
+          {actionsOpen && (
+            <div className="absolute right-0 top-full mt-1 z-50 min-w-[168px] rounded-md border border-border bg-popover shadow-md py-1">
+              <button
+                onClick={() => { onGraphToggle(); setActionsOpen(false) }}
+                className={cn(
+                  'flex items-center gap-2.5 w-full px-3 py-1.5 text-xs transition-colors cursor-pointer',
+                  graphViewActive
+                    ? 'text-foreground bg-accent'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+                )}
+              >
+                <Network className="size-3.5 shrink-0" />
+                Knowledge graph
+              </button>
+              <button
+                onClick={() => { onUpload(); setActionsOpen(false) }}
+                className="flex items-center gap-2.5 w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
+              >
+                <Upload className="size-3.5 shrink-0" />
+                Subir archivos
+              </button>
+              {isOwner && (
+                <button
+                  onClick={() => { setShareOpen(true); setActionsOpen(false) }}
+                  className="flex items-center gap-2.5 w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
+                >
+                  <Users2 className="size-3.5 shrink-0" />
+                  Compartir wiki
+                </button>
+              )}
+              <div className="my-1 border-t border-border" />
+              <button
+                onClick={() => { handleExportPdf(); setActionsOpen(false) }}
+                disabled={exportLoading}
+                className="flex items-center gap-2.5 w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {exportLoading
+                  ? <Loader2 className="size-3.5 shrink-0 animate-spin" />
+                  : <FileDown className="size-3.5 shrink-0" />
+                }
+                {exportLoading ? 'Generando PDF…' : 'Exportar PDF'}
+              </button>
+            </div>
           )}
-          title="Knowledge graph"
-        >
-          <Network className="size-3" />
-        </button>
-        <button
-          onClick={onUpload}
-          className="flex items-center justify-center px-2.5 py-1.5 text-muted-foreground/50 hover:text-muted-foreground border border-border hover:bg-accent rounded-md transition-colors cursor-pointer"
-          title="Upload files"
-        >
-          <Upload className="size-3" />
-        </button>
-        {isOwner && (
-          <button
-            onClick={() => setShareOpen(true)}
-            className="flex items-center justify-center px-2.5 py-1.5 text-muted-foreground/50 hover:text-muted-foreground border border-border hover:bg-accent rounded-md transition-colors cursor-pointer"
-            title="Compartir wiki"
-          >
-            <Users2 className="size-3" />
-          </button>
-        )}
-        {!filesViewActive && !graphViewActive && (
-          <button
-            onClick={handleExportPdf}
-            disabled={exportLoading}
-            className="flex items-center justify-center px-2.5 py-1.5 text-muted-foreground/50 hover:text-muted-foreground border border-border hover:bg-accent rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            title={exportLoading ? 'Generando PDF…' : 'Exportar PDF'}
-            aria-label={exportLoading ? 'Generando PDF…' : 'Exportar PDF'}
-          >
-            {exportLoading
-              ? <Loader2 className="size-3 animate-spin" />
-              : <FileDown className="size-3" />
-            }
-          </button>
-        )}
+        </div>
       </div>
 
       {isOwner && (
