@@ -180,10 +180,11 @@ class ExportService:
         HTTPException(500)
             If pandoc exits with a non-zero return code.
         """
-        # DocumentService.list(kb_id, path) is the existing ABC method.
-        # Passing path="wiki" scopes results to the wiki/ directory tree.
+        # DocumentService.list() returns metadata only in hosted mode — no content.
+        # We enrich each doc by calling get_content() when the field is missing.
         docs = await self._doc_service.list(kb_id, path="wiki")
         docs = sort_wiki_docs(docs)
+        docs = list(await asyncio.gather(*[self._enrich_content(d) for d in docs]))
 
         prefix = f"wiki_export_{kb_id}_{user_id}_"
         with tempfile.TemporaryDirectory(prefix=prefix) as tmp:
@@ -194,6 +195,15 @@ class ExportService:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    async def _enrich_content(self, doc: dict) -> dict:
+        """Fetch content for a doc that doesn't have it (hosted mode list() omits it)."""
+        if doc.get("content"):
+            return doc
+        data = await self._doc_service.get_content(doc["id"])
+        if data and data.get("content"):
+            return {**doc, "content": data["content"]}
+        return doc
 
     async def _build_combined_md(
         self,
