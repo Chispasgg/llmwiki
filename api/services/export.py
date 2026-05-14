@@ -174,6 +174,7 @@ class ExportService:
         user_id: str,
         kb_name: str,
         template_path: Path,
+        doc_numbers: list[int] | None = None,
     ) -> bytes:
         """Return raw PDF bytes for the wiki associated with *kb_id*.
 
@@ -189,6 +190,9 @@ class ExportService:
         all_docs = await self._doc_service.list(kb_id)
         docs = [d for d in all_docs if d.get("path", "").startswith("/wiki/")]
         docs = sort_wiki_docs(docs)
+        if doc_numbers is not None:
+            allowed = set(doc_numbers)
+            docs = [d for d in docs if d.get("document_number") in allowed]
         # list() omits content in hosted mode; fetch it per document.
         docs = list(await asyncio.gather(*[self._enrich_content(d) for d in docs]))
 

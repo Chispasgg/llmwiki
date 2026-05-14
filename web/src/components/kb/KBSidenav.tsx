@@ -6,7 +6,7 @@ import {
   ChevronRight, FileText, NotepadText, Library,
   Upload, BookOpen, ArrowUpRight, Search as SearchIcon,
   Lightbulb, Box, ScrollText, Network, Folder, Users2,
-  FileDown, Loader2, MoreHorizontal,
+  FileDown, MoreHorizontal,
 } from 'lucide-react'
 import {
   CommandDialog, CommandInput, CommandList, CommandItem,
@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils'
 import { WikiSelector } from '@/components/kb/WikiSelector'
 import { SidenavUserMenu } from '@/components/kb/SidenavUserMenu'
 import { ShareDialog } from '@/components/kb/ShareDialog'
+import { ExportPdfDialog } from '@/components/kb/ExportPdfDialog'
 import { apiFetch, API_URL, API_CREDENTIALS } from '@/lib/api'
 import { useKBStore, useUserStore } from '@/stores'
 import type { DocumentListItem, WikiNode } from '@/lib/types'
@@ -66,6 +67,7 @@ export function KBSidenav({
 }: KBSidenavProps) {
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [shareOpen, setShareOpen] = React.useState(false)
+  const [exportDialogOpen, setExportDialogOpen] = React.useState(false)
   const [exportLoading, setExportLoading] = React.useState(false)
   const [actionsOpen, setActionsOpen] = React.useState(false)
   const actionsRef = React.useRef<HTMLDivElement>(null)
@@ -84,12 +86,17 @@ export function KBSidenav({
   const kb = useKBStore((s) => s.knowledgeBases.find((k) => k.id === kbId))
   const isOwner = !!currentUser && !!kb && kb.user_id === currentUser.id
 
-  const handleExportPdf = async () => {
+  const handleExportPdf = async (docNumbers: number[]) => {
     setExportLoading(true)
     try {
       const response = await fetch(
         `${API_URL}/v1/knowledge-bases/${kbId}/export.pdf`,
-        { credentials: API_CREDENTIALS },
+        {
+          method: 'POST',
+          credentials: API_CREDENTIALS,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ doc_numbers: docNumbers }),
+        },
       )
       if (!response.ok) {
         let msg = 'Error al generar el PDF'
@@ -113,6 +120,7 @@ export function KBSidenav({
       a.click()
       document.body.removeChild(a)
       setTimeout(() => URL.revokeObjectURL(url), 150)
+      setExportDialogOpen(false)
     } catch (err) {
       console.error('[ExportPDF]', err)
       toast.error('Error al generar el PDF')
@@ -235,15 +243,11 @@ export function KBSidenav({
               )}
               <div className="my-1 border-t border-border" />
               <button
-                onClick={() => { handleExportPdf(); setActionsOpen(false) }}
-                disabled={exportLoading}
-                className="flex items-center gap-2.5 w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => { setExportDialogOpen(true); setActionsOpen(false) }}
+                className="flex items-center gap-2.5 w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
               >
-                {exportLoading
-                  ? <Loader2 className="size-3.5 shrink-0 animate-spin" />
-                  : <FileDown className="size-3.5 shrink-0" />
-                }
-                {exportLoading ? 'Generando PDF…' : 'Exportar PDF'}
+                <FileDown className="size-3.5 shrink-0" />
+                Exportar PDF
               </button>
             </div>
           )}
@@ -258,6 +262,15 @@ export function KBSidenav({
           onOpenChange={setShareOpen}
         />
       )}
+
+      <ExportPdfDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        kbName={kbName}
+        wikiTree={wikiTree}
+        onExport={handleExportPdf}
+        loading={exportLoading}
+      />
 
       {/* Search palette */}
       <CommandDialog open={searchOpen} onOpenChange={setSearchOpen}>

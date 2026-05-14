@@ -4,6 +4,7 @@ from uuid import UUID
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import BaseModel
 
 from config import settings
 from deps import get_export_service, get_kb_service, get_user_id
@@ -15,10 +16,15 @@ def _safe_filename(value: str) -> str:
     """Strip characters that break quoted-string in Content-Disposition."""
     return re.sub(r'[\x00-\x1f\x7f"\\]', "_", value)
 
+
+class ExportRequest(BaseModel):
+    doc_numbers: list[int] | None = None
+
+
 router = APIRouter(tags=["export"])
 
 
-@router.get(
+@router.post(
     "/v1/knowledge-bases/{kb_id}/export.pdf",
     response_class=Response,
     responses={
@@ -27,10 +33,11 @@ router = APIRouter(tags=["export"])
         503: {"description": "Export tools not available"},
         500: {"description": "PDF compilation failed"},
     },
-    description="Export the full wiki of a knowledge base as a PDF.",
+    description="Export the wiki of a knowledge base as a PDF. Pass doc_numbers to restrict pages; omit for all pages.",
 )
 async def export_wiki_pdf(
     kb_id: UUID,
+    body: ExportRequest,
     kb_service: Annotated[KBService, Depends(get_kb_service)],
     export_service: Annotated[ExportService, Depends(get_export_service)],
     user_id: Annotated[str, Depends(get_user_id)],
@@ -47,7 +54,9 @@ async def export_wiki_pdf(
         )
 
     kb_name = kb.get("name") or str(kb_id)
-    pdf_bytes = await export_service.generate_pdf(str(kb_id), user_id, kb_name, template_path)
+    pdf_bytes = await export_service.generate_pdf(
+        str(kb_id), user_id, kb_name, template_path, body.doc_numbers
+    )
 
     slug = _safe_filename(kb.get("slug") or kb.get("name") or str(kb_id))
     return Response(
