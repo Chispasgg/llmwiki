@@ -155,6 +155,23 @@ def _strip_front_matter(content: str) -> str:
     return rest.lstrip("\n")
 
 
+def _renumber_footnotes(content: str, prefix: str) -> str:
+    """Make footnote labels unique by prefixing them.
+
+    Each wiki page resets footnotes from [^1]. When combined, pandoc
+    sees duplicates. Prefix every label with *prefix* to make them unique.
+    """
+    labels = set(re.findall(r'\[\^([^\]]+)\]', content))
+    if not labels:
+        return content
+    result = content
+    # Replace longest labels first to avoid partial substitutions
+    for label in sorted(labels, key=len, reverse=True):
+        unique = f"{prefix}_{label}"
+        result = re.sub(r'\[\^' + re.escape(label) + r'\]', f'[^{unique}]', result)
+    return result
+
+
 # ---------------------------------------------------------------------------
 # ExportService
 # ---------------------------------------------------------------------------
@@ -253,6 +270,7 @@ class ExportService:
             filename = doc.get("filename", "untitled.md")
             title = _get_title(content, filename)
             body = _strip_front_matter(content)
+            body = _renumber_footnotes(body, f"p{idx}")
             patched = await patch_mermaid_blocks(body, temp_dir, prefix=f"doc_{idx}")
             sections.append(f"# {title}\n\n{patched}\n\n\\newpage\n")
 
