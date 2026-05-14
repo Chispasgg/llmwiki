@@ -14,7 +14,7 @@ RUN bun run build
 # ---------------------------------------------------------------------------
 # Runtime
 # ---------------------------------------------------------------------------
-FROM node:22-alpine AS runtime
+FROM oven/bun:1.2-alpine AS runtime
 WORKDIR /app
 
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
