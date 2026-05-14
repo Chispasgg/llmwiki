@@ -143,6 +143,18 @@ def _get_title(content: str, filename: str) -> str:
     return Path(filename).stem.replace("_", " ").replace("-", " ").title()
 
 
+def _strip_front_matter(content: str) -> str:
+    """Remove YAML front-matter block so pandoc does not re-parse it."""
+    if not content.startswith("---"):
+        return content
+    end = content.find("---", 3)
+    if end == -1:
+        return content
+    # Skip past the closing --- and any leading newline
+    rest = content[end + 3:]
+    return rest.lstrip("\n")
+
+
 # ---------------------------------------------------------------------------
 # ExportService
 # ---------------------------------------------------------------------------
@@ -240,8 +252,9 @@ class ExportService:
             content = doc.get("content", "")
             filename = doc.get("filename", "untitled.md")
             title = _get_title(content, filename)
-            patched = await patch_mermaid_blocks(content, temp_dir, prefix=f"doc_{idx}")
-            sections.append(f"# {title}\n\n{patched}\n\n---\n")
+            body = _strip_front_matter(content)
+            patched = await patch_mermaid_blocks(body, temp_dir, prefix=f"doc_{idx}")
+            sections.append(f"# {title}\n\n{patched}\n\n\\newpage\n")
 
         combined = temp_dir / "combined.md"
         combined.write_text("\n".join(sections), encoding="utf-8")
