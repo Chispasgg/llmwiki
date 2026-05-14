@@ -360,10 +360,12 @@ interface WikiContentProps {
   onGraphClick?: () => void
   documents?: DocumentListItem[]
   breadcrumbs?: BreadcrumbItem[]
+  searchTerm?: string
 }
 
-export function WikiContent({ content, title, onNavigate, onSourceClick, onGraphClick, documents, breadcrumbs }: WikiContentProps) {
+export function WikiContent({ content, title, onNavigate, onSourceClick, onGraphClick, documents, breadcrumbs, searchTerm }: WikiContentProps) {
   const processedContent = React.useMemo(() => stripLeadingH1(content, title), [content, title])
+  const wikiContentRef = React.useRef<HTMLDivElement>(null)
   const tocItems = React.useMemo(() => extractTocFromMarkdown(processedContent), [processedContent])
   const footnoteSources = React.useMemo(() => parseFootnoteSources(processedContent), [processedContent])
   const [copied, setCopied] = React.useState(false)
@@ -385,6 +387,59 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
     a.click()
     URL.revokeObjectURL(url)
   }, [content, title])
+
+  React.useLayoutEffect(() => {
+    const el = wikiContentRef.current
+    if (!el) return
+
+    // Clear previous marks
+    const existing = Array.from(el.querySelectorAll('mark'))
+    for (const m of existing) {
+      const parent = m.parentNode
+      if (parent) {
+        parent.replaceChild(document.createTextNode(m.textContent ?? ''), m)
+        parent.normalize()
+      }
+    }
+
+    if (!searchTerm?.trim()) return
+
+    const term = searchTerm.trim()
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(escaped, 'gi')
+
+    function walk(node: Node): void {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const tag = (node as Element).tagName
+        if (tag === 'CODE' || tag === 'PRE' || tag === 'SCRIPT' || tag === 'MARK') return
+        Array.from(node.childNodes).forEach(walk)
+      } else if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent ?? ''
+        if (!regex.test(text)) { regex.lastIndex = 0; return }
+        regex.lastIndex = 0
+        const fragment = document.createDocumentFragment()
+        let last = 0
+        let m: RegExpExecArray | null
+        while ((m = regex.exec(text)) !== null) {
+          if (m.index > last) fragment.appendChild(document.createTextNode(text.slice(last, m.index)))
+          const mark = document.createElement('mark')
+          mark.textContent = m[0]
+          fragment.appendChild(mark)
+          last = m.index + m[0].length
+        }
+        if (last < text.length) fragment.appendChild(document.createTextNode(text.slice(last)))
+        node.parentNode?.replaceChild(fragment, node)
+      }
+    }
+
+    walk(el)
+
+    // Scroll to first match
+    const firstMark = el.querySelector('mark')
+    if (firstMark) {
+      firstMark.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [searchTerm, processedContent])
 
   const components: Components = React.useMemo(
     () => ({
@@ -696,7 +751,7 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
   return (
     <div className="h-full overflow-y-auto" id="wiki-scroll-container">
       <div className={cn(
-        'mx-auto px-6 py-10',
+        'mx-auto px-4 py-6 md:px-6 md:py-10',
         hasToc ? 'max-w-5xl' : 'max-w-3xl',
       )}>
         <div className={cn(
@@ -770,7 +825,7 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
                 </div>
               </div>
             )}
-            <div className="wiki-content text-[15px] leading-relaxed">
+            <div className="wiki-content text-[15px] leading-relaxed" ref={wikiContentRef}>
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex]}

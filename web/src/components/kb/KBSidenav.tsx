@@ -37,7 +37,7 @@ interface KBSidenavProps {
   kbName: string
   wikiTree: WikiNode[]
   wikiActivePath: string | null
-  onWikiNavigate: (path: string, docNumber?: number | null) => void
+  onWikiNavigate: (path: string, docNumber?: number | null, searchTerm?: string) => void
   sourceDocs: DocumentListItem[]
   hasWiki: boolean
   loading: boolean
@@ -47,6 +47,7 @@ interface KBSidenavProps {
   graphViewActive: boolean
   onGraphToggle: () => void
   onOpenSourceDoc: (docId: string) => void
+  onClose?: () => void
 }
 
 export function KBSidenav({
@@ -64,8 +65,10 @@ export function KBSidenav({
   graphViewActive,
   onGraphToggle,
   onOpenSourceDoc,
+  onClose,
 }: KBSidenavProps) {
   const [searchOpen, setSearchOpen] = React.useState(false)
+  const [commandQuery, setCommandQuery] = React.useState('')
   const [shareOpen, setShareOpen] = React.useState(false)
   const [exportDialogOpen, setExportDialogOpen] = React.useState(false)
   const [exportLoading, setExportLoading] = React.useState(false)
@@ -273,8 +276,16 @@ export function KBSidenav({
       />
 
       {/* Search palette */}
-      <CommandDialog open={searchOpen} onOpenChange={setSearchOpen}>
-        <CommandInput placeholder="Jump to page, source, or action..." aria-label="Search pages and sources" />
+      <CommandDialog
+        open={searchOpen}
+        onOpenChange={(open) => { setSearchOpen(open); if (!open) setCommandQuery('') }}
+      >
+        <CommandInput
+          value={commandQuery}
+          onValueChange={setCommandQuery}
+          placeholder="Jump to page, source, or action..."
+          aria-label="Search pages and sources"
+        />
         <CommandList>
           <CommandEmpty>No results found.</CommandEmpty>
           {allSearchableItems.some((i) => i.type === 'wiki') && (
@@ -284,8 +295,10 @@ export function KBSidenav({
                   key={`wiki-${item.path}`}
                   value={item.keywords}
                   onSelect={() => {
+                    const query = commandQuery
                     setSearchOpen(false)
-                    if (item.path) onWikiNavigate(item.path, item.docNumber)
+                    setCommandQuery('')
+                    if (item.path) onWikiNavigate(item.path, item.docNumber, query)
                   }}
                   className="flex items-center"
                 >
@@ -363,6 +376,7 @@ export function KBSidenav({
                 depth={0}
                 activePath={wikiActivePath}
                 onNavigate={onWikiNavigate}
+                onClose={onClose}
               />
             ))}
           </div>
@@ -448,11 +462,13 @@ function WikiTreeNode({
   depth,
   activePath,
   onNavigate,
+  onClose,
 }: {
   node: WikiNode
   depth: number
   activePath: string | null
   onNavigate: (path: string, docNumber?: number | null) => void
+  onClose?: () => void
 }) {
   const hasChildren = node.children && node.children.length > 0
   const isActive = node.path != null && node.path === activePath
@@ -472,9 +488,13 @@ function WikiTreeNode({
         onClick={() => {
           if (node.path) {
             onNavigate(node.path, node.docNumber)
+            onClose?.()
           } else if (hasChildren) {
             const first = node.children!.find((c) => c.path)
-            if (first) onNavigate(first.path!, first.docNumber)
+            if (first) {
+              onNavigate(first.path!, first.docNumber)
+              onClose?.()
+            }
           }
         }}
       >
@@ -513,6 +533,7 @@ function WikiTreeNode({
                 depth={depth + 1}
                 activePath={activePath}
                 onNavigate={onNavigate}
+                onClose={onClose}
               />
             ))}
           </motion.div>

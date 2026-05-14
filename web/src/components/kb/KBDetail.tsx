@@ -3,11 +3,12 @@
 import * as React from 'react'
 import { useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Upload as UploadIcon, BookOpen, ArrowUpRight, Loader2 } from 'lucide-react'
+import { Upload as UploadIcon, BookOpen, ArrowUpRight, Loader2, Menu } from 'lucide-react'
 import * as tus from 'tus-js-client'
 import { useUserStore } from '@/stores'
 import { useKBDocuments } from '@/hooks/useKBDocuments'
 import { apiFetch } from '@/lib/api'
+import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { KBSidenav } from '@/components/kb/KBSidenav'
 import { FilesGrid } from '@/components/kb/FilesGrid'
@@ -150,6 +151,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   const searchParams = useSearchParams()
   const userId = useUserStore((s) => s.user?.id)
   const { documents, setDocuments, loading } = useKBDocuments(kbId)
+  const [sidenavOpen, setSidenavOpen] = React.useState(false)
 
   // ─── URL helpers ─────────────────────────────────────────────
   // Search param updates are instant (no Next.js route recompilation).
@@ -202,6 +204,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   const urlWikiDocNumber = pParam ? parseInt(pParam, 10) : null
 
   const [wikiActivePath, setWikiActivePath] = React.useState<string | null>(null)
+  const [wikiSearchTerm, setWikiSearchTerm] = React.useState('')
   const lastWikiDocNumberRef = React.useRef<number | null>(urlWikiDocNumber)
 
   // Initialize wikiActivePath from ?p= on mount and when ?p= changes
@@ -287,6 +290,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
       const first = findFirstPath(wikiTree)
       if (first) {
         setWikiActivePath(first.path)
+        setWikiSearchTerm('')
         lastWikiDocNumberRef.current = first.docNumber
         if (first.docNumber != null) updateParam('p', String(first.docNumber))
       }
@@ -412,9 +416,10 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   // ─── Navigation handlers ─────────────────────────────────────
 
   // Wiki page click: only updates ?p= search param (instant, no route change)
-  const handleWikiSelect = React.useCallback((path: string, docNumber?: number | null) => {
+  const handleWikiSelect = React.useCallback((path: string, docNumber?: number | null, searchTerm?: string) => {
     setActiveView('wiki')
     setWikiActivePath(path)
+    setWikiSearchTerm(searchTerm ?? '')
     const num = docNumber ?? wikiDocs.find((d) => {
       const relative = (d.path + d.filename).replace(/^\/wiki\/?/, '')
       return relative === path
@@ -786,8 +791,31 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
         )}
       </AnimatePresence>
 
-      <div className="flex-1 overflow-hidden flex">
-        <div className="w-64 shrink-0">
+      <div className="flex-1 overflow-hidden flex relative">
+        {/* Backdrop (mobile only) */}
+        {sidenavOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-background/60 backdrop-blur-sm md:hidden"
+            onClick={() => setSidenavOpen(false)}
+          />
+        )}
+
+        {/* Sidebar — overlay en móvil, en-flujo en desktop */}
+        <div
+          className={cn(
+            "w-64 shrink-0 h-full bg-background",
+            // Mobile: fixed overlay drawer
+            "fixed top-0 bottom-0 left-0 z-40",
+            // Desktop: en el flujo flex normal
+            "md:relative md:top-auto md:bottom-auto md:left-auto md:z-auto",
+            // Transición
+            "transition-transform duration-200 ease-out",
+            // Mobile: oculto por defecto, visible al abrir
+            sidenavOpen ? "translate-x-0" : "-translate-x-full",
+            // Desktop: siempre visible
+            "md:translate-x-0",
+          )}
+        >
           <KBSidenav
             kbId={kbId}
             kbName={kbName}
@@ -803,9 +831,25 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
             graphViewActive={graphViewActive}
             onGraphToggle={handleGraphToggle}
             onOpenSourceDoc={handleOpenSourceDoc}
+            onClose={() => setSidenavOpen(false)}
           />
         </div>
-        <div className="flex-1 min-w-0">
+
+        {/* Contenido principal */}
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+          {/* Header mobile con hamburguesa */}
+          <div className="md:hidden flex items-center gap-3 px-4 h-12 border-b border-border shrink-0">
+            <button
+              onClick={() => setSidenavOpen(true)}
+              className="p-1.5 rounded-md hover:bg-accent text-muted-foreground cursor-pointer"
+              aria-label="Abrir menú"
+            >
+              <Menu className="size-4" />
+            </button>
+            <span className="text-sm font-medium truncate">{pageTitle || kbName}</span>
+          </div>
+
+          <div className="flex-1 overflow-hidden">
           <AnimatePresence mode="wait">
             {showMainLoading ? (
               <motion.div
@@ -888,6 +932,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
                   onGraphClick={handlePageGraphClick}
                   documents={documents}
                   breadcrumbs={wikiBreadcrumbs}
+                  searchTerm={wikiSearchTerm}
                 />
               </motion.div>
             ) : (
@@ -927,6 +972,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
               </motion.div>
             )}
           </AnimatePresence>
+          </div>
         </div>
       </div>
 
