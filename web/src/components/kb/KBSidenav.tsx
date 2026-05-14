@@ -86,7 +86,7 @@ export function KBSidenav({
   const kb = useKBStore((s) => s.knowledgeBases.find((k) => k.id === kbId))
   const isOwner = !!currentUser && !!kb && kb.user_id === currentUser.id
 
-  const handleExportPdf = async (docNumbers: number[]) => {
+  const handleExportPdf = async (docIds: string[]) => {
     setExportLoading(true)
     try {
       const response = await fetch(
@@ -95,7 +95,7 @@ export function KBSidenav({
           method: 'POST',
           credentials: API_CREDENTIALS,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ doc_numbers: docNumbers }),
+          body: JSON.stringify({ doc_ids: docIds }),
         },
       )
       if (!response.ok) {

@@ -53,6 +53,7 @@ export interface WikiNode {
   title: string
   path?: string
   docNumber?: number | null
+  docId?: string | null
   children?: WikiNode[]
 }
 

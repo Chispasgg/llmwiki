@@ -18,7 +18,7 @@ def _safe_filename(value: str) -> str:
 
 
 class ExportRequest(BaseModel):
-    doc_numbers: list[int] | None = None
+    doc_ids: list[str] | None = None
 
 
 router = APIRouter(tags=["export"])
@@ -33,7 +33,7 @@ router = APIRouter(tags=["export"])
         503: {"description": "Export tools not available"},
         500: {"description": "PDF compilation failed"},
     },
-    description="Export the wiki of a knowledge base as a PDF. Pass doc_numbers to restrict pages; omit for all pages.",
+    description="Export the wiki of a knowledge base as a PDF. Pass doc_ids to restrict pages; omit for all pages.",
 )
 async def export_wiki_pdf(
     kb_id: UUID,
@@ -55,7 +55,7 @@ async def export_wiki_pdf(
 
     kb_name = kb.get("name") or str(kb_id)
     pdf_bytes = await export_service.generate_pdf(
-        str(kb_id), user_id, kb_name, template_path, body.doc_numbers
+        str(kb_id), user_id, kb_name, template_path, body.doc_ids
     )
 
     slug = _safe_filename(kb.get("slug") or kb.get("name") or str(kb_id))

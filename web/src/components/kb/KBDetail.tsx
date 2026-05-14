@@ -22,8 +22,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 function buildTreeFromDocs(docs: DocumentListItem[]): WikiNode[] {
   const sorted = [...docs].sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999))
-  const topLevel: Array<{ title: string; path: string; slug: string; docNumber: number | null }> = []
-  const childPages = new Map<string, Array<{ title: string; path: string; docNumber: number | null }>>()
+  const topLevel: Array<{ title: string; path: string; slug: string; docNumber: number | null; docId: string }> = []
+  const childPages = new Map<string, Array<{ title: string; path: string; docNumber: number | null; docId: string }>>()
 
   for (const doc of sorted) {
     const relative = (doc.path + doc.filename).replace(/^\/wiki\/?/, '')
@@ -34,11 +34,11 @@ function buildTreeFromDocs(docs: DocumentListItem[]): WikiNode[] {
 
     if (parts.length === 1) {
       const slug = parts[0].replace(/\.(md|txt|json)$/, '')
-      topLevel.push({ title, path: relative, slug, docNumber: doc.document_number })
+      topLevel.push({ title, path: relative, slug, docNumber: doc.document_number, docId: doc.id })
     } else {
       const folder = parts[0]
       if (!childPages.has(folder)) childPages.set(folder, [])
-      childPages.get(folder)!.push({ title, path: relative, docNumber: doc.document_number })
+      childPages.get(folder)!.push({ title, path: relative, docNumber: doc.document_number, docId: doc.id })
     }
   }
 
@@ -50,18 +50,18 @@ function buildTreeFromDocs(docs: DocumentListItem[]): WikiNode[] {
     if (children && children.length > 0) {
       usedFolders.add(parent.slug)
       tree.push({
-        title: parent.title, path: parent.path, docNumber: parent.docNumber,
-        children: children.map((c) => ({ title: c.title, path: c.path, docNumber: c.docNumber })),
+        title: parent.title, path: parent.path, docNumber: parent.docNumber, docId: parent.docId,
+        children: children.map((c) => ({ title: c.title, path: c.path, docNumber: c.docNumber, docId: c.docId })),
       })
     } else {
-      tree.push({ title: parent.title, path: parent.path, docNumber: parent.docNumber })
+      tree.push({ title: parent.title, path: parent.path, docNumber: parent.docNumber, docId: parent.docId })
     }
   }
 
   for (const [folder, children] of childPages) {
     if (usedFolders.has(folder)) continue
     const folderTitle = folder.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-    tree.push({ title: folderTitle, children: children.map((c) => ({ title: c.title, path: c.path, docNumber: c.docNumber })) })
+    tree.push({ title: folderTitle, children: children.map((c) => ({ title: c.title, path: c.path, docNumber: c.docNumber, docId: c.docId })) })
   }
 
   const slug = (n: WikiNode) => n.path?.replace(/\.(md|txt|json)$/, '').split('/')[0] ?? ''
@@ -78,15 +78,16 @@ function buildTreeFromDocs(docs: DocumentListItem[]): WikiNode[] {
 }
 
 function enrichTreeWithDocNumbers(tree: WikiNode[], docs: DocumentListItem[]): WikiNode[] {
-  const pathToDocNumber = new Map<string, number | null>()
+  const pathToDoc = new Map<string, { docNumber: number | null; docId: string }>()
   for (const doc of docs) {
     const relative = (doc.path + doc.filename).replace(/^\/wiki\/?/, '')
-    pathToDocNumber.set(relative, doc.document_number)
+    pathToDoc.set(relative, { docNumber: doc.document_number, docId: doc.id })
   }
   function enrich(nodes: WikiNode[]): WikiNode[] {
     return nodes.map((node) => ({
       ...node,
-      docNumber: node.path ? (pathToDocNumber.get(node.path) ?? null) : null,
+      docNumber: node.path ? (pathToDoc.get(node.path)?.docNumber ?? null) : null,
+      docId: node.path ? (pathToDoc.get(node.path)?.docId ?? null) : null,
       children: node.children ? enrich(node.children) : undefined,
     }))
   }

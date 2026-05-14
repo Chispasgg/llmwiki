@@ -10,20 +10,20 @@ import type { WikiNode } from '@/lib/types'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function collectLeafDocNumbers(nodes: WikiNode[]): number[] {
-  const result: number[] = []
+function collectLeafDocIds(nodes: WikiNode[]): string[] {
+  const result: string[] = []
   const traverse = (n: WikiNode) => {
-    if (n.docNumber != null && n.path) result.push(n.docNumber)
+    if (n.docId != null && n.path) result.push(n.docId)
     n.children?.forEach(traverse)
   }
   nodes.forEach(traverse)
   return result
 }
 
-function getDescendantDocNumbers(node: WikiNode): number[] {
-  const result: number[] = []
+function getDescendantDocIds(node: WikiNode): string[] {
+  const result: string[] = []
   const traverse = (n: WikiNode) => {
-    if (n.docNumber != null && n.path) result.push(n.docNumber)
+    if (n.docId != null && n.path) result.push(n.docId)
     n.children?.forEach(traverse)
   }
   traverse(node)
@@ -32,15 +32,15 @@ function getDescendantDocNumbers(node: WikiNode): number[] {
 
 type CheckState = 'checked' | 'indeterminate' | 'unchecked'
 
-function nodeCheckState(node: WikiNode, selected: Set<number>): CheckState {
+function nodeCheckState(node: WikiNode, selected: Set<string>): CheckState {
   const hasChildren = !!node.children?.length
   if (!hasChildren) {
-    if (node.docNumber != null && node.path) {
-      return selected.has(node.docNumber) ? 'checked' : 'unchecked'
+    if (node.docId != null && node.path) {
+      return selected.has(node.docId) ? 'checked' : 'unchecked'
     }
     return 'unchecked'
   }
-  const descendants = getDescendantDocNumbers(node)
+  const descendants = getDescendantDocIds(node)
   if (descendants.length === 0) return 'unchecked'
   const n = descendants.filter((d) => selected.has(d)).length
   if (n === 0) return 'unchecked'
@@ -55,31 +55,31 @@ interface ExportPdfDialogProps {
   onOpenChange: (open: boolean) => void
   kbName: string
   wikiTree: WikiNode[]
-  onExport: (docNumbers: number[]) => void
+  onExport: (docIds: string[]) => void
   loading: boolean
 }
 
 export function ExportPdfDialog({
   open, onOpenChange, kbName, wikiTree, onExport, loading,
 }: ExportPdfDialogProps) {
-  const allDocNumbers = React.useMemo(() => collectLeafDocNumbers(wikiTree), [wikiTree])
-  const [selected, setSelected] = React.useState<Set<number>>(() => new Set(allDocNumbers))
+  const allDocIds = React.useMemo(() => collectLeafDocIds(wikiTree), [wikiTree])
+  const [selected, setSelected] = React.useState<Set<string>>(() => new Set(allDocIds))
 
   React.useEffect(() => {
-    if (open) setSelected(new Set(allDocNumbers))
-  }, [open, allDocNumbers])
+    if (open) setSelected(new Set(allDocIds))
+  }, [open, allDocIds])
 
-  const toggleLeaf = React.useCallback((docNumber: number) => {
+  const toggleLeaf = React.useCallback((docId: string) => {
     setSelected((prev) => {
       const next = new Set(prev)
-      if (next.has(docNumber)) next.delete(docNumber)
-      else next.add(docNumber)
+      if (next.has(docId)) next.delete(docId)
+      else next.add(docId)
       return next
     })
   }, [])
 
   const toggleNode = React.useCallback((node: WikiNode) => {
-    const descendants = getDescendantDocNumbers(node)
+    const descendants = getDescendantDocIds(node)
     setSelected((prev) => {
       const state = nodeCheckState(node, prev)
       const next = new Set(prev)
@@ -101,11 +101,11 @@ export function ExportPdfDialog({
         {/* Contador + acciones rápidas */}
         <div className="flex items-center justify-between px-0.5">
           <span className="text-xs text-muted-foreground">
-            {selected.size} de {allDocNumbers.length} páginas
+            {selected.size} de {allDocIds.length} páginas
           </span>
           <div className="flex gap-3">
             <button
-              onClick={() => setSelected(new Set(allDocNumbers))}
+              onClick={() => setSelected(new Set(allDocIds))}
               className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors cursor-pointer"
             >
               Todo
@@ -174,16 +174,16 @@ function TreeNodeRow({
 }: {
   node: WikiNode
   depth: number
-  selected: Set<number>
-  onToggleLeaf: (n: number) => void
+  selected: Set<string>
+  onToggleLeaf: (id: string) => void
   onToggleNode: (n: WikiNode) => void
 }) {
   const hasChildren = !!node.children?.length
-  const isLeaf = !hasChildren && node.path != null && node.docNumber != null
+  const isLeaf = !hasChildren && node.path != null && node.docId != null
   const checkState = nodeCheckState(node, selected)
 
   const handleClick = () => {
-    if (isLeaf && node.docNumber != null) onToggleLeaf(node.docNumber)
+    if (isLeaf && node.docId != null) onToggleLeaf(node.docId)
     else onToggleNode(node)
   }
 
