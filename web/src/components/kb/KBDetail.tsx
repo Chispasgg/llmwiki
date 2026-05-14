@@ -933,6 +933,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
                   documents={documents}
                   breadcrumbs={wikiBreadcrumbs}
                   searchTerm={wikiSearchTerm}
+                  docId={activeWikiDocId}
                 />
               </motion.div>
             ) : (

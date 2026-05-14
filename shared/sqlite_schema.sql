@@ -102,3 +102,13 @@ CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
 CREATE INDEX IF NOT EXISTS idx_chunks_doc ON document_chunks(document_id);
 CREATE INDEX IF NOT EXISTS idx_refs_source ON document_references(source_document_id);
 CREATE INDEX IF NOT EXISTS idx_refs_target ON document_references(target_document_id);
+
+-- Version history: snapshots of wiki page content before each edit
+CREATE TABLE IF NOT EXISTS document_history (
+    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_doc_history_doc ON document_history(document_id, created_at);

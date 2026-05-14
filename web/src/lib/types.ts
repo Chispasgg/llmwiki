@@ -61,3 +61,11 @@ export interface WikiSubsection {
   id: string
   title: string
 }
+
+export interface HistoryVersion {
+  id: string
+  document_id: string
+  version: number
+  content_length: number
+  created_at: string
+}

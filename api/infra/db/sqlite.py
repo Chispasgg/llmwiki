@@ -206,6 +206,37 @@ class SQLiteDocumentRepository:
         )
         await self._db.commit()
 
+    async def save_history_entry(self, doc_id: str, content: str, version: int) -> None:
+        await self._db.execute(
+            "INSERT INTO document_history (id, document_id, content, version) "
+            "VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
+            (doc_id, content, version),
+        )
+        await self._db.commit()
+
+    async def list_history(self, doc_id: str) -> list[dict]:
+        cursor = await self._db.execute(
+            "SELECT id, document_id, version, length(content) AS content_length, created_at "
+            "FROM document_history WHERE document_id = ? "
+            "ORDER BY created_at DESC LIMIT 50",
+            (doc_id,),
+        )
+        rows = await cursor.fetchall()
+        cols = [d[0] for d in cursor.description]
+        return [dict(zip(cols, row)) for row in rows]
+
+    async def get_history_entry(self, history_id: str) -> dict | None:
+        cursor = await self._db.execute(
+            "SELECT id, document_id, version, content, created_at "
+            "FROM document_history WHERE id = ?",
+            (history_id,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cursor.description]
+        return dict(zip(cols, row))
+
     async def get_kb_id(self, doc_id: str) -> str | None:
         cursor = await self._db.execute(
             "SELECT id FROM workspace LIMIT 1",

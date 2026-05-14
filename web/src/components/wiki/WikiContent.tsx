@@ -8,12 +8,18 @@ import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import type { Components } from 'react-markdown'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { FileText, Copy, Download, Check, Network } from 'lucide-react'
+import { FileText, Copy, Download, Check, Network, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
 import { MermaidBlock } from './MermaidBlock'
 import { ExpandableMedia } from './DiagramViewer'
-import type { DocumentListItem } from '@/lib/types'
+import type { DocumentListItem, HistoryVersion } from '@/lib/types'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Breadcrumb,
   BreadcrumbItem as BreadcrumbItemUI,
@@ -346,6 +352,91 @@ function WikiImage({
   )
 }
 
+function HistoryPanel({ docId }: { docId: string }) {
+  const [open, setOpen] = React.useState(false)
+  const [versions, setVersions] = React.useState<HistoryVersion[]>([])
+  const [loading, setLoading] = React.useState(false)
+  const [preview, setPreview] = React.useState<{ content: string; version: number } | null>(null)
+
+  React.useEffect(() => {
+    if (!open) return
+    setLoading(true)
+    setPreview(null)
+    apiFetch<HistoryVersion[]>(`/v1/documents/${docId}/history`)
+      .then(setVersions)
+      .catch(() => setVersions([]))
+      .finally(() => setLoading(false))
+  }, [open, docId])
+
+  const loadPreview = React.useCallback((v: HistoryVersion) => {
+    apiFetch<{ content: string; version: number }>(`/v1/documents/${docId}/history/${v.id}`)
+      .then((r) => setPreview({ content: r.content, version: r.version }))
+      .catch(() => {})
+  }, [docId])
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-accent transition-colors cursor-pointer"
+        title="Version history"
+      >
+        <Clock className="size-3.5" />
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Version history</DialogTitle>
+          </DialogHeader>
+          {loading ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>
+          ) : versions.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">No saved versions yet</div>
+          ) : (
+            <div className="space-y-0.5 max-h-72 overflow-y-auto pr-1">
+              {versions.map((v) => (
+                <button
+                  key={v.id}
+                  onClick={() => loadPreview(v)}
+                  className={cn(
+                    'w-full text-left px-3 py-2 rounded-md text-sm transition-colors',
+                    preview?.version === v.version
+                      ? 'bg-accent text-foreground'
+                      : 'hover:bg-accent/60 text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium text-foreground">v{v.version}</span>
+                    <span className="text-xs shrink-0">
+                      {new Date(v.created_at).toLocaleString(undefined, {
+                        dateStyle: 'medium',
+                        timeStyle: 'short',
+                      })}
+                    </span>
+                  </div>
+                  <div className="text-xs mt-0.5">
+                    {(v.content_length / 1024).toFixed(1)} KB
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          {preview && (
+            <div className="border-t pt-3 mt-1">
+              <p className="text-xs font-semibold text-muted-foreground mb-2">Preview — v{preview.version}</p>
+              <pre className="text-xs bg-muted/50 rounded-md p-3 max-h-52 overflow-y-auto font-mono whitespace-pre-wrap break-words">
+                {preview.content.length > 2000
+                  ? preview.content.slice(0, 2000) + '\n…'
+                  : preview.content}
+              </pre>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 export interface BreadcrumbItem {
   title: string
   path?: string
@@ -361,9 +452,10 @@ interface WikiContentProps {
   documents?: DocumentListItem[]
   breadcrumbs?: BreadcrumbItem[]
   searchTerm?: string
+  docId?: string | null
 }
 
-export function WikiContent({ content, title, onNavigate, onSourceClick, onGraphClick, documents, breadcrumbs, searchTerm }: WikiContentProps) {
+export function WikiContent({ content, title, onNavigate, onSourceClick, onGraphClick, documents, breadcrumbs, searchTerm, docId }: WikiContentProps) {
   const processedContent = React.useMemo(() => stripLeadingH1(content, title), [content, title])
   const wikiContentRef = React.useRef<HTMLDivElement>(null)
   const tocItems = React.useMemo(() => extractTocFromMarkdown(processedContent), [processedContent])
@@ -822,6 +914,7 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
                       <Network className="size-3.5" />
                     </button>
                   )}
+                  {docId && <HistoryPanel docId={docId} />}
                 </div>
               </div>
             )}

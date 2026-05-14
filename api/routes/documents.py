@@ -93,3 +93,29 @@ async def bulk_delete_documents(
 async def delete_document(doc_id: UUID, service: Annotated[DocumentService, Depends(get_document_service)]):
     if not await service.delete(str(doc_id)):
         raise HTTPException(status_code=404, detail="Document not found")
+
+
+@router.get(
+    "/v1/documents/{doc_id}/history",
+    description="List version history for a document (newest first). Returns [] if not supported.",
+)
+async def list_document_history(
+    doc_id: UUID,
+    service: Annotated[DocumentService, Depends(get_document_service)],
+):
+    return await service.list_history(str(doc_id))
+
+
+@router.get(
+    "/v1/documents/{doc_id}/history/{history_id}",
+    description="Return the content of a specific history entry.",
+)
+async def get_history_version(
+    doc_id: UUID,
+    history_id: str,
+    service: Annotated[DocumentService, Depends(get_document_service)],
+):
+    entry = await service.get_history_version(history_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="History entry not found")
+    return entry

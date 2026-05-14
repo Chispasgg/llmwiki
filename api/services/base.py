@@ -112,6 +112,21 @@ class DocumentService(ABC):
     async def bulk_delete(self, doc_ids: list[str]) -> int:
         """Delete or archive multiple documents. Returns count of affected rows."""
 
+    async def list_history(self, doc_id: str) -> list[dict]:
+        """Return the version history for a document (newest first).
+
+        Each entry: id, document_id, version, content_length, created_at.
+        Returns [] in modes that do not support history.
+        """
+        return []
+
+    async def get_history_version(self, history_id: str) -> dict | None:
+        """Return a specific history entry by id, or None if not found.
+
+        Entry contains: id, document_id, version, content, created_at.
+        """
+        return None
+
 
 class ServiceFactory(ABC):
     """Creates scoped service instances bound to a specific user_id."""

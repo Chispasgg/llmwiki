@@ -177,6 +177,11 @@ class LocalDocumentService(DocumentService):
         if not doc:
             return None
 
+        # Save current content to history before overwriting (only for wiki pages)
+        old_content = doc.get("content") or ""
+        if old_content and old_content.strip() != content.strip() and doc.get("source_kind") == "wiki":
+            await self.doc_repo.save_history_entry(doc_id, old_content, doc.get("version", 0))
+
         file_path = _doc_to_disk_path(doc)
         if file_path:
             mark_written(str(file_path))
@@ -190,6 +195,12 @@ class LocalDocumentService(DocumentService):
             await self.chunk_repo.store(doc_id, self.user_id, kb_id, chunks)
 
         return row
+
+    async def list_history(self, doc_id: str) -> list[dict]:
+        return await self.doc_repo.list_history(doc_id)
+
+    async def get_history_version(self, history_id: str) -> dict | None:
+        return await self.doc_repo.get_history_entry(history_id)
 
     async def update_metadata(self, doc_id: str, fields: dict) -> dict | None:
         doc = await self.doc_repo.get(doc_id)
