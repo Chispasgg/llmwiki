@@ -14,6 +14,14 @@ import { apiFetch } from '@/lib/api'
 import { MermaidBlock } from './MermaidBlock'
 import { ExpandableMedia } from './DiagramViewer'
 import type { DocumentListItem } from '@/lib/types'
+import {
+  Breadcrumb,
+  BreadcrumbItem as BreadcrumbItemUI,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb'
 
 export interface TocItem {
   id: string
@@ -95,7 +103,7 @@ function TableOfContents({ items }: { items: TocItem[] }) {
   if (items.length === 0) return null
 
   return (
-    <nav className="space-y-0.5">
+    <nav className="space-y-0.5 overflow-hidden">
       <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-2 px-1">
         On this page
       </p>
@@ -103,6 +111,7 @@ function TableOfContents({ items }: { items: TocItem[] }) {
         <a
           key={item.id}
           href={`#${item.id}`}
+          title={item.text}
           onClick={(e) => {
             e.preventDefault()
             const el = document.getElementById(item.id)
@@ -112,7 +121,7 @@ function TableOfContents({ items }: { items: TocItem[] }) {
             }
           }}
           className={cn(
-            'block text-xs leading-snug py-1 px-1 rounded transition-colors',
+            'block text-xs leading-snug py-1 px-1 rounded transition-colors truncate',
             item.level === 3 && 'pl-4',
             activeId === item.id
               ? 'text-foreground font-medium'
@@ -337,16 +346,23 @@ function WikiImage({
   )
 }
 
+export interface BreadcrumbItem {
+  title: string
+  path?: string
+  docNumber?: number | null
+}
+
 interface WikiContentProps {
   content: string
   title: string
-  onNavigate: (path: string) => void
+  onNavigate: (path: string, docNumber?: number | null) => void
   onSourceClick?: (filename: string, page?: number) => void
   onGraphClick?: () => void
   documents?: DocumentListItem[]
+  breadcrumbs?: BreadcrumbItem[]
 }
 
-export function WikiContent({ content, title, onNavigate, onSourceClick, onGraphClick, documents }: WikiContentProps) {
+export function WikiContent({ content, title, onNavigate, onSourceClick, onGraphClick, documents, breadcrumbs }: WikiContentProps) {
   const processedContent = React.useMemo(() => stripLeadingH1(content, title), [content, title])
   const tocItems = React.useMemo(() => extractTocFromMarkdown(processedContent), [processedContent])
   const footnoteSources = React.useMemo(() => parseFootnoteSources(processedContent), [processedContent])
@@ -691,6 +707,39 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
             'min-w-0',
             hasToc ? 'flex-1 max-w-[720px]' : 'w-full',
           )}>
+            {breadcrumbs && breadcrumbs.length > 1 && (
+              <Breadcrumb className="mb-4">
+                <BreadcrumbList className="text-xs gap-1 sm:gap-1.5">
+                  {breadcrumbs.map((crumb, i) => {
+                    const isLast = i === breadcrumbs.length - 1
+                    return (
+                      <React.Fragment key={i}>
+                        {i > 0 && <BreadcrumbSeparator />}
+                        <BreadcrumbItemUI>
+                          {isLast ? (
+                            <BreadcrumbPage className="text-xs">{crumb.title}</BreadcrumbPage>
+                          ) : crumb.path != null ? (
+                            <BreadcrumbLink
+                              asChild
+                              className="text-xs cursor-pointer"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => onNavigate(crumb.path!, crumb.docNumber)}
+                              >
+                                {crumb.title}
+                              </button>
+                            </BreadcrumbLink>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">{crumb.title}</span>
+                          )}
+                        </BreadcrumbItemUI>
+                      </React.Fragment>
+                    )
+                  })}
+                </BreadcrumbList>
+              </Breadcrumb>
+            )}
             {title && (
               <div className="flex items-start justify-between gap-4 mb-2">
                 <h1 className="text-3xl font-bold tracking-tight">{title}</h1>

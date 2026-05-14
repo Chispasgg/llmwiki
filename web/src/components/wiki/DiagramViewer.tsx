@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { X, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
+import { Download, Maximize2, X, ZoomIn, ZoomOut } from 'lucide-react'
 
 const MIN_SCALE = 0.25
 const MAX_SCALE = 5
@@ -25,6 +25,23 @@ function buildSrcdoc(content: string, type: 'svg' | 'img', alt?: string): string
   svg { max-width: none; height: auto; }
   img { max-width: none; height: auto; }
 </style></head><body>${body}</body></html>`
+}
+
+function downloadContent(content: string, type: 'svg' | 'img') {
+  if (type === 'svg') {
+    const blob = new Blob([content], { type: 'image/svg+xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'diagram.svg'
+    a.click()
+    URL.revokeObjectURL(url)
+  } else {
+    const a = document.createElement('a')
+    a.href = content
+    a.download = 'image.png'
+    a.click()
+  }
 }
 
 export function DiagramViewer({ content, type, alt, onClose }: DiagramViewerProps) {
@@ -88,6 +105,9 @@ export function DiagramViewer({ content, type, alt, onClose }: DiagramViewerProp
           <button onClick={zoomIn} disabled={scale >= MAX_SCALE} className="p-1.5 rounded-md hover:bg-accent hover:text-foreground disabled:opacity-30 cursor-pointer" title="Zoom in">
             <ZoomIn className="size-3.5" />
           </button>
+          <button onClick={() => downloadContent(content, type)} className="p-1.5 rounded-md hover:bg-accent hover:text-foreground cursor-pointer" title="Download">
+            <Download className="size-3.5" />
+          </button>
         </div>
         <button onClick={onClose} className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground cursor-pointer" title="Close">
           <X className="size-4" />
@@ -139,13 +159,22 @@ export function ExpandableMedia({
     <>
       <div className="relative group cursor-pointer" onClick={() => setFullscreen(true)}>
         {children}
-        <button
-          onClick={(e) => { e.stopPropagation(); setFullscreen(true) }}
-          className="absolute top-2 right-2 p-1.5 rounded-md bg-background/80 border border-border text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-          title="View fullscreen"
-        >
-          <Maximize2 className="size-3.5" />
-        </button>
+        <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={(e) => { e.stopPropagation(); downloadContent(content, type) }}
+            className="p-1.5 rounded-md bg-background/80 border border-border text-muted-foreground hover:text-foreground cursor-pointer"
+            title="Download"
+          >
+            <Download className="size-3.5" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setFullscreen(true) }}
+            className="p-1.5 rounded-md bg-background/80 border border-border text-muted-foreground hover:text-foreground cursor-pointer"
+            title="View fullscreen"
+          >
+            <Maximize2 className="size-3.5" />
+          </button>
+        </div>
       </div>
 
       {fullscreen && (

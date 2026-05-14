@@ -14,6 +14,7 @@ import { FilesGrid } from '@/components/kb/FilesGrid'
 import { GraphViewer } from '@/components/kb/GraphViewer'
 import { SelectionActionBar } from '@/components/kb/SelectionActionBar'
 import { WikiContent } from '@/components/wiki/WikiContent'
+import type { BreadcrumbItem } from '@/components/wiki/WikiContent'
 import type { DocumentListItem, WikiNode } from '@/lib/types'
 import type { ViewMode } from '@/app/(dashboard)/wikis/[slug]/[[...path]]/page'
 
@@ -103,6 +104,38 @@ function findFirstPath(nodes: WikiNode[]): { path: string; docNumber: number | n
     }
   }
   return null
+}
+
+function buildBreadcrumbs(
+  nodes: WikiNode[],
+  activePath: string,
+  wikiTitle: string,
+): Array<{ title: string; path?: string; docNumber?: number | null }> | null {
+  // Try to find the active node. Returns ancestor chain if found.
+  function search(
+    nodes: WikiNode[],
+    path: string,
+  ): Array<{ title: string; path?: string; docNumber?: number | null }> | null {
+    for (const node of nodes) {
+      if (node.path === path) {
+        return [{ title: node.title, path: node.path, docNumber: node.docNumber }]
+      }
+      if (node.children) {
+        const found = search(node.children, path)
+        if (found) {
+          return [{ title: node.title, path: node.path, docNumber: node.docNumber }, ...found]
+        }
+      }
+    }
+    return null
+  }
+
+  const chain = search(nodes, activePath)
+  if (!chain) return null
+
+  const firstNode = findFirstPath(nodes)
+  const wikiCrumb = { title: wikiTitle, path: firstNode?.path, docNumber: firstNode?.docNumber }
+  return [wikiCrumb, ...chain]
 }
 
 type Props = {
@@ -276,6 +309,12 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
 
   const activeWikiVersion = activeWikiDoc?.version ?? -1
   const activeWikiDocId = activeWikiDoc?.id ?? null
+
+  const wikiBreadcrumbs = React.useMemo((): BreadcrumbItem[] | undefined => {
+    if (!wikiActivePath || !wikiTree.length) return undefined
+    const crumbs = buildBreadcrumbs(wikiTree, wikiActivePath, kbName)
+    return crumbs ?? undefined
+  }, [wikiActivePath, wikiTree, kbName])
 
   React.useEffect(() => {
     if (!wikiActivePath) {
@@ -848,6 +887,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
                   onSourceClick={handleCitationSourceClick}
                   onGraphClick={handlePageGraphClick}
                   documents={documents}
+                  breadcrumbs={wikiBreadcrumbs}
                 />
               </motion.div>
             ) : (

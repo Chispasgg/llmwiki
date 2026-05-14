@@ -390,6 +390,18 @@
 .wiki-content .footnotes ol { @apply space-y-2; }
 .wiki-content .footnotes li { @apply text-sm text-muted-foreground; }
 
+/* Search/mark highlight */
+.wiki-content mark {
+  background-color: hsl(48 96% 53% / 0.35);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+.dark .wiki-content mark {
+  background-color: hsl(48 96% 53% / 0.25);
+  color: inherit;
+}
+
 /* Blockquote styles (legacy) */
 .markdown-blockquote {
   border-left: 3px solid hsl(var(--accent-blue) / 0.4) !important;
@@ -403,4 +415,24 @@
   border-radius: 0 6px 6px 0 !important;
   padding-top: 4px !important;
   padding-bottom: 4px !important;
+}
+
+/* Thin scrollbars on overflow elements */
+.overflow-auto,
+.overflow-y-auto,
+.overflow-x-auto {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+.overflow-auto::-webkit-scrollbar,
+.overflow-y-auto::-webkit-scrollbar,
+.overflow-x-auto::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.overflow-auto::-webkit-scrollbar-thumb,
+.overflow-y-auto::-webkit-scrollbar-thumb,
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 2px;
 }

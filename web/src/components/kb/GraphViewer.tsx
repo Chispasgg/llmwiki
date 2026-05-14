@@ -38,13 +38,26 @@ interface Props {
   onNavigateToDoc?: (docId: string, sourceKind: string) => void
 }
 
-const NODE_COLOR = 'rgba(140, 140, 150, 0.7)'            // other wiki pages
-const NODE_COLOR_CONCEPT = 'rgba(120, 120, 140, 0.85)'   // concepts — slightly cooler
-const NODE_COLOR_ENTITY = 'rgba(155, 140, 130, 0.85)'    // entities — slightly warmer
-const NODE_COLOR_SOURCE = 'rgba(140, 140, 150, 0.4)'     // sources — faded
-const NODE_COLOR_HOVER = 'rgba(60, 60, 70, 1)'           // hover — dark
-const EDGE_COLOR = 'rgba(140, 140, 150, 0.18)'
-const EDGE_COLOR_HOVER = 'rgba(100, 100, 110, 0.5)'
+const COLORS_LIGHT = {
+  node: '#6366f1',
+  concept: '#0ea5e9',
+  entity: '#f59e0b',
+  source: '#94a3b8',
+  hover: '#1e1b4b',
+  label: '#334155',
+  edge: 'rgba(99,102,241,0.15)',
+  edgeHover: 'rgba(99,102,241,0.5)',
+}
+const COLORS_DARK = {
+  node: '#818cf8',
+  concept: '#38bdf8',
+  entity: '#fbbf24',
+  source: '#64748b',
+  hover: '#e0e7ff',
+  label: '#e2e8f0',
+  edge: 'rgba(129,140,248,0.2)',
+  edgeHover: 'rgba(129,140,248,0.6)',
+}
 
 export function GraphViewer({ kbId, focusNodeId, onNavigateToDoc }: Props) {
   const containerRef = React.useRef<HTMLDivElement>(null)
@@ -61,6 +74,20 @@ export function GraphViewer({ kbId, focusNodeId, onNavigateToDoc }: Props) {
   const [mousePos, setMousePos] = React.useState({ x: 0, y: 0 })
   const [dimensions, setDimensions] = React.useState({ width: 0, height: 0 })
   const [showSources, setShowSources] = React.useState(false)
+  const [isDark, setIsDark] = React.useState(false)
+  const isDarkRef = React.useRef(false)
+
+  React.useEffect(() => {
+    const update = () => {
+      const dark = document.documentElement.classList.contains('dark')
+      isDarkRef.current = dark
+      setIsDark(dark)
+    }
+    update()
+    const observer = new MutationObserver(update)
+    observer.observe(document.documentElement, { attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [])
 
   const fetchGraph = React.useCallback(() => {
     setLoading(true)
@@ -172,6 +199,7 @@ export function GraphViewer({ kbId, focusNodeId, onNavigateToDoc }: Props) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const nodeCanvasObject = React.useCallback(
     (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+      const C = isDarkRef.current ? COLORS_DARK : COLORS_LIGHT
       const hovering = hoverNodeRef.current
       const isHover = hovering?.id === node.id
       const neighbors = hoverNeighborsRef.current
@@ -185,11 +213,11 @@ export function GraphViewer({ kbId, focusNodeId, onNavigateToDoc }: Props) {
       const p = (node.path || '').toLowerCase()
       const isConcept = p.includes('concepts/')
       const isEntity = p.includes('entities/')
-      const color = isHover ? NODE_COLOR_HOVER
-        : isSource ? NODE_COLOR_SOURCE
-        : isConcept ? NODE_COLOR_CONCEPT
-        : isEntity ? NODE_COLOR_ENTITY
-        : NODE_COLOR
+      const color = isHover ? C.hover
+        : isSource ? C.source
+        : isConcept ? C.concept
+        : isEntity ? C.entity
+        : C.node
 
       ctx.globalAlpha = isFaded ? 0.12 : 1
       ctx.beginPath()
@@ -203,14 +231,14 @@ export function GraphViewer({ kbId, focusNodeId, onNavigateToDoc }: Props) {
         ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'top'
-        ctx.fillStyle = isHover ? '#fff' : 'rgba(180,180,190,0.85)'
+        ctx.fillStyle = isHover ? (isDarkRef.current ? '#fff' : '#1e1b4b') : C.label
         ctx.fillText(label, node.x!, node.y! + radius + 2)
       }
       ctx.globalAlpha = 1
     },
-    // hoverNodeState triggers a new function ref so ForceGraph repaints on hover change
+    // hoverNodeState and isDark trigger a new function ref so ForceGraph repaints on changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hoverNodeState],
+    [hoverNodeState, isDark],
   )
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -242,6 +270,7 @@ export function GraphViewer({ kbId, focusNodeId, onNavigateToDoc }: Props) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const linkColor = React.useCallback(
     (link: any) => {
+      const C = isDarkRef.current ? COLORS_DARK : COLORS_LIGHT
       const hovering = hoverNodeRef.current
       if (hovering) {
         const src = link.source as string | { id: string }
@@ -249,13 +278,13 @@ export function GraphViewer({ kbId, focusNodeId, onNavigateToDoc }: Props) {
         const srcId = typeof src === 'object' ? src.id : src
         const tgtId = typeof tgt === 'object' ? tgt.id : tgt
         const connected = srcId === hovering.id || tgtId === hovering.id
-        if (!connected) return 'rgba(200,200,200,0.04)'
-        return EDGE_COLOR_HOVER
+        if (!connected) return isDarkRef.current ? 'rgba(129,140,248,0.04)' : 'rgba(99,102,241,0.04)'
+        return C.edgeHover
       }
-      return EDGE_COLOR
+      return C.edge
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hoverNodeState],
+    [hoverNodeState, isDark],
   )
 
   // Configure forces for better spacing
@@ -323,8 +352,8 @@ export function GraphViewer({ kbId, focusNodeId, onNavigateToDoc }: Props) {
             onNodeHover={handleNodeHover}
             onNodeClick={handleNodeClick}
             linkColor={linkColor}
-            linkWidth={0.5}
-            linkDirectionalArrowLength={3}
+            linkWidth={1}
+            linkDirectionalArrowLength={4}
             linkDirectionalArrowRelPos={1}
             backgroundColor="transparent"
             cooldownTicks={100}
@@ -351,6 +380,21 @@ export function GraphViewer({ kbId, focusNodeId, onNavigateToDoc }: Props) {
               <RefreshCw className={`size-2.5 ${rebuilding ? 'animate-spin' : ''}`} />
               {rebuilding ? 'Building...' : 'Rebuild'}
             </button>
+          </div>
+
+          {/* Legend */}
+          <div className="absolute bottom-3 left-3 flex flex-col gap-1 bg-background/80 backdrop-blur-sm border border-border rounded-md px-3 py-2 text-[10px] text-muted-foreground">
+            {([
+              ['Page', isDark ? COLORS_DARK.node : COLORS_LIGHT.node],
+              ['Concept', isDark ? COLORS_DARK.concept : COLORS_LIGHT.concept],
+              ['Entity', isDark ? COLORS_DARK.entity : COLORS_LIGHT.entity],
+              ['Source', isDark ? COLORS_DARK.source : COLORS_LIGHT.source],
+            ] as [string, string][]).map(([label, color]) => (
+              <div key={label} className="flex items-center gap-1.5">
+                <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                {label}
+              </div>
+            ))}
           </div>
 
           {/* Hover tooltip — follows cursor */}
