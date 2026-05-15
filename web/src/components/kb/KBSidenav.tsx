@@ -215,7 +215,7 @@ export function KBSidenav({
   [])
 
   const allSearchableItems = React.useMemo(() => {
-    const items: { type: 'wiki' | 'source'; title: string; keywords: string; tags: string[]; path?: string; docNumber?: number | null; doc?: DocumentListItem }[] = []
+    const items: { type: 'wiki' | 'source'; title: string; keywords: string; tags: string[]; path?: string; docNumber?: number | null; doc?: DocumentListItem; spaceName?: string }[] = []
     const addWikiNodes = (nodes: WikiNode[], parentPath = '') => {
       for (const node of nodes) {
         if (node.path) {
@@ -370,16 +370,19 @@ export function KBSidenav({
                   className="flex items-center"
                 >
                   <FileText className="size-3.5 mr-2 opacity-50 shrink-0" />
-                  <span className="truncate">{item.title}</span>
-                  {item.tags.length > 0 && (
-                    <span className="ml-auto flex items-center gap-1 shrink-0 pl-2">
-                      {item.tags.slice(0, 3).map((tag) => (
-                        <span key={tag} className="text-[10px] text-muted-foreground/50 bg-muted px-1.5 py-0.5 rounded">
-                          {tag}
-                        </span>
-                      ))}
-                    </span>
-                  )}
+                  <span className="truncate flex-1 min-w-0">{item.title}</span>
+                  <span className="ml-auto flex items-center gap-1 shrink-0 pl-2">
+                    {item.spaceName && (
+                      <span className="text-[10px] text-muted-foreground/50 bg-muted px-1.5 py-0.5 rounded">
+                        {item.spaceName}
+                      </span>
+                    )}
+                    {item.tags.slice(0, 2).map((tag) => (
+                      <span key={tag} className="text-[10px] text-muted-foreground/50 bg-muted px-1.5 py-0.5 rounded">
+                        {tag}
+                      </span>
+                    ))}
+                  </span>
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -397,16 +400,19 @@ export function KBSidenav({
                   className="flex items-center"
                 >
                   <NotepadText className="size-3.5 mr-2 opacity-50 shrink-0" />
-                  <span className="truncate">{item.title}</span>
-                  {item.tags.length > 0 && (
-                    <span className="ml-auto flex items-center gap-1 shrink-0 pl-2">
-                      {item.tags.slice(0, 3).map((tag) => (
-                        <span key={tag} className="text-[10px] text-muted-foreground/50 bg-muted px-1.5 py-0.5 rounded">
-                          {tag}
-                        </span>
-                      ))}
-                    </span>
-                  )}
+                  <span className="truncate flex-1 min-w-0">{item.title}</span>
+                  <span className="ml-auto flex items-center gap-1 shrink-0 pl-2">
+                    {item.spaceName && (
+                      <span className="text-[10px] text-muted-foreground/50 bg-muted px-1.5 py-0.5 rounded">
+                        {item.spaceName}
+                      </span>
+                    )}
+                    {item.tags.slice(0, 2).map((tag) => (
+                      <span key={tag} className="text-[10px] text-muted-foreground/50 bg-muted px-1.5 py-0.5 rounded">
+                        {tag}
+                      </span>
+                    ))}
+                  </span>
                 </CommandItem>
               ))}
             </CommandGroup>
