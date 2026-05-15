@@ -68,6 +68,13 @@ class BulkDelete(BaseModel):
     ids: list[str]
 
 
+class MoveToSpace(BaseModel):
+    target_space_id: str
+
+class CopyToSpace(BaseModel):
+    target_space_id: str
+
+
 class MeResponse(BaseModel):
     id: str
     email: str
