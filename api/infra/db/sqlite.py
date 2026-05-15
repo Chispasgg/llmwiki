@@ -75,6 +75,12 @@ async def migrate_schema(db: aiosqlite.Connection) -> None:
     await db.execute(
         "CREATE INDEX IF NOT EXISTS idx_documents_workspace ON documents(workspace_id)"
     )
+
+    cursor = await db.execute("PRAGMA table_info(document_history)")
+    hist_cols = {row[1] for row in await cursor.fetchall()}
+    if "user_id" not in hist_cols:
+        await db.execute("ALTER TABLE document_history ADD COLUMN user_id TEXT")
+
     await db.commit()
 
 
@@ -222,17 +228,17 @@ class SQLiteDocumentRepository:
         )
         await self._db.commit()
 
-    async def save_history_entry(self, doc_id: str, content: str, version: int) -> None:
+    async def save_history_entry(self, doc_id: str, content: str, version: int, user_id: str | None = None) -> None:
         await self._db.execute(
-            "INSERT INTO document_history (id, document_id, content, version) "
-            "VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
-            (doc_id, content, version),
+            "INSERT INTO document_history (id, document_id, user_id, content, version) "
+            "VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)",
+            (doc_id, user_id, content, version),
         )
         await self._db.commit()
 
     async def list_history(self, doc_id: str) -> list[dict]:
         cursor = await self._db.execute(
-            "SELECT id, document_id, version, length(content) AS content_length, created_at "
+            "SELECT id, document_id, user_id, version, length(content) AS content_length, created_at "
             "FROM document_history WHERE document_id = ? "
             "ORDER BY created_at DESC LIMIT 50",
             (doc_id,),

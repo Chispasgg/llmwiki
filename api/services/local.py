@@ -221,7 +221,7 @@ class LocalDocumentService(DocumentService):
 
         old_content = doc.get("content") or ""
         if old_content and old_content.strip() != content.strip() and doc.get("source_kind") == "wiki":
-            await self.doc_repo.save_history_entry(doc_id, old_content, doc.get("version", 0))
+            await self.doc_repo.save_history_entry(doc_id, old_content, doc.get("version", 0), self.user_id)
 
         space_root = await self._get_space_root(doc)
         file_path = _doc_to_disk_path(doc, space_root)

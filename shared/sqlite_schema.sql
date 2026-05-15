@@ -111,6 +111,7 @@ CREATE INDEX IF NOT EXISTS idx_refs_target ON document_references(target_documen
 CREATE TABLE IF NOT EXISTS document_history (
     id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
     document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    user_id TEXT,
     content TEXT NOT NULL,
     version INTEGER NOT NULL,
     created_at TEXT DEFAULT (datetime('now'))

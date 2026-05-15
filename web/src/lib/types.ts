@@ -78,6 +78,7 @@ export interface WikiSubsection {
 export interface HistoryVersion {
   id: string
   document_id: string
+  user_id: string | null
   version: number
   content_length: number
   created_at: string
