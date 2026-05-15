@@ -88,23 +88,18 @@ class SQLiteDocumentRepository:
         self._db = db
 
     async def list_by_kb(self, kb_id: str, *, path: str | None = None, archived: bool = False) -> list[dict]:
-        """Lista documentos del workspace.
-
-        kb_id e archived se ignoran intencionalmente: en modo local hay exactamente
-        un workspace (que actúa como KB único) y los documentos se borran físicamente
-        en lugar de archivarse. Los parámetros existen para conformidad con DocumentService ABC.
-        """
         if path:
             cursor = await self._db.execute(
                 f"SELECT {_DOC_COLUMNS} FROM documents "
-                "WHERE path = ? AND status != 'failed' "
+                "WHERE workspace_id = ? AND path = ? AND status != 'failed' "
                 "ORDER BY filename",
-                (path,),
+                (kb_id, path),
             )
         else:
             cursor = await self._db.execute(
                 f"SELECT {_DOC_COLUMNS} FROM documents "
-                "WHERE status != 'failed' ORDER BY filename",
+                "WHERE workspace_id = ? AND status != 'failed' ORDER BY filename",
+                (kb_id,),
             )
         rows = await cursor.fetchall()
         return [_row_to_dict(cursor, r) for r in rows]
@@ -134,11 +129,10 @@ class SQLiteDocumentRepository:
     async def find_by_path(
         self, kb_id: str, user_id: str, filename: str, path: str,
     ) -> dict | None:
-        # kb_id e user_id ignorados: en modo local hay un único workspace (ver list_by_kb)
         cursor = await self._db.execute(
             f"SELECT {_DOC_COLUMNS} FROM documents "
-            "WHERE filename = ? AND path = ? AND status != 'failed'",
-            (filename, path),
+            "WHERE workspace_id = ? AND filename = ? AND path = ? AND status != 'failed'",
+            (kb_id, filename, path),
         )
         row = await cursor.fetchone()
         return _row_to_dict(cursor, row) if row else None
@@ -158,10 +152,10 @@ class SQLiteDocumentRepository:
         doc_number = row[0]
 
         await self._db.execute(
-            "INSERT INTO documents (id, user_id, filename, title, path, relative_path, source_kind, "
+            "INSERT INTO documents (id, workspace_id, user_id, filename, title, path, relative_path, source_kind, "
             "file_type, status, content, tags, version, document_number) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, 'md', 'ready', ?, ?, 0, ?)",
-            (doc_id, user_id, filename, title, path, relative_path, source_kind,
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'md', 'ready', ?, ?, 0, ?)",
+            (doc_id, kb_id, user_id, filename, title, path, relative_path, source_kind,
              content, json.dumps(tags), doc_number),
         )
         await self._db.commit()
@@ -261,10 +255,20 @@ class SQLiteDocumentRepository:
 
     async def get_kb_id(self, doc_id: str) -> str | None:
         cursor = await self._db.execute(
-            "SELECT id FROM workspace LIMIT 1",
+            "SELECT workspace_id FROM documents WHERE id = ?", (doc_id,)
         )
         row = await cursor.fetchone()
         return row[0] if row else None
+
+    async def get_workspace(self, workspace_id: str) -> dict | None:
+        cursor = await self._db.execute(
+            "SELECT id, name, slug, root_path FROM workspace WHERE id = ?", (workspace_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cursor.description]
+        return dict(zip(cols, row))
 
     async def update_status(self, doc_id: str, status: str, **fields) -> None:
         updates = ["status = ?"]
@@ -433,17 +437,30 @@ class SQLiteChunkRepository:
     async def search_fulltext(
         self, kb_id: str, query: str, *, limit: int = 20,
         path_filter: str | None = None, user_id: str | None = None,
+        workspace_ids: list[str] | None = None,
     ) -> list[dict]:
         sql = (
             "SELECT dc.content, dc.page, dc.header_breadcrumb, dc.chunk_index, "
-            "d.filename, d.title, d.path, d.file_type, d.tags, "
+            "d.filename, d.title, d.path, d.file_type, d.tags, d.workspace_id, "
+            "w.name as space_name, w.slug as space_slug, "
             "rank "
             "FROM document_chunks dc "
             "JOIN chunks_fts fts ON dc.rowid = fts.rowid "
             "JOIN documents d ON dc.document_id = d.id "
+            "LEFT JOIN workspace w ON d.workspace_id = w.id "
             "WHERE chunks_fts MATCH ? AND d.status != 'failed' "
         )
         params: list = [query]
+
+        if workspace_ids is not None:
+            if workspace_ids:
+                placeholders = ",".join("?" for _ in workspace_ids)
+                sql += f"AND d.workspace_id IN ({placeholders}) "
+                params.extend(workspace_ids)
+            # workspace_ids=[] means no filter (global)
+        elif kb_id:
+            sql += "AND d.workspace_id = ? "
+            params.append(kb_id)
 
         if path_filter == "wiki":
             sql += "AND d.source_kind = 'wiki' "
