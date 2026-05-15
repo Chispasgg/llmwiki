@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from fastapi import HTTPException
+
 
 class UserService(ABC):
 
@@ -111,6 +113,14 @@ class DocumentService(ABC):
     @abstractmethod
     async def bulk_delete(self, doc_ids: list[str]) -> int:
         """Delete or archive multiple documents. Returns count of affected rows."""
+
+    async def move_to_space(self, doc_id: str, target_space_id: str) -> dict:
+        """Move a document to a different space. Raises HTTPException on conflict."""
+        raise HTTPException(status_code=501, detail="Not supported in this mode")
+
+    async def copy_to_space(self, doc_id: str, target_space_id: str) -> dict:
+        """Copy a document to a different space, auto-resolving name conflicts."""
+        raise HTTPException(status_code=501, detail="Not supported in this mode")
 
     async def list_history(self, doc_id: str) -> list[dict]:
         """Return the version history for a document (newest first).

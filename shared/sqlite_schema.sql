@@ -7,14 +7,17 @@ PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS workspace (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    slug TEXT NOT NULL DEFAULT '',
+    root_path TEXT NOT NULL DEFAULT '',
     description TEXT DEFAULT '',
     user_id TEXT NOT NULL,
     created_at TEXT DEFAULT (datetime('now')),
-    UNIQUE(user_id)
+    UNIQUE(user_id, slug)
 );
 
 CREATE TABLE IF NOT EXISTS documents (
     id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    workspace_id TEXT REFERENCES workspace(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL,
     filename TEXT NOT NULL,
     title TEXT,
@@ -95,6 +98,7 @@ CREATE TRIGGER IF NOT EXISTS chunks_fts_update AFTER UPDATE ON document_chunks B
     INSERT INTO chunks_fts(rowid, content) VALUES (new.rowid, new.content);
 END;
 
+CREATE INDEX IF NOT EXISTS idx_documents_workspace ON documents(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_documents_relative_path ON documents(relative_path);
 CREATE INDEX IF NOT EXISTS idx_documents_path ON documents(path);
 CREATE INDEX IF NOT EXISTS idx_documents_source_kind ON documents(source_kind);

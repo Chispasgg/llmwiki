@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload as UploadIcon, BookOpen, ArrowUpRight, Loader2, Menu } from 'lucide-react'
 import * as tus from 'tus-js-client'
-import { useUserStore } from '@/stores'
+import { useUserStore, useKBStore } from '@/stores'
 import { useKBDocuments } from '@/hooks/useKBDocuments'
 import { apiFetch } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -611,6 +611,37 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
     } catch { toast.error('Failed to rename document') }
   }
 
+  const handleMoveToSpace = async (docId: string, targetSpaceId: string) => {
+    if (!requireUser()) return
+    try {
+      await apiFetch(`/v1/documents/${docId}/move-to-space`, {
+        method: 'POST',
+        body: JSON.stringify({ target_space_id: targetSpaceId }),
+      })
+      setDocuments((prev) => prev.filter((d) => d.id !== docId))
+      const targetKB = useKBStore.getState().knowledgeBases.find((kb) => kb.id === targetSpaceId)
+      if (targetKB) {
+        window.location.href = `/wikis/${targetKB.slug}`
+      }
+      toast.success('Page moved successfully')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to move page')
+    }
+  }
+
+  const handleCopyToSpace = async (docId: string, targetSpaceId: string) => {
+    if (!requireUser()) return
+    try {
+      await apiFetch(`/v1/documents/${docId}/copy-to-space`, {
+        method: 'POST',
+        body: JSON.stringify({ target_space_id: targetSpaceId }),
+      })
+      toast.success('Page copied to space')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to copy page')
+    }
+  }
+
   // ─── File upload ─────────────────────────────────────────────
   const uploadPathRef = React.useRef('/')
   const handleUploadClick = (targetPath: string = '/') => {
@@ -832,6 +863,8 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
             onGraphToggle={handleGraphToggle}
             onOpenSourceDoc={handleOpenSourceDoc}
             onClose={() => setSidenavOpen(false)}
+            onMoveToSpace={handleMoveToSpace}
+            onCopyToSpace={handleCopyToSpace}
           />
         </div>
 
