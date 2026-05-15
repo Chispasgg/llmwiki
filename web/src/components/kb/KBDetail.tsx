@@ -150,6 +150,7 @@ type Props = {
 export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Props) {
   const searchParams = useSearchParams()
   const userId = useUserStore((s) => s.user?.id)
+  const workspaceSlug = useKBStore((s) => s.knowledgeBases.find((kb) => kb.id === kbId)?.workspace_slug ?? null)
   const { documents, setDocuments, loading } = useKBDocuments(kbId)
   const [sidenavOpen, setSidenavOpen] = React.useState(false)
 
@@ -865,7 +866,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
             onClose={() => setSidenavOpen(false)}
             onMoveToSpace={handleMoveToSpace}
             onCopyToSpace={handleCopyToSpace}
-            workspaceSlug={kbSlug ?? null}
+            workspaceSlug={workspaceSlug}
           />
         </div>
 
