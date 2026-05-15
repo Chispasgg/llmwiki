@@ -395,6 +395,21 @@ class HostedDocumentService(DocumentService):
         return dict(row)
 
     async def update_content(self, doc_id: str, content: str) -> dict | None:
+        current = await self.pool.fetchrow(
+            "SELECT content, version, source_kind FROM documents WHERE id = $1 AND user_id = $2",
+            doc_id, self.user_id,
+        )
+        if not current:
+            return None
+
+        old_content = current["content"] or ""
+        if old_content.strip() and old_content.strip() != content.strip() and current["source_kind"] == "wiki":
+            await self.pool.execute(
+                "INSERT INTO document_history (document_id, user_id, content, version) "
+                "VALUES ($1, $2, $3, $4)",
+                doc_id, self.user_id, old_content, current["version"],
+            )
+
         row = await self.pool.fetchrow(
             "UPDATE documents SET content = $1, version = version + 1, updated_at = now() "
             "WHERE id = $2 AND user_id = $3 RETURNING id, content, version",
@@ -412,6 +427,24 @@ class HostedDocumentService(DocumentService):
             await store_chunks(self.pool, str(doc_id), self.user_id, kb_id, chunks)
 
         return dict(row)
+
+    async def list_history(self, doc_id: str) -> list[dict]:
+        rows = await self.pool.fetch(
+            "SELECT id::text, document_id::text, user_id::text, version, "
+            "length(content) AS content_length, created_at "
+            "FROM document_history WHERE document_id = $1 "
+            "ORDER BY created_at DESC LIMIT 50",
+            doc_id,
+        )
+        return [dict(r) for r in rows]
+
+    async def get_history_version(self, history_id: str) -> dict | None:
+        row = await self.pool.fetchrow(
+            "SELECT id::text, document_id::text, version, content, created_at "
+            "FROM document_history WHERE id = $1",
+            history_id,
+        )
+        return dict(row) if row else None
 
     async def update_metadata(self, doc_id: str, fields: dict) -> dict | None:
         import json as _json
