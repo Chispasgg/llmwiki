@@ -152,3 +152,42 @@ class ServiceFactory(ABC):
     @abstractmethod
     def document_service(self, user_id: str, *, is_superadmin: bool = False) -> DocumentService:
         """Return a DocumentService scoped to user_id."""
+
+    @abstractmethod
+    def workspace_service(self, user_id: str) -> "WorkspaceService":
+        """Return a WorkspaceService scoped to user_id."""
+
+
+class WorkspaceService(ABC):
+
+    @abstractmethod
+    async def list(self) -> list[dict]:
+        """Return all workspaces the current user is a member of."""
+
+    @abstractmethod
+    async def get_by_slug(self, slug: str) -> dict | None:
+        """Return a single workspace by slug with member_count and wiki_count, or None."""
+
+    @abstractmethod
+    async def create(self, name: str, description: str | None) -> dict:
+        """Create a workspace. Current user becomes admin member."""
+
+    @abstractmethod
+    async def update(self, workspace_id: str, name: str | None, description: str | None) -> dict | None:
+        """Update workspace name/description. Returns None if not found or not admin."""
+
+    @abstractmethod
+    async def delete(self, workspace_id: str) -> bool:
+        """Delete workspace. Returns True if deleted, False if not found or not admin."""
+
+    @abstractmethod
+    async def list_wikis(self, workspace_id: str) -> list[dict]:
+        """Return all KBs in the workspace that the user can see."""
+
+    @abstractmethod
+    async def move_wiki(self, kb_id: str, target_workspace_id: str) -> dict:
+        """Move a KB to a different workspace. Returns updated KB dict."""
+
+    @abstractmethod
+    async def add_member(self, workspace_id: str, user_email: str, role: str) -> dict:
+        """Add a user to the workspace by email. Returns member dict."""

@@ -10,7 +10,7 @@ from fastapi import HTTPException
 
 from config import settings
 from services.chunker import chunk_text
-from .base import UserService, KBService, DocumentService, ServiceFactory
+from .base import UserService, KBService, DocumentService, WorkspaceService, ServiceFactory
 from .types import parse_frontmatter, title_from_filename, extract_tags
 
 
@@ -53,12 +53,36 @@ class HostedUserService(UserService):
 
 _KB_LIST_QUERY = (
     "SELECT kb.id, kb.user_id, kb.name, kb.slug, kb.description, "
-    "kb.is_shared, kb.created_at, kb.updated_at, "
+    "kb.is_shared, kb.created_at, kb.updated_at, kb.workspace_id, "
+    "(SELECT w.slug FROM workspaces w WHERE w.id = kb.workspace_id) AS workspace_slug, "
     "(SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.path NOT LIKE '/wiki/%%' AND NOT d.archived) AS source_count, "
     "(SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.path LIKE '/wiki/%%' AND NOT d.archived) AS wiki_page_count, "
     "(SELECT u.email FROM users u WHERE u.id = kb.user_id) AS owner_email "
     "FROM knowledge_bases kb"
 )
+
+_WS_FIELDS = (
+    "SELECT w.id, w.name, w.slug, w.description, w.created_by, w.created_at, w.updated_at, "
+    "(SELECT COUNT(*) FROM workspace_members wm2 WHERE wm2.workspace_id = w.id) AS member_count, "
+    "(SELECT COUNT(*) FROM knowledge_bases kb WHERE kb.workspace_id = w.id) AS wiki_count "
+    "FROM workspaces w "
+    "JOIN workspace_members wm ON wm.workspace_id = w.id "
+    "WHERE wm.user_id = $1"
+)
+
+
+def _kb_row_to_dict(row) -> dict:
+    d = dict(row)
+    d["id"] = str(d["id"])
+    d["user_id"] = str(d["user_id"])
+    if d.get("workspace_id"):
+        d["workspace_id"] = str(d["workspace_id"])
+    for k in ("created_at", "updated_at"):
+        if d.get(k):
+            d[k] = d[k].isoformat()
+    d["source_count"] = int(d.get("source_count", 0))
+    d["wiki_page_count"] = int(d.get("wiki_page_count", 0))
+    return d
 
 _OVERVIEW_TEMPLATE = """\
 This wiki tracks research on {name}. No sources have been ingested yet.
@@ -505,6 +529,157 @@ class HostedDocumentService(DocumentService):
             pass
 
 
+class HostedWorkspaceService(WorkspaceService):
+
+    def __init__(self, pool, user_id: str):
+        self.pool = pool
+        self.user_id = user_id
+
+    def _row_to_dict(self, row) -> dict:
+        d = dict(row)
+        for k in ("id", "created_by"):
+            if d.get(k):
+                d[k] = str(d[k])
+        for k in ("created_at", "updated_at"):
+            if d.get(k):
+                d[k] = d[k].isoformat()
+        d["member_count"] = int(d.get("member_count", 0))
+        d["wiki_count"] = int(d.get("wiki_count", 0))
+        return d
+
+    async def list(self) -> list[dict]:
+        rows = await self.pool.fetch(_WS_FIELDS + " ORDER BY w.name", self.user_id)
+        return [self._row_to_dict(r) for r in rows]
+
+    async def get_by_slug(self, slug: str) -> dict | None:
+        row = await self.pool.fetchrow(
+            _WS_FIELDS + " AND w.slug = $2", self.user_id, slug
+        )
+        return self._row_to_dict(row) if row else None
+
+    async def create(self, name: str, description: str | None) -> dict:
+        slug = _slugify(name)
+        base = slug
+        for i in range(1, 20):
+            exists = await self.pool.fetchval(
+                "SELECT 1 FROM workspaces WHERE slug = $1", slug
+            )
+            if not exists:
+                break
+            slug = f"{base}-{i}"
+        row = await self.pool.fetchrow(
+            "WITH ws AS ("
+            "  INSERT INTO workspaces (name, slug, description, created_by)"
+            "  VALUES ($1, $2, $3, $4) RETURNING *"
+            "), mem AS ("
+            "  INSERT INTO workspace_members (workspace_id, user_id, role)"
+            "  SELECT id, $4, 'admin' FROM ws"
+            ")"
+            "SELECT ws.id, ws.name, ws.slug, ws.description, ws.created_by,"
+            "  ws.created_at, ws.updated_at, 1::bigint AS member_count, 0::bigint AS wiki_count"
+            " FROM ws",
+            name, slug, description, self.user_id,
+        )
+        return self._row_to_dict(row)
+
+    async def update(self, workspace_id: str, name: str | None, description: str | None) -> dict | None:
+        is_admin = await self.pool.fetchval(
+            "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND role = 'admin'",
+            workspace_id, self.user_id,
+        )
+        if not is_admin:
+            return None
+        sets, vals = [], [workspace_id]
+        if name is not None:
+            new_slug = _slugify(name)
+            vals.append(name)
+            vals.append(new_slug)
+            sets.append(f"name = ${len(vals)-1}, slug = ${len(vals)}, updated_at = now()")
+        if description is not None:
+            vals.append(description)
+            sets.append(f"description = ${len(vals)}, updated_at = now()")
+        if not sets:
+            return None
+        sql = f"UPDATE workspaces SET {', '.join(sets)} WHERE id = $1 RETURNING id, name, slug, description, created_by, created_at, updated_at"
+        row = await self.pool.fetchrow(sql, *vals)
+        if not row:
+            return None
+        count_row = await self.pool.fetchrow(
+            "SELECT COUNT(*) AS member_count, "
+            "(SELECT COUNT(*) FROM knowledge_bases WHERE workspace_id = $1) AS wiki_count"
+            " FROM workspace_members WHERE workspace_id = $1",
+            workspace_id,
+        )
+        return self._row_to_dict({**dict(row), **dict(count_row)})
+
+    async def delete(self, workspace_id: str) -> bool:
+        is_admin = await self.pool.fetchval(
+            "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND role = 'admin'",
+            workspace_id, self.user_id,
+        )
+        if not is_admin:
+            return False
+        result = await self.pool.execute("DELETE FROM workspaces WHERE id = $1", workspace_id)
+        return result == "DELETE 1"
+
+    async def list_wikis(self, workspace_id: str) -> list[dict]:
+        is_member = await self.pool.fetchval(
+            "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+            workspace_id, self.user_id,
+        )
+        if not is_member:
+            raise HTTPException(status_code=403, detail={"error": "Not a member of this workspace"})
+        rows = await self.pool.fetch(
+            "SELECT kb.id, kb.user_id, kb.name, kb.slug, kb.description, kb.is_shared,"
+            "  kb.created_at, kb.updated_at, kb.workspace_id,"
+            "  (SELECT w.slug FROM workspaces w WHERE w.id = kb.workspace_id) AS workspace_slug,"
+            "  (SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.path NOT LIKE '/wiki/%%' AND NOT d.archived) AS source_count,"
+            "  (SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.path LIKE '/wiki/%%' AND NOT d.archived) AS wiki_page_count,"
+            "  (SELECT u.email FROM users u WHERE u.id = kb.user_id) AS owner_email"
+            " FROM knowledge_bases kb"
+            " WHERE kb.workspace_id = $1"
+            " ORDER BY kb.name",
+            workspace_id,
+        )
+        return [_kb_row_to_dict(r) for r in rows]
+
+    async def move_wiki(self, kb_id: str, target_workspace_id: str) -> dict:
+        is_target_member = await self.pool.fetchval(
+            "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+            target_workspace_id, self.user_id,
+        )
+        if not is_target_member:
+            raise HTTPException(status_code=403, detail={"error": "Not a member of target workspace"})
+        row = await self.pool.fetchrow(
+            "UPDATE knowledge_bases SET workspace_id = $1, updated_at = now()"
+            " WHERE id = $2 AND user_id = $3"
+            " RETURNING id, name, slug, workspace_id",
+            target_workspace_id, kb_id, self.user_id,
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail={"error": "Wiki not found or not owned by you"})
+        return {"id": str(row["id"]), "name": row["name"], "slug": row["slug"], "workspace_id": str(row["workspace_id"])}
+
+    async def add_member(self, workspace_id: str, user_email: str, role: str) -> dict:
+        is_admin = await self.pool.fetchval(
+            "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND role = 'admin'",
+            workspace_id, self.user_id,
+        )
+        if not is_admin:
+            raise HTTPException(status_code=403, detail={"error": "Only admins can add members"})
+        target = await self.pool.fetchrow(
+            "SELECT id, email FROM users WHERE email = $1", user_email
+        )
+        if not target:
+            raise HTTPException(status_code=404, detail={"error": "User not found"})
+        await self.pool.execute(
+            "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, $3)"
+            " ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = $3",
+            workspace_id, str(target["id"]), role,
+        )
+        return {"workspace_id": workspace_id, "user_id": str(target["id"]), "email": target["email"], "role": role}
+
+
 class HostedServiceFactory(ServiceFactory):
 
     def __init__(self, pool, storage=None, ocr=None):
@@ -520,6 +695,9 @@ class HostedServiceFactory(ServiceFactory):
 
     def document_service(self, user_id: str, *, is_superadmin: bool = False) -> "HostedDocumentService":
         return HostedDocumentService(self.pool, user_id, self.storage, is_superadmin=is_superadmin)
+
+    def workspace_service(self, user_id: str) -> HostedWorkspaceService:
+        return HostedWorkspaceService(self.pool, user_id)
 
 
 # ── Chunk persistence (Postgres-specific) ─────────────────────────────────────
