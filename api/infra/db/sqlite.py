@@ -52,8 +52,30 @@ async def create_pool(db_path: str) -> aiosqlite.Connection:
     await db.execute("PRAGMA foreign_keys=ON")
     schema = _SCHEMA_PATH.read_text()
     await db.executescript(schema)
-    await db.commit()
+    await migrate_schema(db)
     return db
+
+
+async def migrate_schema(db: aiosqlite.Connection) -> None:
+    """Apply incremental schema migrations. Safe to run on every startup."""
+    cursor = await db.execute("PRAGMA table_info(workspace)")
+    cols = {row[1] for row in await cursor.fetchall()}
+    if "slug" not in cols:
+        await db.execute("ALTER TABLE workspace ADD COLUMN slug TEXT NOT NULL DEFAULT ''")
+    if "root_path" not in cols:
+        await db.execute("ALTER TABLE workspace ADD COLUMN root_path TEXT NOT NULL DEFAULT ''")
+
+    cursor = await db.execute("PRAGMA table_info(documents)")
+    doc_cols = {row[1] for row in await cursor.fetchall()}
+    if "workspace_id" not in doc_cols:
+        await db.execute(
+            "ALTER TABLE documents ADD COLUMN workspace_id TEXT REFERENCES workspace(id) ON DELETE CASCADE"
+        )
+
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_workspace ON documents(workspace_id)"
+    )
+    await db.commit()
 
 
 _ALLOWED_DOC_UPDATE_FIELDS = frozenset({
@@ -297,47 +319,62 @@ class SQLiteKBRepository:
     def __init__(self, db: aiosqlite.Connection):
         self._db = db
 
-    async def list_all(self, user_id: str) -> list[dict]:
+    _KB_SELECT = (
+        "SELECT w.id, w.user_id, w.name, w.slug, w.root_path, w.description, "
+        "w.created_at, w.created_at as updated_at, "
+        "(SELECT count(*) FROM documents WHERE workspace_id = w.id AND source_kind != 'wiki' AND status != 'failed') as source_count, "
+        "(SELECT count(*) FROM documents WHERE workspace_id = w.id AND source_kind = 'wiki' AND status != 'failed') as wiki_page_count "
+        "FROM workspace w"
+    )
+
+    async def list(self, user_id: str) -> list[dict]:
         cursor = await self._db.execute(
-            "SELECT w.id, w.user_id, w.name, w.name as slug, w.description, "
-            "w.created_at, w.created_at as updated_at, "
-            "(SELECT count(*) FROM documents WHERE source_kind != 'wiki' AND status != 'failed') as source_count, "
-            "(SELECT count(*) FROM documents WHERE source_kind = 'wiki' AND status != 'failed') as wiki_page_count "
-            "FROM workspace w",
+            f"{self._KB_SELECT} WHERE w.user_id = ? ORDER BY w.created_at",
+            (user_id,),
         )
         rows = await cursor.fetchall()
-        return [_row_to_dict(cursor, r) for r in rows]
+        cols = [d[0] for d in cursor.description]
+        return [dict(zip(cols, r)) for r in rows]
 
     async def get(self, kb_id: str, user_id: str) -> dict | None:
         cursor = await self._db.execute(
-            "SELECT w.id, w.user_id, w.name, w.name as slug, w.description, "
-            "w.created_at, w.created_at as updated_at, "
-            "(SELECT count(*) FROM documents WHERE source_kind != 'wiki' AND status != 'failed') as source_count, "
-            "(SELECT count(*) FROM documents WHERE source_kind = 'wiki' AND status != 'failed') as wiki_page_count "
-            "FROM workspace w WHERE w.id = ?",
-            (kb_id,),
+            f"{self._KB_SELECT} WHERE w.id = ? AND w.user_id = ?",
+            (kb_id, user_id),
         )
         row = await cursor.fetchone()
-        return _row_to_dict(cursor, row) if row else None
+        if not row:
+            return None
+        cols = [d[0] for d in cursor.description]
+        return dict(zip(cols, row))
+
+    async def get_by_slug(self, slug: str, user_id: str) -> dict | None:
+        cursor = await self._db.execute(
+            f"{self._KB_SELECT} WHERE w.slug = ? AND w.user_id = ?",
+            (slug, user_id),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cursor.description]
+        return dict(zip(cols, row))
 
     async def get_owner(self, kb_id: str) -> str | None:
         cursor = await self._db.execute(
-            "SELECT user_id FROM workspace LIMIT 1",
+            "SELECT user_id FROM workspace WHERE id = ?", (kb_id,)
         )
         row = await cursor.fetchone()
         return row[0] if row else None
 
-    async def create(self, user_id: str, name: str, slug: str, description: str | None) -> dict:
-        # Enforce singleton: return existing workspace if one exists
-        cursor = await self._db.execute("SELECT id FROM workspace LIMIT 1")
-        existing = await cursor.fetchone()
-        if existing:
-            return await self.get(existing[0], user_id)
-
+    async def create(self, user_id: str, name: str, slug: str, description: str | None, root_path: str = "") -> dict:
+        cursor = await self._db.execute(
+            "SELECT id FROM workspace WHERE user_id = ? AND slug = ?", (user_id, slug)
+        )
+        if await cursor.fetchone():
+            raise ValueError(f"Space with slug '{slug}' already exists")
         ws_id = str(uuid.uuid4())
         await self._db.execute(
-            "INSERT INTO workspace (id, name, description, user_id) VALUES (?, ?, ?, ?)",
-            (ws_id, name, description or "", user_id),
+            "INSERT INTO workspace (id, name, slug, root_path, description, user_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (ws_id, name, slug, root_path, description or "", user_id),
         )
         await self._db.commit()
         return await self.get(ws_id, user_id)
@@ -360,10 +397,14 @@ class SQLiteKBRepository:
         return await self.get(kb_id, user_id)
 
     async def delete(self, kb_id: str, user_id: str) -> bool:
-        return False  # Cannot delete the workspace KB in local mode
+        cursor = await self._db.execute(
+            "DELETE FROM workspace WHERE id = ? AND user_id = ?", (kb_id, user_id)
+        )
+        await self._db.commit()
+        return cursor.rowcount > 0
 
     async def count_users(self) -> int:
-        return 1  # Single user in local mode
+        return 1
 
 
 class SQLiteChunkRepository:
@@ -468,7 +509,7 @@ class SQLiteUserRepository:
     async def get(self, user_id: str) -> dict | None:
         cursor = await self._db.execute(
             "SELECT user_id as id, name as display_name, 'local@localhost' as email, 1 as onboarded "
-            "FROM workspace WHERE user_id = ?",
+            "FROM workspace WHERE user_id = ? LIMIT 1",
             (user_id,),
         )
         row = await cursor.fetchone()
@@ -490,11 +531,12 @@ class SQLiteUserRepository:
         pass  # Always onboarded in local mode
 
     async def ensure_exists(self, user_id: str, email: str = "local@localhost") -> None:
-        cursor = await self._db.execute("SELECT id FROM workspace LIMIT 1")
+        cursor = await self._db.execute("SELECT id FROM workspace WHERE user_id = ? LIMIT 1", (user_id,))
         if not await cursor.fetchone():
             ws_id = str(uuid.uuid4())
             await self._db.execute(
-                "INSERT INTO workspace (id, name, description, user_id) VALUES (?, 'My Wiki', '', ?)",
+                "INSERT INTO workspace (id, name, slug, root_path, description, user_id) "
+                "VALUES (?, 'My Wiki', 'default', '', '', ?)",
                 (ws_id, user_id),
             )
             await self._db.commit()
