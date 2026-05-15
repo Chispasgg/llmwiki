@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import ReactDOM from 'react-dom'
-import { Pencil, Trash2, NotepadText, Folder, Upload } from 'lucide-react'
+import { Pencil, Trash2, NotepadText, Folder, Upload, FolderInput, Copy } from 'lucide-react'
 
 interface ContextMenuProps {
   open: boolean
@@ -100,6 +100,41 @@ export function SourceAreaContextMenu({
       >
         <Upload className="size-3.5" />
         Upload Files
+      </button>
+    </div>,
+    document.body,
+  )
+}
+
+export function WikiPageContextMenu({
+  open, x, y, onClose, onMoveToSpace, onCopyToSpace,
+}: ContextMenuProps & {
+  onMoveToSpace: () => void
+  onCopyToSpace: () => void
+}) {
+  const menuRef = React.useRef<HTMLDivElement>(null)
+  useContextMenuDismiss(open, onClose, menuRef)
+  if (!open) return null
+
+  return ReactDOM.createPortal(
+    <div
+      ref={menuRef}
+      className="fixed z-50 min-w-[10rem] bg-popover text-popover-foreground border rounded-md p-1 shadow-md animate-in fade-in-0 zoom-in-95"
+      style={{ left: x, top: y }}
+    >
+      <button
+        onClick={() => { onMoveToSpace(); onClose() }}
+        className="flex items-center gap-2 w-full rounded-sm px-2 py-1.5 text-sm hover:bg-accent cursor-pointer"
+      >
+        <FolderInput className="size-3.5" />
+        Move to space…
+      </button>
+      <button
+        onClick={() => { onCopyToSpace(); onClose() }}
+        className="flex items-center gap-2 w-full rounded-sm px-2 py-1.5 text-sm hover:bg-accent cursor-pointer"
+      >
+        <Copy className="size-3.5" />
+        Copy to space…
       </button>
     </div>,
     document.body,
