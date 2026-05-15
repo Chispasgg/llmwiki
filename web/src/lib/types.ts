@@ -9,6 +9,8 @@ export interface KnowledgeBase {
   source_count: number
   wiki_page_count: number
   owner_email: string | null
+  workspace_id: string | null
+  workspace_slug: string | null
   created_at: string
   updated_at: string
 }
@@ -79,4 +81,16 @@ export interface HistoryVersion {
   version: number
   content_length: number
   created_at: string
+}
+
+export interface Workspace {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  created_by: string
+  member_count: number
+  wiki_count: number
+  created_at: string
+  updated_at: string
 }
