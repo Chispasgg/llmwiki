@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronRight, FileText, NotepadText, Library,
@@ -113,6 +114,7 @@ interface KBSidenavProps {
   onClose?: () => void
   onMoveToSpace?: (docId: string, targetSpaceId: string) => void
   onCopyToSpace?: (docId: string, targetSpaceId: string) => void
+  workspaceSlug?: string | null
 }
 
 export function KBSidenav({
@@ -133,7 +135,9 @@ export function KBSidenav({
   onClose,
   onMoveToSpace,
   onCopyToSpace,
+  workspaceSlug,
 }: KBSidenavProps) {
+  const router = useRouter()
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [commandQuery, setCommandQuery] = React.useState('')
   const [shareOpen, setShareOpen] = React.useState(false)
@@ -472,6 +476,19 @@ export function KBSidenav({
           </div>
         )}
       </div>
+
+      {/* Back to workspace */}
+      {workspaceSlug && (
+        <div className="shrink-0 px-2 pb-1">
+          <button
+            onClick={() => router.push(`/workspaces/${workspaceSlug}`)}
+            className="flex items-center gap-2 w-full px-2.5 py-2 text-[13px] rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer"
+          >
+            <ArrowUpRight className="size-3.5 rotate-180" />
+            <span className="flex-1 text-left">Back to workspace</span>
+          </button>
+        </div>
+      )}
 
       {/* Sources button — separated from passive info below */}
       <div className="shrink-0 px-2 pb-1">

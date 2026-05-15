@@ -865,6 +865,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
             onClose={() => setSidenavOpen(false)}
             onMoveToSpace={handleMoveToSpace}
             onCopyToSpace={handleCopyToSpace}
+            workspaceSlug={kbSlug ?? null}
           />
         </div>
 
