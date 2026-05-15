@@ -3,6 +3,7 @@ export interface KnowledgeBase {
   user_id: string
   name: string
   slug: string
+  root_path?: string
   description: string | null
   is_shared: boolean
   source_count: number
@@ -10,6 +11,16 @@ export interface KnowledgeBase {
   owner_email: string | null
   created_at: string
   updated_at: string
+}
+
+export interface SpaceInfo {
+  id: string
+  name: string
+  slug: string
+  root_path: string
+  description: string
+  wiki_page_count: number
+  source_count: number
 }
 
 export interface Document {
