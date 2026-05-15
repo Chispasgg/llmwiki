@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+import shutil
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -47,71 +49,100 @@ class LocalUserService(UserService):
         }
 
 
+def _workspace_root() -> Path:
+    return Path(settings.WORKSPACE_PATH).resolve()
+
+
+def _space_root(root_path: str) -> Path:
+    """Resolve the filesystem root for a space.
+
+    root_path='' → the workspace root itself (legacy 'default' space, no files move).
+    root_path='personal' → WORKSPACE_PATH/personal/.
+    """
+    ws = _workspace_root()
+    if not root_path:
+        return ws
+    sp = (ws / root_path).resolve()
+    if not sp.is_relative_to(ws):
+        raise HTTPException(status_code=400, detail="Space root_path escapes workspace")
+    return sp
+
+
+def _safe_resolve(relative: str, space_root: Path) -> Path:
+    resolved = (space_root / relative).resolve()
+    if not resolved.is_relative_to(space_root):
+        raise HTTPException(status_code=400, detail="Path escapes space")
+    return resolved
+
+
+def _doc_to_disk_path(doc: dict, space_root: Path) -> Path | None:
+    relative = (doc["path"].rstrip("/") + "/" + doc["filename"]).lstrip("/")
+    resolved = (space_root / relative).resolve()
+    return resolved if resolved.is_relative_to(space_root) else None
+
+
+def _slugify(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "space"
+
+
 class LocalKBService(KBService):
 
     def __init__(self, db, user_id: str):
         self.db = db
         self.user_id = user_id
 
+    def _repo(self):
+        from infra.db.sqlite import SQLiteKBRepository
+        return SQLiteKBRepository(self.db)
+
     async def list(self) -> list[dict]:
-        cursor = await self.db.execute(
-            "SELECT w.id, w.user_id, w.name, w.name as slug, w.description, "
-            "w.created_at, w.created_at as updated_at, "
-            "(SELECT count(*) FROM documents WHERE source_kind != 'wiki' AND status != 'failed') as source_count, "
-            "(SELECT count(*) FROM documents WHERE source_kind = 'wiki' AND status != 'failed') as wiki_page_count "
-            "FROM workspace w",
-        )
-        rows = await cursor.fetchall()
-        cols = [d[0] for d in cursor.description]
-        return [dict(zip(cols, r)) for r in rows]
+        return await self._repo().list(self.user_id)
 
     async def get(self, kb_id: str) -> dict | None:
-        kbs = await self.list()
-        return kbs[0] if kbs else None
+        return await self._repo().get(kb_id, self.user_id)
 
     async def create(self, name: str, description: str | None) -> dict:
-        kbs = await self.list()
-        if kbs:
-            return kbs[0]
-        raise HTTPException(status_code=400, detail="No workspace initialized")
+        repo = self._repo()
+        slug = _slugify(name)
+        base_slug = slug
+        counter = 2
+        while True:
+            try:
+                space = await repo.create(
+                    self.user_id, name, slug, description, root_path=slug
+                )
+                break
+            except ValueError:
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+
+        # Create directory structure for the new space
+        space_dir = _space_root(space["root_path"])
+        (space_dir / "wiki").mkdir(parents=True, exist_ok=True)
+        (space_dir / "sources").mkdir(exist_ok=True)
+        return space
 
     async def update(self, kb_id: str, name: str | None, description: str | None) -> dict | None:
-        sets = []
-        params = []
+        fields = {}
         if name is not None:
-            sets.append("name = ?")
-            params.append(name)
+            fields["name"] = name
         if description is not None:
-            sets.append("description = ?")
-            params.append(description)
-        if not sets:
+            fields["description"] = description
+        if not fields:
             return None
-        params.append(kb_id)
-        await self.db.execute(f"UPDATE workspace SET {', '.join(sets)} WHERE id = ?", tuple(params))
-        await self.db.commit()
-        return await self.get(kb_id)
+        return await self._repo().update(kb_id, self.user_id, **fields)
 
     async def delete(self, kb_id: str) -> bool:
-        raise HTTPException(status_code=400, detail="Cannot delete the workspace in local mode")
-
-
-def _workspace_root() -> Path:
-    return Path(settings.WORKSPACE_PATH).resolve()
-
-
-def _safe_resolve(relative: str) -> Path:
-    ws = _workspace_root()
-    resolved = (ws / relative).resolve()
-    if not resolved.is_relative_to(ws):
-        raise HTTPException(status_code=400, detail="Path escapes workspace")
-    return resolved
-
-
-def _doc_to_disk_path(doc: dict) -> Path | None:
-    relative = (doc["path"].rstrip("/") + "/" + doc["filename"]).lstrip("/")
-    ws = _workspace_root()
-    resolved = (ws / relative).resolve()
-    return resolved if resolved.is_relative_to(ws) else None
+        repo = self._repo()
+        space = await repo.get(kb_id, self.user_id)
+        if not space:
+            return False
+        if not space.get("root_path"):
+            raise HTTPException(status_code=400, detail="Cannot delete the default space")
+        space_dir = _space_root(space["root_path"])
+        if space_dir.exists():
+            shutil.rmtree(str(space_dir))
+        return await repo.delete(kb_id, self.user_id)
 
 
 class LocalDocumentService(DocumentService):
@@ -120,6 +151,13 @@ class LocalDocumentService(DocumentService):
         self.user_id = user_id
         self.doc_repo = doc_repo
         self.chunk_repo = chunk_repo
+
+    async def _get_space_root(self, doc: dict) -> Path:
+        ws_id = doc.get("workspace_id")
+        if not ws_id:
+            return _workspace_root()
+        ws = await self.doc_repo.get_workspace(ws_id)
+        return _space_root(ws["root_path"] if ws else "")
 
     async def list(self, kb_id: str, path: str | None = None) -> list[dict]:
         return await self.doc_repo.list_by_kb(kb_id, path=path)
@@ -150,6 +188,7 @@ class LocalDocumentService(DocumentService):
         return {"url": f"{api_url}/v1/files/{relative}"}
 
     async def create_note(self, kb_id: str, filename: str, path: str, content: str) -> dict:
+        from infra.db.sqlite import SQLiteKBRepository
         meta = parse_frontmatter(content)
         title = meta.get("title", "").strip() or title_from_filename(filename)
         tags = extract_tags(meta)
@@ -158,18 +197,21 @@ class LocalDocumentService(DocumentService):
         if existing:
             raise HTTPException(status_code=409, detail=f"'{filename}' already exists at {path}")
 
+        ws = await SQLiteKBRepository(self.doc_repo._db).get(kb_id, self.user_id)
+        if not ws:
+            raise HTTPException(status_code=404, detail="Space not found")
+        space_root = _space_root(ws.get("root_path", ""))
+
         relative = (path.rstrip("/") + "/" + filename).lstrip("/")
-        file_path = _safe_resolve(relative)
+        file_path = _safe_resolve(relative, space_root)
         file_path.parent.mkdir(parents=True, exist_ok=True)
         mark_written(str(file_path))
         file_path.write_text(content or "", encoding="utf-8")
 
         row = await self.doc_repo.create_note(kb_id, self.user_id, filename, path, title, content, tags)
-
         if content:
             chunks = chunk_text(content)
             await self.chunk_repo.store(str(row["id"]), self.user_id, kb_id, chunks)
-
         return row
 
     async def update_content(self, doc_id: str, content: str) -> dict | None:
@@ -177,12 +219,12 @@ class LocalDocumentService(DocumentService):
         if not doc:
             return None
 
-        # Save current content to history before overwriting (only for wiki pages)
         old_content = doc.get("content") or ""
         if old_content and old_content.strip() != content.strip() and doc.get("source_kind") == "wiki":
-            await self.doc_repo.save_history_entry(doc_id, old_content, doc.get("version", 0))
+            await self.doc_repo.save_history_entry(doc_id, old_content, doc.get("version", 0), self.user_id)
 
-        file_path = _doc_to_disk_path(doc)
+        space_root = await self._get_space_root(doc)
+        file_path = _doc_to_disk_path(doc, space_root)
         if file_path:
             mark_written(str(file_path))
             file_path.write_text(content, encoding="utf-8")
@@ -207,14 +249,15 @@ class LocalDocumentService(DocumentService):
         if not doc:
             return None
 
-        old_path = _doc_to_disk_path(doc)
+        space_root = await self._get_space_root(doc)
+        old_path = _doc_to_disk_path(doc, space_root)
         needs_move = "filename" in fields or "path" in fields
 
         if needs_move and old_path and old_path.is_file():
             new_filename = fields.get("filename", doc["filename"])
             new_dir = fields.get("path", doc["path"])
             new_relative = (new_dir.rstrip("/") + "/" + new_filename).lstrip("/")
-            new_path = _safe_resolve(new_relative)
+            new_path = _safe_resolve(new_relative, space_root)
             new_path.parent.mkdir(parents=True, exist_ok=True)
             mark_written(str(old_path))
             mark_written(str(new_path))
@@ -227,7 +270,8 @@ class LocalDocumentService(DocumentService):
     async def delete(self, doc_id: str) -> bool:
         doc = await self.doc_repo.get(doc_id)
         if doc:
-            file_path = _doc_to_disk_path(doc)
+            space_root = await self._get_space_root(doc)
+            file_path = _doc_to_disk_path(doc, space_root)
             if file_path and file_path.is_file():
                 mark_written(str(file_path))
                 file_path.unlink()
@@ -237,11 +281,94 @@ class LocalDocumentService(DocumentService):
         for doc_id in doc_ids:
             doc = await self.doc_repo.get(doc_id)
             if doc:
-                file_path = _doc_to_disk_path(doc)
+                space_root = await self._get_space_root(doc)
+                file_path = _doc_to_disk_path(doc, space_root)
                 if file_path and file_path.is_file():
                     mark_written(str(file_path))
                     file_path.unlink()
         return await self.doc_repo.bulk_archive(doc_ids, self.user_id)
+
+    async def move_to_space(self, doc_id: str, target_space_id: str) -> dict:
+        from infra.db.sqlite import SQLiteKBRepository
+        doc = await self.doc_repo.get(doc_id)
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+        repo = SQLiteKBRepository(self.doc_repo._db)
+        target = await repo.get(target_space_id, self.user_id)
+        if not target:
+            raise HTTPException(status_code=404, detail="Target space not found")
+
+        src_root = await self._get_space_root(doc)
+        dst_root = _space_root(target.get("root_path", ""))
+        src_path = _doc_to_disk_path(doc, src_root)
+
+        conflict = await self.doc_repo.find_by_path(
+            target_space_id, self.user_id, doc["filename"], doc["path"]
+        )
+        if conflict:
+            raise HTTPException(
+                status_code=409,
+                detail=f"A page named '{doc['filename']}' already exists in the target space",
+            )
+
+        if src_path and src_path.is_file():
+            dst_path = _safe_resolve(
+                (doc["path"].rstrip("/") + "/" + doc["filename"]).lstrip("/"),
+                dst_root,
+            )
+            dst_path.parent.mkdir(parents=True, exist_ok=True)
+            mark_written(str(src_path))
+            mark_written(str(dst_path))
+            src_path.rename(dst_path)
+
+        await self.doc_repo._db.execute(
+            "UPDATE documents SET workspace_id = ? WHERE id = ?",
+            (target_space_id, doc_id),
+        )
+        await self.doc_repo._db.commit()
+        return await self.doc_repo.get(doc_id)
+
+    async def copy_to_space(self, doc_id: str, target_space_id: str) -> dict:
+        from infra.db.sqlite import SQLiteKBRepository
+        doc = await self.doc_repo.get(doc_id)
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+        repo = SQLiteKBRepository(self.doc_repo._db)
+        target = await repo.get(target_space_id, self.user_id)
+        if not target:
+            raise HTTPException(status_code=404, detail="Target space not found")
+
+        src_root = await self._get_space_root(doc)
+        dst_root = _space_root(target.get("root_path", ""))
+
+        base_parts = doc["filename"].rsplit(".", 1)
+        stem = base_parts[0]
+        ext = ("." + base_parts[1]) if len(base_parts) == 2 else ""
+        new_filename = doc["filename"]
+        counter = 2
+        while await self.doc_repo.find_by_path(target_space_id, self.user_id, new_filename, doc["path"]):
+            new_filename = f"{stem}-copy{'' if counter == 2 else f'-{counter}'}{ext}"
+            counter += 1
+
+        src_path = _doc_to_disk_path(doc, src_root)
+        relative_copy = (doc["path"].rstrip("/") + "/" + new_filename).lstrip("/")
+        if src_path and src_path.is_file():
+            dst_path = _safe_resolve(relative_copy, dst_root)
+            dst_path.parent.mkdir(parents=True, exist_ok=True)
+            mark_written(str(dst_path))
+            shutil.copy2(str(src_path), str(dst_path))
+
+        content = doc.get("content") or ""
+        meta = parse_frontmatter(content)
+        title = meta.get("title", "").strip() or title_from_filename(new_filename)
+        tags = extract_tags(meta)
+        new_doc = await self.doc_repo.create_note(
+            target_space_id, self.user_id, new_filename, doc["path"], title, content, tags
+        )
+        if content:
+            chunks = chunk_text(content)
+            await self.chunk_repo.store(new_doc["id"], self.user_id, target_space_id, chunks)
+        return new_doc
 
 
 class LocalServiceFactory(ServiceFactory):
@@ -266,3 +393,6 @@ class LocalServiceFactory(ServiceFactory):
             doc_repo=self._doc_repo,
             chunk_repo=self._chunk_repo,
         )
+
+    def workspace_service(self, user_id: str):
+        raise HTTPException(status_code=501, detail="Not supported in local mode")

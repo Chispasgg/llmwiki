@@ -3,13 +3,26 @@ export interface KnowledgeBase {
   user_id: string
   name: string
   slug: string
+  root_path?: string
   description: string | null
   is_shared: boolean
   source_count: number
   wiki_page_count: number
   owner_email: string | null
+  workspace_id: string | null
+  workspace_slug: string | null
   created_at: string
   updated_at: string
+}
+
+export interface SpaceInfo {
+  id: string
+  name: string
+  slug: string
+  root_path: string
+  description: string
+  wiki_page_count: number
+  source_count: number
 }
 
 export interface Document {
@@ -65,7 +78,20 @@ export interface WikiSubsection {
 export interface HistoryVersion {
   id: string
   document_id: string
+  user_id: string | null
   version: number
   content_length: number
   created_at: string
+}
+
+export interface Workspace {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  created_by: string
+  member_count: number
+  wiki_count: number
+  created_at: string
+  updated_at: string
 }

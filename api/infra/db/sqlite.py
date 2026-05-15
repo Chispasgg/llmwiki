@@ -52,8 +52,36 @@ async def create_pool(db_path: str) -> aiosqlite.Connection:
     await db.execute("PRAGMA foreign_keys=ON")
     schema = _SCHEMA_PATH.read_text()
     await db.executescript(schema)
-    await db.commit()
+    await migrate_schema(db)
     return db
+
+
+async def migrate_schema(db: aiosqlite.Connection) -> None:
+    """Apply incremental schema migrations. Safe to run on every startup."""
+    cursor = await db.execute("PRAGMA table_info(workspace)")
+    cols = {row[1] for row in await cursor.fetchall()}
+    if "slug" not in cols:
+        await db.execute("ALTER TABLE workspace ADD COLUMN slug TEXT NOT NULL DEFAULT ''")
+    if "root_path" not in cols:
+        await db.execute("ALTER TABLE workspace ADD COLUMN root_path TEXT NOT NULL DEFAULT ''")
+
+    cursor = await db.execute("PRAGMA table_info(documents)")
+    doc_cols = {row[1] for row in await cursor.fetchall()}
+    if "workspace_id" not in doc_cols:
+        await db.execute(
+            "ALTER TABLE documents ADD COLUMN workspace_id TEXT REFERENCES workspace(id) ON DELETE CASCADE"
+        )
+
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_workspace ON documents(workspace_id)"
+    )
+
+    cursor = await db.execute("PRAGMA table_info(document_history)")
+    hist_cols = {row[1] for row in await cursor.fetchall()}
+    if "user_id" not in hist_cols:
+        await db.execute("ALTER TABLE document_history ADD COLUMN user_id TEXT")
+
+    await db.commit()
 
 
 _ALLOWED_DOC_UPDATE_FIELDS = frozenset({
@@ -66,23 +94,18 @@ class SQLiteDocumentRepository:
         self._db = db
 
     async def list_by_kb(self, kb_id: str, *, path: str | None = None, archived: bool = False) -> list[dict]:
-        """Lista documentos del workspace.
-
-        kb_id e archived se ignoran intencionalmente: en modo local hay exactamente
-        un workspace (que actúa como KB único) y los documentos se borran físicamente
-        en lugar de archivarse. Los parámetros existen para conformidad con DocumentService ABC.
-        """
         if path:
             cursor = await self._db.execute(
                 f"SELECT {_DOC_COLUMNS} FROM documents "
-                "WHERE path = ? AND status != 'failed' "
+                "WHERE workspace_id = ? AND path = ? AND status != 'failed' "
                 "ORDER BY filename",
-                (path,),
+                (kb_id, path),
             )
         else:
             cursor = await self._db.execute(
                 f"SELECT {_DOC_COLUMNS} FROM documents "
-                "WHERE status != 'failed' ORDER BY filename",
+                "WHERE workspace_id = ? AND status != 'failed' ORDER BY filename",
+                (kb_id,),
             )
         rows = await cursor.fetchall()
         return [_row_to_dict(cursor, r) for r in rows]
@@ -112,11 +135,10 @@ class SQLiteDocumentRepository:
     async def find_by_path(
         self, kb_id: str, user_id: str, filename: str, path: str,
     ) -> dict | None:
-        # kb_id e user_id ignorados: en modo local hay un único workspace (ver list_by_kb)
         cursor = await self._db.execute(
             f"SELECT {_DOC_COLUMNS} FROM documents "
-            "WHERE filename = ? AND path = ? AND status != 'failed'",
-            (filename, path),
+            "WHERE workspace_id = ? AND filename = ? AND path = ? AND status != 'failed'",
+            (kb_id, filename, path),
         )
         row = await cursor.fetchone()
         return _row_to_dict(cursor, row) if row else None
@@ -136,10 +158,10 @@ class SQLiteDocumentRepository:
         doc_number = row[0]
 
         await self._db.execute(
-            "INSERT INTO documents (id, user_id, filename, title, path, relative_path, source_kind, "
+            "INSERT INTO documents (id, workspace_id, user_id, filename, title, path, relative_path, source_kind, "
             "file_type, status, content, tags, version, document_number) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, 'md', 'ready', ?, ?, 0, ?)",
-            (doc_id, user_id, filename, title, path, relative_path, source_kind,
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'md', 'ready', ?, ?, 0, ?)",
+            (doc_id, kb_id, user_id, filename, title, path, relative_path, source_kind,
              content, json.dumps(tags), doc_number),
         )
         await self._db.commit()
@@ -206,17 +228,17 @@ class SQLiteDocumentRepository:
         )
         await self._db.commit()
 
-    async def save_history_entry(self, doc_id: str, content: str, version: int) -> None:
+    async def save_history_entry(self, doc_id: str, content: str, version: int, user_id: str | None = None) -> None:
         await self._db.execute(
-            "INSERT INTO document_history (id, document_id, content, version) "
-            "VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
-            (doc_id, content, version),
+            "INSERT INTO document_history (id, document_id, user_id, content, version) "
+            "VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)",
+            (doc_id, user_id, content, version),
         )
         await self._db.commit()
 
     async def list_history(self, doc_id: str) -> list[dict]:
         cursor = await self._db.execute(
-            "SELECT id, document_id, version, length(content) AS content_length, created_at "
+            "SELECT id, document_id, user_id, version, length(content) AS content_length, created_at "
             "FROM document_history WHERE document_id = ? "
             "ORDER BY created_at DESC LIMIT 50",
             (doc_id,),
@@ -239,10 +261,20 @@ class SQLiteDocumentRepository:
 
     async def get_kb_id(self, doc_id: str) -> str | None:
         cursor = await self._db.execute(
-            "SELECT id FROM workspace LIMIT 1",
+            "SELECT workspace_id FROM documents WHERE id = ?", (doc_id,)
         )
         row = await cursor.fetchone()
         return row[0] if row else None
+
+    async def get_workspace(self, workspace_id: str) -> dict | None:
+        cursor = await self._db.execute(
+            "SELECT id, name, slug, root_path FROM workspace WHERE id = ?", (workspace_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cursor.description]
+        return dict(zip(cols, row))
 
     async def update_status(self, doc_id: str, status: str, **fields) -> None:
         updates = ["status = ?"]
@@ -297,47 +329,62 @@ class SQLiteKBRepository:
     def __init__(self, db: aiosqlite.Connection):
         self._db = db
 
-    async def list_all(self, user_id: str) -> list[dict]:
+    _KB_SELECT = (
+        "SELECT w.id, w.user_id, w.name, w.slug, w.root_path, w.description, "
+        "w.created_at, w.created_at as updated_at, "
+        "(SELECT count(*) FROM documents WHERE workspace_id = w.id AND source_kind != 'wiki' AND status != 'failed') as source_count, "
+        "(SELECT count(*) FROM documents WHERE workspace_id = w.id AND source_kind = 'wiki' AND status != 'failed') as wiki_page_count "
+        "FROM workspace w"
+    )
+
+    async def list(self, user_id: str) -> list[dict]:
         cursor = await self._db.execute(
-            "SELECT w.id, w.user_id, w.name, w.name as slug, w.description, "
-            "w.created_at, w.created_at as updated_at, "
-            "(SELECT count(*) FROM documents WHERE source_kind != 'wiki' AND status != 'failed') as source_count, "
-            "(SELECT count(*) FROM documents WHERE source_kind = 'wiki' AND status != 'failed') as wiki_page_count "
-            "FROM workspace w",
+            f"{self._KB_SELECT} WHERE w.user_id = ? ORDER BY w.created_at",
+            (user_id,),
         )
         rows = await cursor.fetchall()
-        return [_row_to_dict(cursor, r) for r in rows]
+        cols = [d[0] for d in cursor.description]
+        return [dict(zip(cols, r)) for r in rows]
 
     async def get(self, kb_id: str, user_id: str) -> dict | None:
         cursor = await self._db.execute(
-            "SELECT w.id, w.user_id, w.name, w.name as slug, w.description, "
-            "w.created_at, w.created_at as updated_at, "
-            "(SELECT count(*) FROM documents WHERE source_kind != 'wiki' AND status != 'failed') as source_count, "
-            "(SELECT count(*) FROM documents WHERE source_kind = 'wiki' AND status != 'failed') as wiki_page_count "
-            "FROM workspace w WHERE w.id = ?",
-            (kb_id,),
+            f"{self._KB_SELECT} WHERE w.id = ? AND w.user_id = ?",
+            (kb_id, user_id),
         )
         row = await cursor.fetchone()
-        return _row_to_dict(cursor, row) if row else None
+        if not row:
+            return None
+        cols = [d[0] for d in cursor.description]
+        return dict(zip(cols, row))
+
+    async def get_by_slug(self, slug: str, user_id: str) -> dict | None:
+        cursor = await self._db.execute(
+            f"{self._KB_SELECT} WHERE w.slug = ? AND w.user_id = ?",
+            (slug, user_id),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cursor.description]
+        return dict(zip(cols, row))
 
     async def get_owner(self, kb_id: str) -> str | None:
         cursor = await self._db.execute(
-            "SELECT user_id FROM workspace LIMIT 1",
+            "SELECT user_id FROM workspace WHERE id = ?", (kb_id,)
         )
         row = await cursor.fetchone()
         return row[0] if row else None
 
-    async def create(self, user_id: str, name: str, slug: str, description: str | None) -> dict:
-        # Enforce singleton: return existing workspace if one exists
-        cursor = await self._db.execute("SELECT id FROM workspace LIMIT 1")
-        existing = await cursor.fetchone()
-        if existing:
-            return await self.get(existing[0], user_id)
-
+    async def create(self, user_id: str, name: str, slug: str, description: str | None, root_path: str = "") -> dict:
+        cursor = await self._db.execute(
+            "SELECT id FROM workspace WHERE user_id = ? AND slug = ?", (user_id, slug)
+        )
+        if await cursor.fetchone():
+            raise ValueError(f"Space with slug '{slug}' already exists")
         ws_id = str(uuid.uuid4())
         await self._db.execute(
-            "INSERT INTO workspace (id, name, description, user_id) VALUES (?, ?, ?, ?)",
-            (ws_id, name, description or "", user_id),
+            "INSERT INTO workspace (id, name, slug, root_path, description, user_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (ws_id, name, slug, root_path, description or "", user_id),
         )
         await self._db.commit()
         return await self.get(ws_id, user_id)
@@ -360,10 +407,14 @@ class SQLiteKBRepository:
         return await self.get(kb_id, user_id)
 
     async def delete(self, kb_id: str, user_id: str) -> bool:
-        return False  # Cannot delete the workspace KB in local mode
+        cursor = await self._db.execute(
+            "DELETE FROM workspace WHERE id = ? AND user_id = ?", (kb_id, user_id)
+        )
+        await self._db.commit()
+        return cursor.rowcount > 0
 
     async def count_users(self) -> int:
-        return 1  # Single user in local mode
+        return 1
 
 
 class SQLiteChunkRepository:
@@ -392,17 +443,30 @@ class SQLiteChunkRepository:
     async def search_fulltext(
         self, kb_id: str, query: str, *, limit: int = 20,
         path_filter: str | None = None, user_id: str | None = None,
+        workspace_ids: list[str] | None = None,
     ) -> list[dict]:
         sql = (
             "SELECT dc.content, dc.page, dc.header_breadcrumb, dc.chunk_index, "
-            "d.filename, d.title, d.path, d.file_type, d.tags, "
+            "d.filename, d.title, d.path, d.file_type, d.tags, d.workspace_id, "
+            "w.name as space_name, w.slug as space_slug, "
             "rank "
             "FROM document_chunks dc "
             "JOIN chunks_fts fts ON dc.rowid = fts.rowid "
             "JOIN documents d ON dc.document_id = d.id "
+            "LEFT JOIN workspace w ON d.workspace_id = w.id "
             "WHERE chunks_fts MATCH ? AND d.status != 'failed' "
         )
         params: list = [query]
+
+        if workspace_ids is not None:
+            if workspace_ids:
+                placeholders = ",".join("?" for _ in workspace_ids)
+                sql += f"AND d.workspace_id IN ({placeholders}) "
+                params.extend(workspace_ids)
+            # workspace_ids=[] means no filter (global)
+        elif kb_id:
+            sql += "AND d.workspace_id = ? "
+            params.append(kb_id)
 
         if path_filter == "wiki":
             sql += "AND d.source_kind = 'wiki' "
@@ -468,7 +532,7 @@ class SQLiteUserRepository:
     async def get(self, user_id: str) -> dict | None:
         cursor = await self._db.execute(
             "SELECT user_id as id, name as display_name, 'local@localhost' as email, 1 as onboarded "
-            "FROM workspace WHERE user_id = ?",
+            "FROM workspace WHERE user_id = ? LIMIT 1",
             (user_id,),
         )
         row = await cursor.fetchone()
@@ -490,11 +554,12 @@ class SQLiteUserRepository:
         pass  # Always onboarded in local mode
 
     async def ensure_exists(self, user_id: str, email: str = "local@localhost") -> None:
-        cursor = await self._db.execute("SELECT id FROM workspace LIMIT 1")
+        cursor = await self._db.execute("SELECT id FROM workspace WHERE user_id = ? LIMIT 1", (user_id,))
         if not await cursor.fetchone():
             ws_id = str(uuid.uuid4())
             await self._db.execute(
-                "INSERT INTO workspace (id, name, description, user_id) VALUES (?, 'My Wiki', '', ?)",
+                "INSERT INTO workspace (id, name, slug, root_path, description, user_id) "
+                "VALUES (?, 'My Wiki', 'default', '', '', ?)",
                 (ws_id, user_id),
             )
             await self._db.commit()

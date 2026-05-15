@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from deps import get_document_service
 from services.base import DocumentService
-from services.types import CreateNote, UpdateContent, UpdateMetadata, BulkDelete
+from services.types import CreateNote, UpdateContent, UpdateMetadata, BulkDelete, MoveToSpace, CopyToSpace
 
 router = APIRouter(tags=["documents"])
 
@@ -93,6 +93,24 @@ async def bulk_delete_documents(
 async def delete_document(doc_id: UUID, service: Annotated[DocumentService, Depends(get_document_service)]):
     if not await service.delete(str(doc_id)):
         raise HTTPException(status_code=404, detail="Document not found")
+
+
+@router.post("/v1/documents/{doc_id}/move-to-space", status_code=200)
+async def move_document_to_space(
+    doc_id: UUID,
+    body: MoveToSpace,
+    service: Annotated[DocumentService, Depends(get_document_service)],
+):
+    return await service.move_to_space(str(doc_id), body.target_space_id)
+
+
+@router.post("/v1/documents/{doc_id}/copy-to-space", status_code=201)
+async def copy_document_to_space(
+    doc_id: UUID,
+    body: CopyToSpace,
+    service: Annotated[DocumentService, Depends(get_document_service)],
+):
+    return await service.copy_to_space(str(doc_id), body.target_space_id)
 
 
 @router.get(

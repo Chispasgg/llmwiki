@@ -118,3 +118,8 @@ async def require_admin(request: Request) -> str:
         if not row or row["role"] not in ("admin", "superadmin"):
             raise HTTPException(status_code=403, detail="Admin access required")
     return user_id
+
+
+async def get_workspace_service(request: Request):
+    user_id = await get_user_id(request)
+    return request.app.state.factory.workspace_service(user_id)

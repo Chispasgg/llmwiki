@@ -120,6 +120,27 @@ def _get_source_kind(relative_path: str) -> str:
     return "source"
 
 
+async def _find_workspace_id(db: aiosqlite.Connection, relative: str) -> str | None:
+    """Find which workspace owns this file based on root_path prefix matching.
+
+    relative is the path relative to WORKSPACE_PATH (e.g. 'personal/wiki/page.md').
+    The workspace with the longest matching root_path prefix wins.
+    root_path='' (default space) matches everything as a fallback.
+    """
+    cursor = await db.execute("SELECT id, root_path FROM workspace ORDER BY length(root_path) DESC")
+    rows = await cursor.fetchall()
+    for ws_id, root_path in rows:
+        if not root_path:
+            # Default space: matches files NOT inside any named space
+            other_roots = [r for _, r in rows if r]
+            is_in_named_space = any(relative.startswith(r + "/") or relative == r for r in other_roots)
+            if not is_in_named_space:
+                return ws_id
+        elif relative.startswith(root_path + "/") or relative == root_path:
+            return ws_id
+    return None
+
+
 async def _index_file(db: aiosqlite.Connection, workspace: Path, file_path: Path) -> None:
     """Index or re-index a single file."""
     relative = str(file_path.relative_to(workspace))
@@ -190,14 +211,15 @@ async def _index_file(db: aiosqlite.Connection, workspace: Path, file_path: Path
         row = await cursor.fetchone()
         doc_number = row[0]
 
+        workspace_id = await _find_workspace_id(db, relative)
         status = "ready" if content is not None else "pending"
         await db.execute(
-            "INSERT INTO documents (id, user_id, filename, title, path, relative_path, "
+            "INSERT INTO documents (id, workspace_id, user_id, filename, title, path, relative_path, "
             "source_kind, file_type, file_size, status, content, tags, version, "
             "content_hash, mtime_ns, last_indexed_at, document_number) "
-            "VALUES (?, (SELECT user_id FROM workspace LIMIT 1), ?, ?, ?, ?, ?, ?, ?, "
+            "VALUES (?, ?, (SELECT user_id FROM workspace LIMIT 1), ?, ?, ?, ?, ?, ?, ?, "
             "?, ?, '[]', 0, ?, ?, datetime('now'), ?)",
-            (doc_id, filename, title, dir_path, relative, source_kind,
+            (doc_id, workspace_id, filename, title, dir_path, relative, source_kind,
              ext or "bin", stat.st_size, status, content, content_hash,
              int(stat.st_mtime_ns), doc_number),
         )

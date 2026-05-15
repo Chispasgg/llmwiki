@@ -21,26 +21,44 @@ async def _init_local(app: FastAPI) -> object:
 
     workspace = Path(settings.WORKSPACE_PATH).resolve()
     workspace.mkdir(parents=True, exist_ok=True)
-    (workspace / "wiki").mkdir(exist_ok=True)
     (workspace / ".llmwiki").mkdir(exist_ok=True)
     (workspace / ".llmwiki" / "cache").mkdir(exist_ok=True)
 
     db_path = str(workspace / ".llmwiki" / "index.db")
-    db = await create_sqlite_pool(db_path)
+    db = await create_sqlite_pool(db_path)  # migrate_schema called inside
 
     local_user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, "local"))
     auth_provider = LocalAuthProvider(local_user_id)
     storage = LocalStorageService(str(workspace), settings.API_URL)
 
-    cursor = await db.execute("SELECT id FROM workspace LIMIT 1")
-    if not await cursor.fetchone():
+    cursor = await db.execute("SELECT id, slug, root_path FROM workspace LIMIT 1")
+    existing = await cursor.fetchone()
+    if not existing:
         ws_id = str(uuid.uuid4())
         await db.execute(
-            "INSERT INTO workspace (id, name, description, user_id) VALUES (?, ?, '', ?)",
+            "INSERT INTO workspace (id, name, slug, root_path, description, user_id) "
+            "VALUES (?, ?, 'default', '', '', ?)",
             (ws_id, workspace.name, local_user_id),
         )
         await db.commit()
         logger.info("Initialized local workspace: %s", workspace)
+    else:
+        ws_id, slug, root_path = existing
+        if not slug:
+            await db.execute(
+                "UPDATE workspace SET slug = 'default', root_path = '' WHERE id = ?", (ws_id,)
+            )
+            await db.commit()
+            logger.info("Migrated legacy workspace to slug='default'")
+        # Backfill workspace_id on orphaned documents
+        await db.execute(
+            "UPDATE documents SET workspace_id = ? WHERE workspace_id IS NULL",
+            (ws_id,)
+        )
+        await db.commit()
+
+    # Ensure wiki/ subdir exists in the default space (root_path='')
+    (workspace / "wiki").mkdir(exist_ok=True)
 
     app.state.mode = "local"
     app.state.pool = None

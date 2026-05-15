@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronRight, FileText, NotepadText, Library,
@@ -18,6 +19,7 @@ import { cn } from '@/lib/utils'
 import { WikiSelector } from '@/components/kb/WikiSelector'
 import { SidenavUserMenu } from '@/components/kb/SidenavUserMenu'
 import { ShareDialog } from '@/components/kb/ShareDialog'
+import { WikiPageContextMenu } from '@/components/kb/ContextMenus'
 import { ExportPdfDialog } from '@/components/kb/ExportPdfDialog'
 import { apiFetch, API_URL, API_CREDENTIALS } from '@/lib/api'
 import { useKBStore, useUserStore } from '@/stores'
@@ -31,6 +33,68 @@ interface Usage {
   max_storage_bytes: number
 }
 
+
+function SpacePickerModal({
+  open,
+  onClose,
+  currentSpaceId,
+  title,
+  onConfirm,
+}: {
+  open: boolean
+  onClose: () => void
+  currentSpaceId: string
+  title: string
+  onConfirm: (spaceId: string) => void
+}) {
+  const knowledgeBases = useKBStore((s) => s.knowledgeBases)
+  const [selected, setSelected] = React.useState<string | null>(null)
+  const choices = knowledgeBases.filter((kb) => kb.id !== currentSpaceId)
+
+  React.useEffect(() => {
+    if (!open) setSelected(null)
+  }, [open])
+
+  if (!open) return null
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
+        <div className="space-y-1 max-h-60 overflow-y-auto">
+          {choices.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">No other spaces available</p>
+          ) : choices.map((kb) => (
+            <button
+              key={kb.id}
+              onClick={() => setSelected(kb.id)}
+              className={cn(
+                'w-full text-left px-3 py-2 rounded-md text-sm transition-colors',
+                selected === kb.id
+                  ? 'bg-primary text-primary-foreground'
+                  : 'hover:bg-accent',
+              )}
+            >
+              {kb.name}
+            </button>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm border rounded-md hover:bg-accent cursor-pointer">
+            Cancel
+          </button>
+          <button
+            disabled={!selected}
+            onClick={() => { if (selected) { onConfirm(selected); onClose() } }}
+            className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 cursor-pointer"
+          >
+            Confirm
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 interface KBSidenavProps {
   kbId: string
@@ -48,6 +112,9 @@ interface KBSidenavProps {
   onGraphToggle: () => void
   onOpenSourceDoc: (docId: string) => void
   onClose?: () => void
+  onMoveToSpace?: (docId: string, targetSpaceId: string) => void
+  onCopyToSpace?: (docId: string, targetSpaceId: string) => void
+  workspaceSlug?: string | null
 }
 
 export function KBSidenav({
@@ -66,7 +133,11 @@ export function KBSidenav({
   onGraphToggle,
   onOpenSourceDoc,
   onClose,
+  onMoveToSpace,
+  onCopyToSpace,
+  workspaceSlug,
 }: KBSidenavProps) {
+  const router = useRouter()
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [commandQuery, setCommandQuery] = React.useState('')
   const [shareOpen, setShareOpen] = React.useState(false)
@@ -148,7 +219,7 @@ export function KBSidenav({
   [])
 
   const allSearchableItems = React.useMemo(() => {
-    const items: { type: 'wiki' | 'source'; title: string; keywords: string; tags: string[]; path?: string; docNumber?: number | null; doc?: DocumentListItem }[] = []
+    const items: { type: 'wiki' | 'source'; title: string; keywords: string; tags: string[]; path?: string; docNumber?: number | null; doc?: DocumentListItem; spaceName?: string }[] = []
     const addWikiNodes = (nodes: WikiNode[], parentPath = '') => {
       for (const node of nodes) {
         if (node.path) {
@@ -303,16 +374,19 @@ export function KBSidenav({
                   className="flex items-center"
                 >
                   <FileText className="size-3.5 mr-2 opacity-50 shrink-0" />
-                  <span className="truncate">{item.title}</span>
-                  {item.tags.length > 0 && (
-                    <span className="ml-auto flex items-center gap-1 shrink-0 pl-2">
-                      {item.tags.slice(0, 3).map((tag) => (
-                        <span key={tag} className="text-[10px] text-muted-foreground/50 bg-muted px-1.5 py-0.5 rounded">
-                          {tag}
-                        </span>
-                      ))}
-                    </span>
-                  )}
+                  <span className="truncate flex-1 min-w-0">{item.title}</span>
+                  <span className="ml-auto flex items-center gap-1 shrink-0 pl-2">
+                    {item.spaceName && (
+                      <span className="text-[10px] text-muted-foreground/50 bg-muted px-1.5 py-0.5 rounded">
+                        {item.spaceName}
+                      </span>
+                    )}
+                    {item.tags.slice(0, 2).map((tag) => (
+                      <span key={tag} className="text-[10px] text-muted-foreground/50 bg-muted px-1.5 py-0.5 rounded">
+                        {tag}
+                      </span>
+                    ))}
+                  </span>
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -330,16 +404,19 @@ export function KBSidenav({
                   className="flex items-center"
                 >
                   <NotepadText className="size-3.5 mr-2 opacity-50 shrink-0" />
-                  <span className="truncate">{item.title}</span>
-                  {item.tags.length > 0 && (
-                    <span className="ml-auto flex items-center gap-1 shrink-0 pl-2">
-                      {item.tags.slice(0, 3).map((tag) => (
-                        <span key={tag} className="text-[10px] text-muted-foreground/50 bg-muted px-1.5 py-0.5 rounded">
-                          {tag}
-                        </span>
-                      ))}
-                    </span>
-                  )}
+                  <span className="truncate flex-1 min-w-0">{item.title}</span>
+                  <span className="ml-auto flex items-center gap-1 shrink-0 pl-2">
+                    {item.spaceName && (
+                      <span className="text-[10px] text-muted-foreground/50 bg-muted px-1.5 py-0.5 rounded">
+                        {item.spaceName}
+                      </span>
+                    )}
+                    {item.tags.slice(0, 2).map((tag) => (
+                      <span key={tag} className="text-[10px] text-muted-foreground/50 bg-muted px-1.5 py-0.5 rounded">
+                        {tag}
+                      </span>
+                    ))}
+                  </span>
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -377,6 +454,9 @@ export function KBSidenav({
                 activePath={wikiActivePath}
                 onNavigate={onWikiNavigate}
                 onClose={onClose}
+                kbId={kbId}
+                onMoveToSpace={onMoveToSpace}
+                onCopyToSpace={onCopyToSpace}
               />
             ))}
           </div>
@@ -396,6 +476,19 @@ export function KBSidenav({
           </div>
         )}
       </div>
+
+      {/* Back to workspace */}
+      {workspaceSlug && (
+        <div className="shrink-0 px-2 pb-1">
+          <button
+            onClick={() => router.push(`/workspaces/${workspaceSlug}`)}
+            className="flex items-center gap-2 w-full px-2.5 py-2 text-[13px] rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer"
+          >
+            <ArrowUpRight className="size-3.5 rotate-180" />
+            <span className="flex-1 text-left">Back to workspace</span>
+          </button>
+        </div>
+      )}
 
       {/* Sources button — separated from passive info below */}
       <div className="shrink-0 px-2 pb-1">
@@ -463,17 +556,33 @@ function WikiTreeNode({
   activePath,
   onNavigate,
   onClose,
+  kbId,
+  onMoveToSpace,
+  onCopyToSpace,
 }: {
   node: WikiNode
   depth: number
   activePath: string | null
   onNavigate: (path: string, docNumber?: number | null) => void
   onClose?: () => void
+  kbId?: string
+  onMoveToSpace?: (docId: string, targetSpaceId: string) => void
+  onCopyToSpace?: (docId: string, targetSpaceId: string) => void
 }) {
   const hasChildren = node.children && node.children.length > 0
   const isActive = node.path != null && node.path === activePath
   const hasActiveChild = hasChildren && node.children!.some((c) => c.path === activePath)
   const [expanded, setExpanded] = React.useState(true)
+  const [ctxMenu, setCtxMenu] = React.useState<{ x: number; y: number } | null>(null)
+  const [movePicker, setMovePicker] = React.useState(false)
+  const [copyPicker, setCopyPicker] = React.useState(false)
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (!node.docId || !kbId) return
+    e.preventDefault()
+    e.stopPropagation()
+    setCtxMenu({ x: e.clientX, y: e.clientY })
+  }
 
   return (
     <div>
@@ -485,6 +594,7 @@ function WikiTreeNode({
             : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
         )}
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
+        onContextMenu={handleContextMenu}
         onClick={() => {
           if (node.path) {
             onNavigate(node.path, node.docNumber)
@@ -534,11 +644,40 @@ function WikiTreeNode({
                 activePath={activePath}
                 onNavigate={onNavigate}
                 onClose={onClose}
+                kbId={kbId}
+                onMoveToSpace={onMoveToSpace}
+                onCopyToSpace={onCopyToSpace}
               />
             ))}
           </motion.div>
         )}
       </AnimatePresence>
+      <WikiPageContextMenu
+        open={!!ctxMenu}
+        x={ctxMenu?.x ?? 0}
+        y={ctxMenu?.y ?? 0}
+        onClose={() => setCtxMenu(null)}
+        onMoveToSpace={() => setMovePicker(true)}
+        onCopyToSpace={() => setCopyPicker(true)}
+      />
+      {kbId && (
+        <>
+          <SpacePickerModal
+            open={movePicker}
+            onClose={() => setMovePicker(false)}
+            currentSpaceId={kbId}
+            title="Move to space"
+            onConfirm={(sid) => { if (node.docId) onMoveToSpace?.(node.docId, sid) }}
+          />
+          <SpacePickerModal
+            open={copyPicker}
+            onClose={() => setCopyPicker(false)}
+            currentSpaceId={kbId}
+            title="Copy to space"
+            onConfirm={(sid) => { if (node.docId) onCopyToSpace?.(node.docId, sid) }}
+          />
+        </>
+      )}
     </div>
   )
 }
