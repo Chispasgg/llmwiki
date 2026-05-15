@@ -393,3 +393,6 @@ class LocalServiceFactory(ServiceFactory):
             doc_repo=self._doc_repo,
             chunk_repo=self._chunk_repo,
         )
+
+    def workspace_service(self, user_id: str):
+        raise HTTPException(status_code=501, detail="Not supported in local mode")

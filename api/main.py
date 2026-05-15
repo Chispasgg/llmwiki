@@ -104,6 +104,7 @@ else:
     from routes.ws import router as ws_router
     from infra.tus import router as tus_router
     from routes.hosted_files import router as hosted_files_router
+    from routes.workspaces import router as workspaces_router
     app.include_router(api_keys_router)
     app.include_router(admin_router)
     app.include_router(admin_users_router)
@@ -111,4 +112,5 @@ else:
     app.include_router(tus_router)
     app.include_router(graph_router)
     app.include_router(ws_router)
+    app.include_router(workspaces_router)
     app.include_router(hosted_files_router)
