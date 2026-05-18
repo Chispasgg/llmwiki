@@ -242,6 +242,7 @@ class ExportService:
         user_id: str,
         kb_name: str,
         doc_ids: list[str] | None = None,
+        reference_doc_path: Path | None = None,
     ) -> bytes:
         """Return raw DOCX or ODT bytes for the wiki associated with *kb_id*.
 
@@ -256,7 +257,7 @@ class ExportService:
         try:
             temp_dir = Path(tmp)
             combined_md = await self._build_combined_md(docs, temp_dir, page_break="")
-            return await self._run_pandoc_office(fmt, combined_md, temp_dir, kb_name)
+            return await self._run_pandoc_office(fmt, combined_md, temp_dir, kb_name, reference_doc_path)
         finally:
             import shutil as _shutil
             _shutil.rmtree(tmp, ignore_errors=True)
@@ -365,6 +366,7 @@ class ExportService:
         input_md: Path,
         temp_dir: Path,
         kb_name: str,
+        reference_doc_path: Path | None = None,
     ) -> bytes:
         """Invoke pandoc to produce DOCX or ODT and return the file bytes."""
         output_file = temp_dir / f"export.{fmt}"
@@ -378,6 +380,8 @@ class ExportService:
             "-V", f"date={date.today().isoformat()}",
             "-o", str(output_file),
         ]
+        if reference_doc_path is not None:
+            cmd.append(f"--reference-doc={reference_doc_path}")
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
