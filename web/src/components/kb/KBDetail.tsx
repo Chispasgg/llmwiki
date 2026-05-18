@@ -21,6 +21,11 @@ import type { ViewMode } from '@/app/(dashboard)/wikis/[slug]/[[...path]]/page'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
+const SIDENAV_MIN = 180
+const SIDENAV_MAX = 480
+const SIDENAV_DEFAULT = 256
+const SIDENAV_STORAGE_KEY = 'wiki_sidenav_width'
+
 
 function buildTreeFromDocs(docs: DocumentListItem[]): WikiNode[] {
   const sorted = [...docs].sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999))
@@ -153,6 +158,45 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   const workspaceSlug = useKBStore((s) => s.knowledgeBases.find((kb) => kb.id === kbId)?.workspace_slug ?? null)
   const { documents, setDocuments, loading } = useKBDocuments(kbId)
   const [sidenavOpen, setSidenavOpen] = React.useState(false)
+  const [sidenavWidth, setSidenavWidth] = React.useState(SIDENAV_DEFAULT)
+  const dragWidthRef = React.useRef(SIDENAV_DEFAULT)
+
+  React.useEffect(() => {
+    const stored = localStorage.getItem(SIDENAV_STORAGE_KEY)
+    if (stored) {
+      const n = parseInt(stored, 10)
+      if (n >= SIDENAV_MIN && n <= SIDENAV_MAX) {
+        setSidenavWidth(n)
+        dragWidthRef.current = n
+      }
+    }
+  }, [])
+
+  const handleResizeMouseDown = React.useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = dragWidthRef.current
+
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const onMouseMove = (ev: MouseEvent) => {
+      const newWidth = Math.min(SIDENAV_MAX, Math.max(SIDENAV_MIN, startWidth + ev.clientX - startX))
+      dragWidthRef.current = newWidth
+      setSidenavWidth(newWidth)
+    }
+
+    const onMouseUp = () => {
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      localStorage.setItem(SIDENAV_STORAGE_KEY, String(dragWidthRef.current))
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }, [])
 
   // ─── URL helpers ─────────────────────────────────────────────
   // Search param updates are instant (no Next.js route recompilation).
@@ -835,18 +879,14 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
         {/* Sidebar — overlay en móvil, en-flujo en desktop */}
         <div
           className={cn(
-            "w-64 shrink-0 h-full bg-background",
-            // Mobile: fixed overlay drawer
+            "shrink-0 h-full bg-background",
             "fixed top-0 bottom-0 left-0 z-40",
-            // Desktop: en el flujo flex normal
             "md:relative md:top-auto md:bottom-auto md:left-auto md:z-auto",
-            // Transición
             "transition-transform duration-200 ease-out",
-            // Mobile: oculto por defecto, visible al abrir
             sidenavOpen ? "translate-x-0" : "-translate-x-full",
-            // Desktop: siempre visible
             "md:translate-x-0",
           )}
+          style={{ width: sidenavWidth }}
         >
           <KBSidenav
             kbId={kbId}
@@ -868,6 +908,14 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
             onCopyToSpace={handleCopyToSpace}
             workspaceSlug={workspaceSlug}
           />
+        </div>
+
+        {/* Resize handle — desktop only */}
+        <div
+          onMouseDown={handleResizeMouseDown}
+          className="hidden md:flex shrink-0 w-1 cursor-col-resize items-stretch group z-10"
+        >
+          <div className="w-px bg-border group-hover:bg-primary/40 transition-colors duration-150 mx-auto" />
         </div>
 
         {/* Contenido principal */}
