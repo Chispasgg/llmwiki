@@ -23,7 +23,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (!authLoading && user && user.role !== 'superadmin') {
-      router.replace('/wikis')
+      router.replace('/workspaces')
     }
     if (!authLoading && !user) {
       router.replace('/login')
@@ -38,11 +38,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="min-h-full">
       <nav className="border-b px-6 py-3 flex items-center gap-6 text-sm font-medium">
         <Link
-          href="/wikis"
+          href="/workspaces"
           className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground mr-2"
         >
           <ArrowLeft className="size-3.5" />
-          Wikis
+          Workspaces
         </Link>
         <span className="text-border select-none">|</span>
         {NAV_LINKS.map(({ href, label }) => (
