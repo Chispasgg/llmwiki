@@ -14,7 +14,7 @@ export function KBHeader({ kbName }: Props) {
   return (
     <div className="flex items-center gap-1.5">
       <button
-        onClick={() => router.push('/wikis')}
+        onClick={() => router.push('/workspaces')}
         className="p-1 rounded transition-colors hover:bg-accent cursor-pointer text-foreground"
       >
         <ChevronLeft className="size-4" />

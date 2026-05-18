@@ -72,7 +72,7 @@ export default function OnboardingPage() {
     try {
       await apiFetch('/v1/onboarding/complete', { method: 'POST' })
     } catch { /* continue anyway */ }
-    router.replace(createdSlug ? `/wikis/${createdSlug}` : '/wikis')
+    router.replace(createdSlug ? `/wikis/${createdSlug}` : '/workspaces')
   }
 
   return (

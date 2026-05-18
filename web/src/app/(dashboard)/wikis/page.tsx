@@ -43,6 +43,14 @@ export default function WikisPage() {
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [name, setName] = React.useState('')
 
+  React.useEffect(() => {
+    if (user && user.role !== 'superadmin') {
+      router.replace('/workspaces')
+    }
+  }, [user, router])
+
+  if (!user || user.role !== 'superadmin') return null
+
   const kbHref = (kb: KnowledgeBase) =>
     user && kb.user_id !== user.id ? `/wikis/${kb.id}` : `/wikis/${kb.slug}`
 

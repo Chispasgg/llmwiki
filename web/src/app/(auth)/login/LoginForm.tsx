@@ -20,8 +20,8 @@ export function LoginForm() {
     getMe().then((me) => {
       if (me) {
         setUser(me)
-        const rawNext = searchParams.get('next') || '/wikis'
-        const nextPath = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/wikis'
+        const rawNext = searchParams.get('next') || '/workspaces'
+        const nextPath = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/workspaces'
         router.replace(nextPath)
       } else {
         setChecking(false)
@@ -37,8 +37,8 @@ export function LoginForm() {
     try {
       const user = await login(email, password)
       setUser(user)
-      const rawNext = searchParams.get('next') || '/wikis'
-      const nextPath = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/wikis'
+      const rawNext = searchParams.get('next') || '/workspaces'
+      const nextPath = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/workspaces'
       router.push(nextPath)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error desconocido')

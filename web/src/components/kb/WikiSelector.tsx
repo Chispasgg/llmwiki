@@ -60,7 +60,7 @@ export function WikiSelector({ kbName, kbId }: { kbName: string; kbId: string })
     try {
       await deleteKB(kbId)
       setDeleteDialogOpen(false)
-      router.push('/wikis')
+      router.push('/workspaces')
     } catch {
       // error handled by store
     } finally {

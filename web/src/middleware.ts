@@ -8,7 +8,7 @@ export function middleware(request: NextRequest) {
 
   if (isLocal) {
     if (pathname === '/') {
-      return NextResponse.redirect(new URL('/wikis', request.url))
+      return NextResponse.redirect(new URL('/workspaces', request.url))
     }
     return NextResponse.next()
   }

@@ -9,7 +9,7 @@ export function AuthRedirect() {
   const router = useRouter()
 
   useEffect(() => {
-    if (user) router.replace('/wikis')
+    if (user) router.replace('/workspaces')
   }, [user, router])
 
   return null
