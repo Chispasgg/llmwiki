@@ -12,6 +12,7 @@ const NAV_LINKS = [
   { href: '/admin/tokens', label: 'Tokens' },
   { href: '/admin/wikis', label: 'Wikis' },
   { href: '/admin/shares', label: 'Compartidas' },
+  { href: '/admin/export', label: 'Plantillas' },
   { href: '/admin/logs', label: 'Logs' },
 ]
 
