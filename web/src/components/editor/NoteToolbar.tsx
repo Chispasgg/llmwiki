@@ -4,12 +4,13 @@ import * as React from 'react'
 import {
   Bold, Italic, Heading2, List, ListOrdered, LinkIcon,
   Table2, Undo2, Redo2, ChevronLeft, ChevronRight,
-  Rows3, Columns3, Trash2,
+  Rows3, Columns3, Trash2, ImageIcon,
 } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuTrigger, DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import type { Editor } from '@tiptap/react'
@@ -26,6 +27,31 @@ interface NoteToolbarProps {
 export function NoteToolbar({ editor, backLabel, noteTitle, onTitleChange, onBack, embedded }: NoteToolbarProps) {
   const [linkOpen, setLinkOpen] = React.useState(false)
   const [linkUrl, setLinkUrl] = React.useState('')
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const [imageDialogOpen, setImageDialogOpen] = React.useState(false)
+  const [pendingImageSrc, setPendingImageSrc] = React.useState<string | null>(null)
+  const [imageAlt, setImageAlt] = React.useState('')
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    const reader = new FileReader()
+    reader.onload = () => {
+      setPendingImageSrc(reader.result as string)
+      setImageAlt('')
+      setImageDialogOpen(true)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleImageInsert = () => {
+    if (!pendingImageSrc) return
+    editor?.chain().focus().setImage({ src: pendingImageSrc, alt: imageAlt.trim() }).run()
+    setPendingImageSrc(null)
+    setImageAlt('')
+    setImageDialogOpen(false)
+  }
 
   const handleLinkSubmit = () => {
     const url = linkUrl.trim()
@@ -186,6 +212,14 @@ export function NoteToolbar({ editor, backLabel, noteTitle, onTitleChange, onBac
           </Popover>
         )}
 
+        <button
+          title="Insert image"
+          onClick={() => fileInputRef.current?.click()}
+          className="p-1.5 rounded-md transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-accent"
+        >
+          <ImageIcon className="size-3.5" />
+        </button>
+
         <div className="w-px h-4 bg-border mx-1" />
 
         {editor?.isActive('table') ? (
@@ -233,6 +267,39 @@ export function NoteToolbar({ editor, backLabel, noteTitle, onTitleChange, onBac
           </ToolbarButton>
         )}
       </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
+
+      <Dialog open={imageDialogOpen} onOpenChange={(open) => { if (!open) { setImageDialogOpen(false); setPendingImageSrc(null) } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Describe la imagen</DialogTitle>
+          </DialogHeader>
+          <input
+            type="text"
+            value={imageAlt}
+            onChange={(e) => setImageAlt(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleImageInsert() }}
+            placeholder="Texto alternativo (alt text)"
+            autoFocus
+            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+          />
+          <DialogFooter>
+            <button
+              onClick={handleImageInsert}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 cursor-pointer"
+            >
+              Insertar
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

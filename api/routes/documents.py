@@ -1,3 +1,4 @@
+import re
 from typing import Annotated
 from uuid import UUID
 
@@ -8,6 +9,19 @@ from services.base import DocumentService
 from services.types import CreateNote, UpdateContent, UpdateMetadata, BulkDelete, MoveToSpace, CopyToSpace
 
 router = APIRouter(tags=["documents"])
+
+_DATA_URI_RE = re.compile(r'data:([^;,\s]+)[;,]')
+
+
+def _validate_data_uris(content: str) -> None:
+    """Reject any data: URI whose MIME type is not image/*."""
+    for match in _DATA_URI_RE.finditer(content):
+        mime = match.group(1).lower()
+        if not mime.startswith('image/'):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Data URI con tipo MIME no permitido: '{mime}'. Solo se permiten imágenes (image/*).",
+            )
 
 
 @router.get("/v1/knowledge-bases/{kb_id}/documents")
@@ -49,6 +63,8 @@ async def create_note(
     body: CreateNote,
     service: Annotated[DocumentService, Depends(get_document_service)],
 ):
+    if body.content:
+        _validate_data_uris(body.content)
     return await service.create_note(str(kb_id), body.filename, body.path, body.content)
 
 
@@ -58,6 +74,7 @@ async def update_document_content(
     body: UpdateContent,
     service: Annotated[DocumentService, Depends(get_document_service)],
 ):
+    _validate_data_uris(body.content)
     row = await service.update_content(str(doc_id), body.content)
     if not row:
         raise HTTPException(status_code=404, detail="Document not found")

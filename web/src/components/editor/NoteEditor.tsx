@@ -21,6 +21,7 @@ import {
 } from './PropertyEditors'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import type { Editor } from '@tiptap/react'
 import type { PropertyType, TypedProperty, PropertyMap } from '@/lib/types'
 
@@ -103,6 +104,8 @@ export function NoteEditor({
   const [saveStatus, setSaveStatus] = React.useState<'saved' | 'saving' | 'idle'>('idle')
   const [wordCount, setWordCount] = React.useState(0)
   const [metaExpanded, setMetaExpanded] = React.useState(false)
+  const [pasteImageSrc, setPasteImageSrc] = React.useState<string | null>(null)
+  const [pasteImageAlt, setPasteImageAlt] = React.useState('')
   const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestContentRef = React.useRef<string>('')
   const frontmatterRef = React.useRef<string>('')
@@ -139,6 +142,25 @@ export function NoteEditor({
     editorProps: {
       attributes: {
         class: 'prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[calc(100vh-200px)] cursor-text',
+      },
+      handlePaste(_view, event) {
+        const items = event.clipboardData?.items
+        if (!items) return false
+        for (const item of Array.from(items)) {
+          if (item.type.startsWith('image/')) {
+            event.preventDefault()
+            const file = item.getAsFile()
+            if (!file) continue
+            const reader = new FileReader()
+            reader.onload = () => {
+              setPasteImageSrc(reader.result as string)
+              setPasteImageAlt('')
+            }
+            reader.readAsDataURL(file)
+            return true
+          }
+        }
+        return false
       },
       handleClick: (_view, _pos, event) => {
         const anchor = (event.target as HTMLElement).closest('a')
@@ -605,6 +627,39 @@ export function NoteEditor({
           {wordCount} {wordCount === 1 ? 'word' : 'words'}
         </span>
       </div>
+
+      <Dialog open={!!pasteImageSrc} onOpenChange={(open) => { if (!open) setPasteImageSrc(null) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Describe la imagen</DialogTitle>
+          </DialogHeader>
+          <input
+            type="text"
+            value={pasteImageAlt}
+            onChange={(e) => setPasteImageAlt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                editor?.chain().focus().setImage({ src: pasteImageSrc!, alt: pasteImageAlt.trim() }).run()
+                setPasteImageSrc(null)
+              }
+            }}
+            placeholder="Texto alternativo (alt text)"
+            autoFocus
+            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+          />
+          <DialogFooter>
+            <button
+              onClick={() => {
+                editor?.chain().focus().setImage({ src: pasteImageSrc!, alt: pasteImageAlt.trim() }).run()
+                setPasteImageSrc(null)
+              }}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 cursor-pointer"
+            >
+              Insertar
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
