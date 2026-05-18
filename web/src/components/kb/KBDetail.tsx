@@ -27,8 +27,15 @@ const SIDENAV_DEFAULT = 256
 const SIDENAV_STORAGE_KEY = 'wiki_sidenav_width'
 
 
+const naturalSort = (a: string, b: string) =>
+  a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+
 function buildTreeFromDocs(docs: DocumentListItem[]): WikiNode[] {
-  const sorted = [...docs].sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999))
+  const sorted = [...docs].sort((a, b) => {
+    const orderDiff = (a.sort_order ?? 999) - (b.sort_order ?? 999)
+    if (orderDiff !== 0) return orderDiff
+    return naturalSort(a.filename || '', b.filename || '')
+  })
   const topLevel: Array<{ title: string; path: string; slug: string; docNumber: number | null; docId: string }> = []
   const childPages = new Map<string, Array<{ title: string; path: string; docNumber: number | null; docId: string }>>()
 
@@ -58,7 +65,9 @@ function buildTreeFromDocs(docs: DocumentListItem[]): WikiNode[] {
       usedFolders.add(parent.slug)
       tree.push({
         title: parent.title, path: parent.path, docNumber: parent.docNumber, docId: parent.docId,
-        children: children.map((c) => ({ title: c.title, path: c.path, docNumber: c.docNumber, docId: c.docId })),
+        children: [...children]
+          .sort((a, b) => naturalSort(a.title, b.title))
+          .map((c) => ({ title: c.title, path: c.path, docNumber: c.docNumber, docId: c.docId })),
       })
     } else {
       tree.push({ title: parent.title, path: parent.path, docNumber: parent.docNumber, docId: parent.docId })
@@ -68,7 +77,12 @@ function buildTreeFromDocs(docs: DocumentListItem[]): WikiNode[] {
   for (const [folder, children] of childPages) {
     if (usedFolders.has(folder)) continue
     const folderTitle = folder.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-    tree.push({ title: folderTitle, children: children.map((c) => ({ title: c.title, path: c.path, docNumber: c.docNumber, docId: c.docId })) })
+    tree.push({
+      title: folderTitle,
+      children: [...children]
+        .sort((a, b) => naturalSort(a.title, b.title))
+        .map((c) => ({ title: c.title, path: c.path, docNumber: c.docNumber, docId: c.docId })),
+    })
   }
 
   const slug = (n: WikiNode) => n.path?.replace(/\.(md|txt|json)$/, '').split('/')[0] ?? ''
@@ -78,7 +92,7 @@ function buildTreeFromDocs(docs: DocumentListItem[]): WikiNode[] {
     if (sb === 'overview') return 1
     if (sa === 'log') return 1
     if (sb === 'log') return -1
-    return a.title.localeCompare(b.title)
+    return naturalSort(a.title, b.title)
   })
 
   return tree
