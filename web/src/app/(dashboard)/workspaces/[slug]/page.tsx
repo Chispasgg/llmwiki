@@ -4,7 +4,7 @@ import * as React from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, Plus, BookOpen, FileText, Clock,
-  MoreHorizontal, MoveRight, Loader2,
+  MoreHorizontal, MoveRight, Loader2, Search,
 } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
@@ -166,6 +166,7 @@ export default function WorkspaceDetailPage() {
   const [ws, setWs] = React.useState<Workspace | null>(null)
   const [wikis, setWikis] = React.useState<KnowledgeBase[]>([])
   const [loading, setLoading] = React.useState(true)
+  const [search, setSearch] = React.useState('')
   const [moveTarget, setMoveTarget] = React.useState<KnowledgeBase | null>(null)
   const [createOpen, setCreateOpen] = React.useState(false)
   const [newKBName, setNewKBName] = React.useState('')
@@ -189,6 +190,15 @@ export default function WorkspaceDetailPage() {
     }
     load()
   }, [params.slug])
+
+  const filteredWikis = React.useMemo(() => {
+    const sorted = [...wikis].sort(
+      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+    )
+    if (!search.trim()) return sorted
+    const q = search.toLowerCase()
+    return sorted.filter((kb) => kb.name.toLowerCase().includes(q))
+  }, [wikis, search])
 
   const handleCreateKB = async () => {
     if (!newKBName.trim() || !ws) return
@@ -249,15 +259,32 @@ export default function WorkspaceDetailPage() {
               New wiki
             </button>
           </div>
+
+          {wikis.length > 0 && (
+            <div className="mt-5 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search wikis…"
+                className="w-full sm:w-72 rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+          )}
         </div>
 
         {wikis.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
             <p>No wikis in this workspace yet.</p>
           </div>
+        ) : filteredWikis.length === 0 ? (
+          <div className="text-center py-20 text-muted-foreground">
+            <p>No wikis match &ldquo;{search}&rdquo;.</p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {wikis.map((kb) => (
+            {filteredWikis.map((kb) => (
               <WikiCard
                 key={kb.id}
                 kb={kb}
