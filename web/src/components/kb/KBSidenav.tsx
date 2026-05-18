@@ -160,11 +160,11 @@ export function KBSidenav({
   const kb = useKBStore((s) => s.knowledgeBases.find((k) => k.id === kbId))
   const isOwner = !!currentUser && !!kb && kb.user_id === currentUser.id
 
-  const handleExportPdf = async (docIds: string[]) => {
+  const handleExport = async (docIds: string[], format: 'pdf' | 'docx' | 'odt') => {
     setExportLoading(true)
     try {
       const response = await fetch(
-        `${API_URL}/v1/knowledge-bases/${kbId}/export.pdf`,
+        `${API_URL}/v1/knowledge-bases/${kbId}/export.${format}`,
         {
           method: 'POST',
           credentials: API_CREDENTIALS,
@@ -173,7 +173,7 @@ export function KBSidenav({
         },
       )
       if (!response.ok) {
-        let msg = 'Error al generar el PDF'
+        let msg = `Error al generar el ${format.toUpperCase()}`
         try {
           const err = await response.json() as { detail?: string | { error?: string } }
           if (err?.detail && typeof err.detail === 'object' && err.detail.error) {
@@ -189,15 +189,15 @@ export function KBSidenav({
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${kbName || 'wiki'}.pdf`
+      a.download = `${kbName || 'wiki'}.${format}`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
       setTimeout(() => URL.revokeObjectURL(url), 150)
       setExportDialogOpen(false)
     } catch (err) {
-      console.error('[ExportPDF]', err)
-      toast.error('Error al generar el PDF')
+      console.error('[Export]', err)
+      toast.error(`Error al generar el ${format.toUpperCase()}`)
     } finally {
       setExportLoading(false)
     }
@@ -321,7 +321,7 @@ export function KBSidenav({
                 className="flex items-center gap-2.5 w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
               >
                 <FileDown className="size-3.5 shrink-0" />
-                Exportar PDF
+                Exportar wiki
               </button>
             </div>
           )}
@@ -342,7 +342,7 @@ export function KBSidenav({
         onOpenChange={setExportDialogOpen}
         kbName={kbName}
         wikiTree={wikiTree}
-        onExport={handleExportPdf}
+        onExport={handleExport}
         loading={exportLoading}
       />
 

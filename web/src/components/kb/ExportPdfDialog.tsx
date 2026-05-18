@@ -48,6 +48,16 @@ function nodeCheckState(node: WikiNode, selected: Set<string>): CheckState {
   return 'indeterminate'
 }
 
+// ── Format selector ─────────────────────────────────────────────────────────
+
+type ExportFormat = 'pdf' | 'docx' | 'odt'
+
+const FORMAT_LABELS: Record<ExportFormat, string> = {
+  pdf: 'PDF',
+  docx: 'Word (DOCX)',
+  odt: 'LibreOffice (ODT)',
+}
+
 // ── Public component ────────────────────────────────────────────────────────
 
 interface ExportPdfDialogProps {
@@ -55,7 +65,7 @@ interface ExportPdfDialogProps {
   onOpenChange: (open: boolean) => void
   kbName: string
   wikiTree: WikiNode[]
-  onExport: (docIds: string[]) => void
+  onExport: (docIds: string[], format: ExportFormat) => void
   loading: boolean
 }
 
@@ -64,6 +74,7 @@ export function ExportPdfDialog({
 }: ExportPdfDialogProps) {
   const allDocIds = React.useMemo(() => collectLeafDocIds(wikiTree), [wikiTree])
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set(allDocIds))
+  const [format, setFormat] = React.useState<ExportFormat>('pdf')
 
   React.useEffect(() => {
     if (open) setSelected(new Set(allDocIds))
@@ -89,14 +100,32 @@ export function ExportPdfDialog({
     })
   }, [])
 
-  const handleExport = () => onExport(Array.from(selected))
+  const handleExport = () => onExport(Array.from(selected), format)
 
   return (
     <Dialog open={open} onOpenChange={loading ? undefined : onOpenChange}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle className="text-base">Exportar como PDF</DialogTitle>
+          <DialogTitle className="text-base">Exportar wiki</DialogTitle>
         </DialogHeader>
+
+        {/* Selector de formato */}
+        <div className="flex gap-2">
+          {(Object.keys(FORMAT_LABELS) as ExportFormat[]).map((fmt) => (
+            <button
+              key={fmt}
+              onClick={() => setFormat(fmt)}
+              className={cn(
+                'flex-1 px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer',
+                format === fmt
+                  ? 'border-primary bg-primary/10 text-primary font-medium'
+                  : 'border-border text-muted-foreground hover:text-foreground hover:bg-accent',
+              )}
+            >
+              {FORMAT_LABELS[fmt]}
+            </button>
+          ))}
+        </div>
 
         {/* Contador + acciones rápidas */}
         <div className="flex items-center justify-between px-0.5">
@@ -151,7 +180,7 @@ export function ExportPdfDialog({
             className="flex items-center gap-2 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading && <Loader2 className="size-3.5 animate-spin" />}
-            {loading ? 'Generando…' : `Generar PDF (${selected.size})`}
+            {loading ? 'Generando…' : `Generar ${FORMAT_LABELS[format]} (${selected.size})`}
           </button>
         </DialogFooter>
       </DialogContent>

@@ -214,17 +214,7 @@ class ExportService:
         HTTPException(500)
             If pandoc exits with a non-zero return code.
         """
-        # list(path=...) uses exact equality — would miss /wiki/concepts/, /wiki/entities/, etc.
-        # Fetch all KB docs and filter to wiki path prefix in Python instead.
-        all_docs = await self._doc_service.list(kb_id)
-        docs = [d for d in all_docs if d.get("path", "").startswith("/wiki/")]
-        docs = sort_wiki_docs(docs)
-        if doc_ids is not None:
-            allowed = set(doc_ids)
-            docs = [d for d in docs if str(d.get("id", "")) in allowed]
-        # list() omits content in hosted mode; fetch it per document.
-        docs = list(await asyncio.gather(*[self._enrich_content(d) for d in docs]))
-
+        docs = await self._collect_docs(kb_id, doc_ids)
         prefix = f"wiki_export_{kb_id}_{user_id}_"
         tmp = tempfile.mkdtemp(prefix=prefix)
         try:
@@ -245,9 +235,45 @@ class ExportService:
             import shutil as _shutil
             _shutil.rmtree(tmp, ignore_errors=True)
 
+    async def generate_office(
+        self,
+        fmt: str,
+        kb_id: str,
+        user_id: str,
+        kb_name: str,
+        doc_ids: list[str] | None = None,
+    ) -> bytes:
+        """Return raw DOCX or ODT bytes for the wiki associated with *kb_id*.
+
+        Parameters
+        ----------
+        fmt:
+            Output format: ``'docx'`` or ``'odt'``.
+        """
+        docs = await self._collect_docs(kb_id, doc_ids)
+        prefix = f"wiki_export_{kb_id}_{user_id}_"
+        tmp = tempfile.mkdtemp(prefix=prefix)
+        try:
+            temp_dir = Path(tmp)
+            combined_md = await self._build_combined_md(docs, temp_dir, page_break="")
+            return await self._run_pandoc_office(fmt, combined_md, temp_dir, kb_name)
+        finally:
+            import shutil as _shutil
+            _shutil.rmtree(tmp, ignore_errors=True)
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    async def _collect_docs(self, kb_id: str, doc_ids: list[str] | None) -> list[dict]:
+        """Fetch, filter, sort, and enrich wiki documents for export."""
+        all_docs = await self._doc_service.list(kb_id)
+        docs = [d for d in all_docs if d.get("path", "").startswith("/wiki/")]
+        docs = sort_wiki_docs(docs)
+        if doc_ids is not None:
+            allowed = set(doc_ids)
+            docs = [d for d in docs if str(d.get("id", "")) in allowed]
+        return list(await asyncio.gather(*[self._enrich_content(d) for d in docs]))
 
     async def _enrich_content(self, doc: dict) -> dict:
         """Fetch content for a doc that doesn't have it (hosted mode list() omits it)."""
@@ -262,8 +288,16 @@ class ExportService:
         self,
         docs: list[dict],
         temp_dir: Path,
+        page_break: str = "\\newpage",
     ) -> Path:
-        """Concatenate all wiki pages into a single Markdown file."""
+        """Concatenate all wiki pages into a single Markdown file.
+
+        Parameters
+        ----------
+        page_break:
+            String appended after each section. Use ``'\\newpage'`` for PDF
+            (LaTeX) and ``''`` for office formats (DOCX/ODT).
+        """
         sections: list[str] = []
         for idx, doc in enumerate(docs):
             content = doc.get("content", "")
@@ -272,7 +306,8 @@ class ExportService:
             body = _strip_front_matter(content)
             body = _renumber_footnotes(body, f"p{idx}")
             patched = await patch_mermaid_blocks(body, temp_dir, prefix=f"doc_{idx}")
-            sections.append(f"# {title}\n\n{patched}\n\n\\newpage\n")
+            suffix = f"\n\n{page_break}\n" if page_break else "\n"
+            sections.append(f"# {title}\n\n{patched}{suffix}")
 
         combined = temp_dir / "combined.md"
         combined.write_text("\n".join(sections), encoding="utf-8")
@@ -323,3 +358,43 @@ class ExportService:
                 detail={"error": "PDF compilation failed"},
             )
         return await asyncio.to_thread(output_pdf.read_bytes)
+
+    async def _run_pandoc_office(
+        self,
+        fmt: str,
+        input_md: Path,
+        temp_dir: Path,
+        kb_name: str,
+    ) -> bytes:
+        """Invoke pandoc to produce DOCX or ODT and return the file bytes."""
+        output_file = temp_dir / f"export.{fmt}"
+        cmd = [
+            "pandoc", str(input_md),
+            "--toc",
+            "--toc-depth=3",
+            "--highlight-style=tango",
+            f"--resource-path={temp_dir}",
+            "-V", f"title={kb_name}",
+            "-V", f"date={date.today().isoformat()}",
+            "-o", str(output_file),
+        ]
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"error": "pandoc not available", "hint": "Install pandoc in the server environment"},
+            ) from exc
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            stderr_text = stderr.decode(errors="replace")
+            logger.error("pandoc exited %d for kb=%s: %s", proc.returncode, input_md, stderr_text)
+            raise HTTPException(
+                status_code=500,
+                detail={"error": f"{fmt.upper()} compilation failed"},
+            )
+        return await asyncio.to_thread(output_file.read_bytes)
