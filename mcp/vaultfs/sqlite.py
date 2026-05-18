@@ -140,6 +140,24 @@ class SqliteVaultFS(VaultFS):
 
     async def update_document(self, doc_id: str, content: str, tags: list[str] | None = None, title: str | None = None, date: str | None = None, metadata: dict | None = None) -> dict | None:
         db = self._db_or_raise()
+
+        cursor = await db.execute(
+            "SELECT content, version, source_kind, path FROM documents WHERE id = ?",
+            (doc_id,),
+        )
+        row = await cursor.fetchone()
+        if row:
+            cols = [d[0] for d in cursor.description]
+            current = dict(zip(cols, row))
+            old_content = current.get("content") or ""
+            is_wiki = current.get("source_kind") == "wiki" or (current.get("path") or "").startswith("/wiki/")
+            if is_wiki and old_content.strip() and old_content.strip() != content.strip():
+                await db.execute(
+                    "INSERT INTO document_history (document_id, user_id, content, version) "
+                    "VALUES (?, ?, ?, ?)",
+                    (doc_id, self.user_id, old_content, current.get("version", 0)),
+                )
+
         sets = ["content = ?", "version = version + 1", "updated_at = datetime('now')"]
         args: list = [content]
 
