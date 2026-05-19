@@ -331,6 +331,7 @@ class ExportService:
             "--toc-depth=3",
             "--highlight-style=tango",
             f"--resource-path={temp_dir}",
+            f"--extract-media={temp_dir}",
             "--pdf-engine-opt=-no-shell-escape",  # prevent xelatex shell injection
             "-V", f"title={kb_name}",
             "-V", f"date={date.today().isoformat()}",
@@ -376,6 +377,7 @@ class ExportService:
             "--toc-depth=3",
             "--highlight-style=tango",
             f"--resource-path={temp_dir}",
+            f"--extract-media={temp_dir}",
             "-V", f"title={kb_name}",
             "-V", f"date={date.today().isoformat()}",
             "-o", str(output_file),
