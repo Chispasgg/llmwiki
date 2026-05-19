@@ -132,12 +132,18 @@ class PostgresVaultFS(VaultFS):
         return None
 
     async def archive_documents(self, doc_ids: list[str]) -> int:
+        import uuid as _uuid
+        doc_uuids = [_uuid.UUID(id_str) for id_str in doc_ids]
+        user_uuid = _uuid.UUID(self.user_id)
         result = await service_execute(
             "UPDATE documents SET archived = true, updated_at = now() "
-            "WHERE id = ANY($1::uuid[]) AND user_id = $2",
-            doc_ids, self.user_id,
+            "WHERE id = ANY($1) AND user_id = $2",
+            doc_uuids, user_uuid,
         )
-        return int(result.split()[-1]) if result else 0
+        count = int(result.split()[-1]) if result else 0
+        if count == 0:
+            logger.warning("archive_documents: UPDATE affected 0 rows for ids=%s user=%s", doc_ids, self.user_id[:8])
+        return count
 
 
     async def list_documents(self, kb_id: str) -> list[dict]:

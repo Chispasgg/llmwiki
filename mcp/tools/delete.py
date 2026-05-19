@@ -42,7 +42,11 @@ class DeleteHandler:
         doc_ids = [str(d["id"]) for d in deletable]
         deleted_count = await self.fs.archive_documents(doc_ids)
 
-        return self._format_response(deleted_count or len(deletable), deletable, protected)
+        if deleted_count == 0 and len(deletable) > 0:
+            names = ", ".join(f"`{d['path']}{d['filename']}`" for d in deletable)
+            return f"Error: delete failed — documents found but could not be removed: {names}"
+
+        return self._format_response(deleted_count, deletable, protected)
 
     async def _find_documents(self, path: str) -> list[dict]:
         """Find documents by exact path or glob pattern."""
