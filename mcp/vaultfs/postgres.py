@@ -89,12 +89,12 @@ class PostgresVaultFS(VaultFS):
         import json as _json
         # Fetch current state to save history for wiki documents
         current = await service_queryrow(
-            "SELECT content, version, source_kind, path FROM documents WHERE id = $1 AND user_id = $2",
+            "SELECT content, version, path FROM documents WHERE id = $1 AND user_id = $2",
             doc_id, self.user_id,
         )
         if current:
             old_content = current["content"] or ""
-            is_wiki = current["source_kind"] == "wiki" or (current["path"] or "").startswith("/wiki/")
+            is_wiki = (current["path"] or "").startswith("/wiki/")
             if is_wiki and old_content.strip() and old_content.strip() != content.strip():
                 await service_execute(
                     "INSERT INTO document_history (document_id, user_id, content, version) "

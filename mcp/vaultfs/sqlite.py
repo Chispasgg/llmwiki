@@ -142,7 +142,7 @@ class SqliteVaultFS(VaultFS):
         db = self._db_or_raise()
 
         cursor = await db.execute(
-            "SELECT content, version, source_kind, path FROM documents WHERE id = ?",
+            "SELECT content, version, path FROM documents WHERE id = ?",
             (doc_id,),
         )
         row = await cursor.fetchone()
@@ -150,7 +150,7 @@ class SqliteVaultFS(VaultFS):
             cols = [d[0] for d in cursor.description]
             current = dict(zip(cols, row))
             old_content = current.get("content") or ""
-            is_wiki = current.get("source_kind") == "wiki" or (current.get("path") or "").startswith("/wiki/")
+            is_wiki = (current.get("path") or "").startswith("/wiki/")
             if is_wiki and old_content.strip() and old_content.strip() != content.strip():
                 await db.execute(
                     "INSERT INTO document_history (document_id, user_id, content, version) "
