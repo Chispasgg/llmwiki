@@ -230,7 +230,7 @@ class SqliteVaultFS(VaultFS):
         return _rows_to_dicts(cursor, await cursor.fetchall())
 
 
-    async def search_chunks(self, kb_id: str, query: str, limit: int, path_filter: str | None = None) -> list[dict]:
+    async def search_chunks(self, kb_id: str, query: str, limit: int, path_filter: str | None = None, tags: list[str] | None = None) -> list[dict]:
         db = self._db_or_raise()
         sql = (
             "SELECT dc.content, dc.page, dc.header_breadcrumb, dc.chunk_index, "
@@ -246,6 +246,10 @@ class SqliteVaultFS(VaultFS):
             sql += "AND d.source_kind = 'wiki' "
         elif path_filter == "sources":
             sql += "AND d.source_kind != 'wiki' "
+        if tags:
+            for tag in tags:
+                sql += "AND EXISTS (SELECT 1 FROM json_each(d.tags) WHERE value = ?) "
+                params.append(tag)
         sql += "ORDER BY rank LIMIT ?"
         params.append(limit)
 

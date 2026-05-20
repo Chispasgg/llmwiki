@@ -64,10 +64,19 @@ _KB_LIST_QUERY = (
 _WS_FIELDS = (
     "SELECT w.id, w.name, w.slug, w.description, w.created_by, w.created_at, w.updated_at, "
     "(SELECT COUNT(*) FROM workspace_members wm2 WHERE wm2.workspace_id = w.id) AS member_count, "
-    "(SELECT COUNT(*) FROM knowledge_bases kb WHERE kb.workspace_id = w.id) AS wiki_count "
+    "CASE "
+    "  WHEN EXISTS (SELECT 1 FROM workspace_members wm3 WHERE wm3.workspace_id = w.id AND wm3.user_id = $1) "
+    "  THEN (SELECT COUNT(*) FROM knowledge_bases kb WHERE kb.workspace_id = w.id) "
+    "  ELSE (SELECT COUNT(*) FROM knowledge_bases kb2 JOIN kb_shares ks2 ON ks2.kb_id = kb2.id WHERE kb2.workspace_id = w.id AND ks2.shared_with = $1::uuid) "
+    "END AS wiki_count "
     "FROM workspaces w "
-    "JOIN workspace_members wm ON wm.workspace_id = w.id "
-    "WHERE wm.user_id = $1"
+    "WHERE ("
+    "  EXISTS (SELECT 1 FROM workspace_members wm WHERE wm.workspace_id = w.id AND wm.user_id = $1) "
+    "  OR EXISTS ("
+    "    SELECT 1 FROM knowledge_bases kb JOIN kb_shares ks ON ks.kb_id = kb.id "
+    "    WHERE kb.workspace_id = w.id AND ks.shared_with = $1::uuid"
+    "  )"
+    ")"
 )
 
 
@@ -656,13 +665,7 @@ class HostedWorkspaceService(WorkspaceService):
         return result == "DELETE 1"
 
     async def list_wikis(self, workspace_id: str) -> list[dict]:
-        is_member = await self.pool.fetchval(
-            "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
-            workspace_id, self.user_id,
-        )
-        if not is_member:
-            raise HTTPException(status_code=403, detail={"error": "Not a member of this workspace"})
-        rows = await self.pool.fetch(
+        _KB_SELECT = (
             "SELECT kb.id, kb.user_id, kb.name, kb.slug, kb.description, kb.is_shared,"
             "  kb.created_at, kb.updated_at, kb.workspace_id,"
             "  (SELECT w.slug FROM workspaces w WHERE w.id = kb.workspace_id) AS workspace_slug,"
@@ -670,10 +673,27 @@ class HostedWorkspaceService(WorkspaceService):
             "  (SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.path LIKE '/wiki/%%' AND NOT d.archived) AS wiki_page_count,"
             "  (SELECT u.email FROM users u WHERE u.id = kb.user_id) AS owner_email"
             " FROM knowledge_bases kb"
-            " WHERE kb.workspace_id = $1"
-            " ORDER BY kb.name",
-            workspace_id,
         )
+        is_member = await self.pool.fetchval(
+            "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+            workspace_id, self.user_id,
+        )
+        if is_member:
+            rows = await self.pool.fetch(
+                _KB_SELECT + " WHERE kb.workspace_id = $1 ORDER BY kb.name",
+                workspace_id,
+            )
+            return [_kb_row_to_dict(r) for r in rows]
+
+        # Not a workspace member — return only KBs explicitly shared with this user
+        rows = await self.pool.fetch(
+            _KB_SELECT
+            + " JOIN kb_shares ks ON ks.kb_id = kb.id"
+            + " WHERE kb.workspace_id = $1 AND ks.shared_with = $2::uuid ORDER BY kb.name",
+            workspace_id, self.user_id,
+        )
+        if not rows:
+            raise HTTPException(status_code=403, detail={"error": "Not a member of this workspace"})
         return [_kb_row_to_dict(r) for r in rows]
 
     async def move_wiki(self, kb_id: str, target_workspace_id: str) -> dict:

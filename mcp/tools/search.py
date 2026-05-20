@@ -79,20 +79,30 @@ class SearchHandler:
         """Full-text search across document chunks."""
         path_filter = self._path_filter_key(path)
 
-        matches = await self.fs.search_chunks(self.kb_id, query, limit, path_filter)
+        matches = await self.fs.search_chunks(self.kb_id, query, limit, path_filter, tags)
 
-        if tags:
-            tag_set = {t.lower() for t in tags}
-            matches = [m for m in matches if tag_set.issubset({t.lower() for t in (m.get("tags") or [])})]
+        fuzzy_used = False
+        if not matches:
+            fuzzy_query = self._make_fuzzy_query(query)
+            if fuzzy_query != query:
+                matches = await self.fs.search_chunks(self.kb_id, fuzzy_query, limit, path_filter, tags)
+                fuzzy_used = bool(matches)
 
         if not matches:
             return f"No matches for `{query}` in {self.slug}."
 
-        lines = [f"**{len(matches)} result(s)** for `{query}`:\n"]
+        label = f"`{query}` (fuzzy)" if fuzzy_used else f"`{query}`"
+        lines = [f"**{len(matches)} result(s)** for {label}:\n"]
         for m in matches:
             lines.append(self._format_search_result(m, query))
 
         return "\n".join(lines)
+
+    @staticmethod
+    def _make_fuzzy_query(query: str) -> str:
+        """Split multi-word query into OR terms for a broader fallback match."""
+        words = query.split()
+        return " OR ".join(words) if len(words) > 1 else query
 
     async def query_references(self, path: str, query: str) -> str:
         """Query the citation/link graph."""

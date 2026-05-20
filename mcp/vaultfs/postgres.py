@@ -186,12 +186,18 @@ class PostgresVaultFS(VaultFS):
         )
 
 
-    async def search_chunks(self, kb_id: str, query: str, limit: int, path_filter: str | None = None) -> list[dict]:
+    async def search_chunks(self, kb_id: str, query: str, limit: int, path_filter: str | None = None, tags: list[str] | None = None) -> list[dict]:
         path_clause = ""
         if path_filter == "wiki":
             path_clause = " AND d.path LIKE '/wiki/%%'"
         elif path_filter == "sources":
             path_clause = " AND d.path NOT LIKE '/wiki/%%'"
+
+        tags_clause = ""
+        params: list = [kb_id, query, self.user_id, limit]
+        if tags:
+            tags_clause = f" AND d.tags @> ${len(params) + 1}::text[]"
+            params.append(tags)
 
         return await scoped_query(
             self.user_id,
@@ -205,10 +211,10 @@ class PostgresVaultFS(VaultFS):
             f"  AND NOT d.archived "
             f"  AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
             f"    WHERE kb.id = $1 AND (kb.user_id = $3 OR ks.shared_with = $3::uuid))"
-            f"{path_clause} "
+            f"{path_clause}{tags_clause} "
             f"ORDER BY score DESC, dc.chunk_index "
             f"LIMIT $4",
-            kb_id, query, self.user_id, limit,
+            *params,
         )
 
 

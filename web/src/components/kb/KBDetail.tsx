@@ -36,66 +36,83 @@ function buildTreeFromDocs(docs: DocumentListItem[]): WikiNode[] {
     if (orderDiff !== 0) return orderDiff
     return naturalSort(a.filename || '', b.filename || '')
   })
-  const topLevel: Array<{ title: string; path: string; slug: string; docNumber: number | null; docId: string }> = []
-  const childPages = new Map<string, Array<{ title: string; path: string; docNumber: number | null; docId: string }>>()
+
+  interface MutableNode {
+    title: string
+    path?: string
+    docNumber?: number | null
+    docId?: string | null
+    children: Map<string, MutableNode>
+  }
+
+  const root = new Map<string, MutableNode>()
 
   for (const doc of sorted) {
     const relative = (doc.path + doc.filename).replace(/^\/wiki\/?/, '')
-    const parts = relative.split('/')
+    const parts = relative.split('/').filter(Boolean)
     const title =
       doc.title ||
       parts[parts.length - 1].replace(/\.(md|txt|json)$/, '').replace(/[-_]/g, ' ')
 
-    if (parts.length === 1) {
-      const slug = parts[0].replace(/\.(md|txt|json)$/, '')
-      topLevel.push({ title, path: relative, slug, docNumber: doc.document_number, docId: doc.id })
-    } else {
-      const folder = parts[0]
-      if (!childPages.has(folder)) childPages.set(folder, [])
-      childPages.get(folder)!.push({ title, path: relative, docNumber: doc.document_number, docId: doc.id })
+    let level = root
+    for (let i = 0; i < parts.length; i++) {
+      const slug = parts[i].replace(/\.(md|txt|json)$/, '')
+      const isLeaf = i === parts.length - 1
+
+      if (isLeaf) {
+        const existing = level.get(slug)
+        if (existing) {
+          // Folder node already created by a child — enrich it with doc info
+          existing.path = relative
+          existing.docNumber = doc.document_number ?? null
+          existing.docId = doc.id
+          existing.title = title
+        } else {
+          level.set(slug, {
+            title,
+            path: relative,
+            docNumber: doc.document_number ?? null,
+            docId: doc.id,
+            children: new Map(),
+          })
+        }
+      } else {
+        if (!level.has(slug)) {
+          const folderTitle = slug.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+          level.set(slug, { title: folderTitle, children: new Map() })
+        }
+        level = level.get(slug)!.children
+      }
     }
   }
 
-  const tree: WikiNode[] = []
-  const usedFolders = new Set<string>()
+  function toWikiNodes(nodeMap: Map<string, MutableNode>, isRoot = false): WikiNode[] {
+    const nodes = Array.from(nodeMap.values()).map((node) => ({
+      title: node.title,
+      path: node.path,
+      docNumber: node.docNumber,
+      docId: node.docId,
+      children: node.children.size > 0 ? toWikiNodes(node.children) : undefined,
+    }))
 
-  for (const parent of topLevel) {
-    const children = childPages.get(parent.slug)
-    if (children && children.length > 0) {
-      usedFolders.add(parent.slug)
-      tree.push({
-        title: parent.title, path: parent.path, docNumber: parent.docNumber, docId: parent.docId,
-        children: [...children]
-          .sort((a, b) => naturalSort(a.title, b.title))
-          .map((c) => ({ title: c.title, path: c.path, docNumber: c.docNumber, docId: c.docId })),
+    if (isRoot) {
+      nodes.sort((a, b) => {
+        const sa = a.path?.replace(/\.(md|txt|json)$/, '').split('/')[0] ?? a.title.toLowerCase()
+        const sb = b.path?.replace(/\.(md|txt|json)$/, '').split('/')[0] ?? b.title.toLowerCase()
+        if (sa === 'overview') return -1
+        if (sb === 'overview') return 1
+        if (sa === 'log') return 1
+        if (sb === 'log') return -1
+        return naturalSort(a.title, b.title)
       })
     } else {
-      tree.push({ title: parent.title, path: parent.path, docNumber: parent.docNumber, docId: parent.docId })
+      nodes.sort((a, b) => naturalSort(a.title, b.title))
     }
+
+    return nodes
   }
 
-  for (const [folder, children] of childPages) {
-    if (usedFolders.has(folder)) continue
-    const folderTitle = folder.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-    tree.push({
-      title: folderTitle,
-      children: [...children]
-        .sort((a, b) => naturalSort(a.title, b.title))
-        .map((c) => ({ title: c.title, path: c.path, docNumber: c.docNumber, docId: c.docId })),
-    })
-  }
-
-  const slug = (n: WikiNode) => n.path?.replace(/\.(md|txt|json)$/, '').split('/')[0] ?? ''
-  tree.sort((a, b) => {
-    const sa = slug(a), sb = slug(b)
-    if (sa === 'overview') return -1
-    if (sb === 'overview') return 1
-    if (sa === 'log') return 1
-    if (sb === 'log') return -1
-    return naturalSort(a.title, b.title)
-  })
-
-  return tree
+  return toWikiNodes(root, true)
 }
 
 function enrichTreeWithDocNumbers(tree: WikiNode[], docs: DocumentListItem[]): WikiNode[] {
