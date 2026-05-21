@@ -158,9 +158,8 @@ class PostgresVaultFS(VaultFS):
 
         # Fetch current state to save history for wiki documents
         current = await service_queryrow(
-            "SELECT content, version, path, knowledge_base_id FROM documents WHERE id = $1 AND user_id = $2",
+            "SELECT content, version, path, knowledge_base_id FROM documents WHERE id = $1",
             doc_id,
-            self.user_id,
         )
         if current:
             old_content = current["content"] or ""
@@ -186,8 +185,8 @@ class PostgresVaultFS(VaultFS):
             "updated_at = now()",
             "stale_since = NULL",
         ]
-        args: list = [content, doc_id, self.user_id]
-        idx = 4  # next param index
+        args: list = [content, doc_id]
+        idx = 3  # next param index
 
         if title is not None:
             sets.append(f"title = ${idx}")
@@ -206,7 +205,7 @@ class PostgresVaultFS(VaultFS):
             args.append(_json.dumps(metadata))
             idx += 1
 
-        sql = f"UPDATE documents SET {', '.join(sets)} WHERE id = $2 AND user_id = $3"
+        sql = f"UPDATE documents SET {', '.join(sets)} WHERE id = $2"
         result = None
         if title is not None:
             sql += " RETURNING id, filename, path"
