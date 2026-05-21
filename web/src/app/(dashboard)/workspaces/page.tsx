@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Users, BookOpen, Loader2 } from 'lucide-react'
+import { Plus, Users, BookOpen, Loader2, Trash2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { useWorkspaceStore } from '@/stores'
 import type { Workspace } from '@/lib/types'
@@ -19,19 +19,27 @@ function relativeTime(dateStr: string): string {
   return `${Math.floor(days / 30)}mo ago`
 }
 
-function WorkspaceCard({ ws, onClick }: { ws: Workspace; onClick: () => void }) {
+function WorkspaceCard({ ws, onClick, onDelete }: { ws: Workspace; onClick: () => void; onDelete: (e: React.MouseEvent) => void }) {
   return (
-    <button
+    <div
       onClick={onClick}
-      className="group text-left w-full rounded-xl border border-border bg-card hover:bg-accent/40 transition-colors p-5 flex flex-col gap-3 cursor-pointer"
+      className="group relative text-left w-full rounded-xl border border-border bg-card hover:bg-accent/40 transition-colors p-5 flex flex-col gap-3 cursor-pointer"
     >
       <div className="flex items-start justify-between gap-2">
         <h2 className="text-base font-semibold text-foreground group-hover:text-primary transition-colors leading-tight">
           {ws.name}
         </h2>
-        <span className="text-[10px] text-muted-foreground/50 shrink-0 mt-0.5">
-          {relativeTime(ws.updated_at)}
-        </span>
+        <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+          <span className="text-[10px] text-muted-foreground/50">
+            {relativeTime(ws.updated_at)}
+          </span>
+          <button
+            onClick={onDelete}
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/10 hover:text-destructive text-muted-foreground cursor-pointer"
+          >
+            <Trash2 className="size-3.5" />
+          </button>
+        </div>
       </div>
       {ws.description && (
         <p className="text-sm text-muted-foreground line-clamp-2">{ws.description}</p>
@@ -46,19 +54,32 @@ function WorkspaceCard({ ws, onClick }: { ws: Workspace; onClick: () => void }) 
           {ws.member_count} {ws.member_count === 1 ? 'member' : 'members'}
         </span>
       </div>
-    </button>
+    </div>
   )
 }
 
 export default function WorkspacesPage() {
   const router = useRouter()
-  const { workspaces, loading, fetchWorkspaces, createWorkspace } = useWorkspaceStore()
+  const { workspaces, loading, fetchWorkspaces, createWorkspace, deleteWorkspace } = useWorkspaceStore()
   const [createOpen, setCreateOpen] = React.useState(false)
   const [newName, setNewName] = React.useState('')
   const [newDesc, setNewDesc] = React.useState('')
   const [creating, setCreating] = React.useState(false)
+  const [deleteTarget, setDeleteTarget] = React.useState<Workspace | null>(null)
+  const [deleting, setDeleting] = React.useState(false)
 
   React.useEffect(() => { fetchWorkspaces() }, [])
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await deleteWorkspace(deleteTarget.id)
+      setDeleteTarget(null)
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const handleCreate = async () => {
     if (!newName.trim()) return
@@ -106,11 +127,38 @@ export default function WorkspacesPage() {
                 key={ws.id}
                 ws={ws}
                 onClick={() => router.push(`/workspaces/${ws.slug}`)}
+                onDelete={(e) => { e.stopPropagation(); setDeleteTarget(ws) }}
               />
             ))}
           </div>
         )}
       </div>
+
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete workspace</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? Its wikis will be unassigned. This cannot be undone.
+          </p>
+          <DialogFooter>
+            <button
+              onClick={() => setDeleteTarget(null)}
+              className="rounded-lg border border-input px-4 py-2 text-sm font-medium hover:bg-accent transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:opacity-90 disabled:opacity-50 cursor-pointer"
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
