@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 if settings.SENTRY_DSN:
     import sentry_sdk
+
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
         send_default_pii=True,
@@ -20,6 +21,7 @@ if settings.SENTRY_DSN:
 
 if settings.LOGFIRE_TOKEN:
     import logfire
+
     logfire.configure(token=settings.LOGFIRE_TOKEN, service_name="supavault-api")
     logfire.instrument_asyncpg()
 
@@ -42,10 +44,12 @@ class CORSMiddleware(_BaseCORSMiddleware):
 async def lifespan(app: FastAPI):
     if settings.MODE == "local":
         from startup.local import local_lifespan
+
         async with local_lifespan(app):
             yield
     else:
         from startup.hosted import hosted_lifespan
+
         async with hosted_lifespan(app):
             yield
 
@@ -66,14 +70,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=[
-        "Location", "Upload-Offset", "Upload-Length",
-        "Tus-Resumable", "Tus-Version", "Tus-Max-Size", "Tus-Extension",
+        "Location",
+        "Upload-Offset",
+        "Upload-Length",
+        "Tus-Resumable",
+        "Tus-Version",
+        "Tus-Max-Size",
+        "Tus-Extension",
         "X-Document-Id",
     ],
 )
 
 if settings.LOGFIRE_TOKEN:
     import logfire
+
     logfire.instrument_fastapi(app)
 
 app.include_router(health_router)
@@ -87,14 +97,17 @@ if settings.MODE == "local":
     from routes.local_upload import router as local_upload_router
     from routes.files import router as files_router, set_workspace_root
     from routes.local_graph import router as local_graph_router
+
     app.include_router(local_upload_router)
     app.include_router(files_router)
     app.include_router(local_graph_router)
     set_workspace_root(settings.WORKSPACE_PATH)
 else:
     from routes.auth import router as auth_router
+
     app.include_router(auth_router)
     from routes.shares import router as shares_router
+
     app.include_router(shares_router)
     from routes.api_keys import router as api_keys_router
     from routes.admin import router as admin_router
@@ -106,6 +119,9 @@ else:
     from infra.tus import router as tus_router
     from routes.hosted_files import router as hosted_files_router
     from routes.workspaces import router as workspaces_router
+    from routes.users import router as users_router
+
+    app.include_router(users_router)
     app.include_router(api_keys_router)
     app.include_router(admin_router)
     app.include_router(admin_users_router)
