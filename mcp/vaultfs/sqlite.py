@@ -43,7 +43,6 @@ class SqliteVaultFS(VaultFS):
     def __init__(self, user_id: str):
         self.user_id = user_id
 
-
     @staticmethod
     async def init(workspace_path: str) -> None:
         """Initialize the SQLite connection and workspace root for the given path."""
@@ -69,9 +68,10 @@ class SqliteVaultFS(VaultFS):
     @staticmethod
     def _db_or_raise() -> aiosqlite.Connection:
         if _db is None:
-            raise RuntimeError("SQLite not initialized — call SqliteVaultFS.init() first")
+            raise RuntimeError(
+                "SQLite not initialized — call SqliteVaultFS.init() first"
+            )
         return _db
-
 
     async def resolve_kb(self, slug: str) -> dict | None:
         db = self._db_or_raise()
@@ -93,8 +93,9 @@ class SqliteVaultFS(VaultFS):
         )
         return _rows_to_dicts(cursor, await cursor.fetchall())
 
-
-    async def get_document(self, kb_id: str, filename: str, dir_path: str) -> dict | None:
+    async def get_document(
+        self, kb_id: str, filename: str, dir_path: str
+    ) -> dict | None:
         db = self._db_or_raise()
         cursor = await db.execute(
             "SELECT id, user_id, filename, title, path, content, tags, version, "
@@ -117,13 +118,26 @@ class SqliteVaultFS(VaultFS):
         rows = _rows_to_dicts(cursor, await cursor.fetchall())
         return rows[0] if rows else None
 
-    async def create_document(self, kb_id: str, filename: str, title: str, dir_path: str, file_type: str, content: str, tags: list[str], date: str | None = None, metadata: dict | None = None) -> dict:
+    async def create_document(
+        self,
+        kb_id: str,
+        filename: str,
+        title: str,
+        dir_path: str,
+        file_type: str,
+        content: str,
+        tags: list[str],
+        date: str | None = None,
+        metadata: dict | None = None,
+    ) -> dict:
         db = self._db_or_raise()
         doc_id = str(uuid.uuid4())
         relative_path = (dir_path.rstrip("/") + "/" + filename).lstrip("/")
         source_kind = "wiki" if dir_path.strip("/").startswith("wiki") else "source"
 
-        cursor = await db.execute("SELECT COALESCE(MAX(document_number), 0) + 1 FROM documents")
+        cursor = await db.execute(
+            "SELECT COALESCE(MAX(document_number), 0) + 1 FROM documents"
+        )
         row = await cursor.fetchone()
         doc_number = row[0]
 
@@ -131,14 +145,59 @@ class SqliteVaultFS(VaultFS):
             "INSERT INTO documents (id, user_id, filename, title, path, relative_path, source_kind, "
             "file_type, status, content, tags, date, metadata, version, document_number) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?, ?, ?, ?, 0, ?)",
-            (doc_id, self.user_id, filename, title, dir_path, relative_path, source_kind,
-             file_type, content, json.dumps(tags), date,
-             json.dumps(metadata) if metadata else None, doc_number),
+            (
+                doc_id,
+                self.user_id,
+                filename,
+                title,
+                dir_path,
+                relative_path,
+                source_kind,
+                file_type,
+                content,
+                json.dumps(tags),
+                date,
+                json.dumps(metadata) if metadata else None,
+                doc_number,
+            ),
         )
         await db.commit()
+
+        if content.strip():
+            from chunker import chunk_text
+
+            chunks = chunk_text(content)
+            await db.execute(
+                "DELETE FROM document_chunks WHERE document_id = ?", (doc_id,)
+            )
+            for c in chunks:
+                await db.execute(
+                    "INSERT INTO document_chunks "
+                    "(document_id, chunk_index, content, page, start_char, token_count, header_breadcrumb) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        doc_id,
+                        c.index,
+                        c.content,
+                        c.page,
+                        c.start_char,
+                        c.token_count,
+                        c.header_breadcrumb or "",
+                    ),
+                )
+            await db.commit()
+
         return {"id": doc_id, "filename": filename, "path": dir_path}
 
-    async def update_document(self, doc_id: str, content: str, tags: list[str] | None = None, title: str | None = None, date: str | None = None, metadata: dict | None = None) -> dict | None:
+    async def update_document(
+        self,
+        doc_id: str,
+        content: str,
+        tags: list[str] | None = None,
+        title: str | None = None,
+        date: str | None = None,
+        metadata: dict | None = None,
+    ) -> dict | None:
         db = self._db_or_raise()
 
         cursor = await db.execute(
@@ -151,7 +210,11 @@ class SqliteVaultFS(VaultFS):
             current = dict(zip(cols, row))
             old_content = current.get("content") or ""
             is_wiki = (current.get("path") or "").startswith("/wiki/")
-            if is_wiki and old_content.strip() and old_content.strip() != content.strip():
+            if (
+                is_wiki
+                and old_content.strip()
+                and old_content.strip() != content.strip()
+            ):
                 await db.execute(
                     "INSERT INTO document_history (document_id, user_id, content, version) "
                     "VALUES (?, ?, ?, ?)",
@@ -180,6 +243,31 @@ class SqliteVaultFS(VaultFS):
             tuple(args),
         )
         await db.commit()
+
+        if content.strip():
+            from chunker import chunk_text
+
+            chunks = chunk_text(content)
+            await db.execute(
+                "DELETE FROM document_chunks WHERE document_id = ?", (doc_id,)
+            )
+            for c in chunks:
+                await db.execute(
+                    "INSERT INTO document_chunks "
+                    "(document_id, chunk_index, content, page, start_char, token_count, header_breadcrumb) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        doc_id,
+                        c.index,
+                        c.content,
+                        c.page,
+                        c.start_char,
+                        c.token_count,
+                        c.header_breadcrumb or "",
+                    ),
+                )
+            await db.commit()
+
         return None
 
     async def archive_documents(self, doc_ids: list[str]) -> int:
@@ -187,10 +275,11 @@ class SqliteVaultFS(VaultFS):
         if not doc_ids:
             return 0
         placeholders = ",".join("?" for _ in doc_ids)
-        cursor = await db.execute(f"DELETE FROM documents WHERE id IN ({placeholders})", doc_ids)
+        cursor = await db.execute(
+            f"DELETE FROM documents WHERE id IN ({placeholders})", doc_ids
+        )
         await db.commit()
         return cursor.rowcount
-
 
     async def list_documents(self, kb_id: str) -> list[dict]:
         db = self._db_or_raise()
@@ -207,7 +296,6 @@ class SqliteVaultFS(VaultFS):
             "FROM documents WHERE status != 'failed' ORDER BY path, filename",
         )
         return _rows_to_dicts(cursor, await cursor.fetchall())
-
 
     async def get_pages(self, doc_id: str, page_nums: list[int]) -> list[dict]:
         db = self._db_or_raise()
@@ -229,8 +317,14 @@ class SqliteVaultFS(VaultFS):
         )
         return _rows_to_dicts(cursor, await cursor.fetchall())
 
-
-    async def search_chunks(self, kb_id: str, query: str, limit: int, path_filter: str | None = None, tags: list[str] | None = None) -> list[dict]:
+    async def search_chunks(
+        self,
+        kb_id: str,
+        query: str,
+        limit: int,
+        path_filter: str | None = None,
+        tags: list[str] | None = None,
+    ) -> list[dict]:
         db = self._db_or_raise()
         sql = (
             "SELECT dc.content, dc.page, dc.header_breadcrumb, dc.chunk_index, "
@@ -256,9 +350,10 @@ class SqliteVaultFS(VaultFS):
         cursor = await db.execute(sql, params)
         return _rows_to_dicts(cursor, await cursor.fetchall())
 
-
     async def load_source_bytes(self, doc: dict) -> bytes | None:
-        relative = doc.get("relative_path") or (doc["path"].rstrip("/") + "/" + doc["filename"]).lstrip("/")
+        relative = doc.get("relative_path") or (
+            doc["path"].rstrip("/") + "/" + doc["filename"]
+        ).lstrip("/")
         return self._load_local_bytes(relative)
 
     async def load_image_bytes(self, doc_id: str, image_id: str) -> bytes | None:
@@ -274,7 +369,6 @@ class SqliteVaultFS(VaultFS):
         if root_path.is_file() and root_path.is_relative_to(_workspace_root):
             return root_path.read_bytes()
         return None
-
 
     def write_to_disk(self, dir_path: str, filename: str, content: str) -> bool:
         file_path = self._resolve_path(dir_path.lstrip("/") + filename)
@@ -299,13 +393,22 @@ class SqliteVaultFS(VaultFS):
             return None
         return resolved
 
-
     async def delete_references(self, source_doc_id: str) -> None:
         db = self._db_or_raise()
-        await db.execute("DELETE FROM document_references WHERE source_document_id = ?", (source_doc_id,))
+        await db.execute(
+            "DELETE FROM document_references WHERE source_document_id = ?",
+            (source_doc_id,),
+        )
         await db.commit()
 
-    async def upsert_reference(self, source_id: str, target_id: str, kb_id: str, ref_type: str, page: int | None) -> None:
+    async def upsert_reference(
+        self,
+        source_id: str,
+        target_id: str,
+        kb_id: str,
+        ref_type: str,
+        page: int | None,
+    ) -> None:
         db = self._db_or_raise()
         try:
             await db.execute(
@@ -316,7 +419,12 @@ class SqliteVaultFS(VaultFS):
             )
             await db.commit()
         except Exception as e:
-            logger.warning("Failed to insert reference %s -> %s: %s", source_id[:8], target_id[:8], e)
+            logger.warning(
+                "Failed to insert reference %s -> %s: %s",
+                source_id[:8],
+                target_id[:8],
+                e,
+            )
 
     async def propagate_staleness(self, doc_id: str) -> None:
         db = self._db_or_raise()
@@ -374,7 +482,6 @@ class SqliteVaultFS(VaultFS):
             "ORDER BY d.stale_since DESC",
         )
         return _rows_to_dicts(cursor, await cursor.fetchall())
-
 
     async def get_workspace(self) -> dict | None:
         """Get the workspace record, if it exists."""
