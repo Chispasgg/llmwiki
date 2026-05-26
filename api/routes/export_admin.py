@@ -1,11 +1,16 @@
 """Superadmin endpoints for managing pandoc export templates."""
+
 import logging
+import shutil
+import tempfile
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
 from deps import require_superadmin
+from services.export import validate_latex_template
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +49,9 @@ async def upload_export_template(
     request: Request,
 ) -> TemplateInfo:
     if template_type not in _ALLOWED_TYPES:
-        raise HTTPException(status_code=400, detail=f"Unknown template type: {template_type}")
+        raise HTTPException(
+            status_code=400, detail=f"Unknown template type: {template_type}"
+        )
 
     filename = file.filename or ""
     suffix = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""
@@ -59,6 +66,15 @@ async def upload_export_template(
     if not content:
         raise HTTPException(status_code=422, detail="Uploaded file is empty")
 
+    if template_type == "latex":
+        tmp = tempfile.mkdtemp(prefix="wiki_tpl_check_")
+        try:
+            tpl_path = Path(tmp) / "template.tex"
+            tpl_path.write_bytes(content)
+            await validate_latex_template(tpl_path)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
     row = await request.app.state.pool.fetchrow(
         "INSERT INTO export_templates (type, content, filename, updated_at) "
         "VALUES ($1, $2, $3, now()) "
@@ -67,7 +83,9 @@ async def upload_export_template(
         "       filename = EXCLUDED.filename, "
         "       updated_at = now() "
         "RETURNING type, filename, length(content) AS size_bytes, updated_at::text",
-        template_type, content, filename,
+        template_type,
+        content,
+        filename,
     )
     return TemplateInfo(**dict(row))
 
@@ -79,7 +97,9 @@ async def delete_export_template(
     request: Request,
 ) -> None:
     if template_type not in _ALLOWED_TYPES:
-        raise HTTPException(status_code=400, detail=f"Unknown template type: {template_type}")
+        raise HTTPException(
+            status_code=400, detail=f"Unknown template type: {template_type}"
+        )
     result = await request.app.state.pool.execute(
         "DELETE FROM export_templates WHERE type = $1", template_type
     )

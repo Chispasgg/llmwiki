@@ -30,6 +30,35 @@ from services.base import DocumentService
 
 _MERMAID_RE = re.compile(r"```mermaid\n(.*?)```", re.DOTALL)
 
+# Emoji → LaTeX replacements for XeLaTeX (Liberation fonts lack emoji glyphs).
+# xcolor is already loaded in the template so \textcolor works out of the box.
+_EMOJI_TO_LATEX: dict[str, str] = {
+    "🔴": r"\textcolor{red}{\textbullet}",
+    "🟠": r"\textcolor{orange}{\textbullet}",
+    "🟡": r"\textcolor{yellow!70!black}{\textbullet}",
+    "🟢": r"\textcolor{green!60!black}{\textbullet}",
+    "🔵": r"\textcolor{blue}{\textbullet}",
+    "🟣": r"\textcolor{violet}{\textbullet}",
+    "🟤": r"\textcolor{brown}{\textbullet}",
+    "⚫": r"\textcolor{black}{\textbullet}",
+    "⚪": r"\textcolor{gray}{\textbullet}",
+    "🔶": r"\textcolor{orange}{\textbullet}",
+    "🔷": r"\textcolor{cyan!60!blue}{\textbullet}",
+    "✅": r"\textcolor{green!60!black}{\checkmark}",
+    "❌": r"\(\times\)",
+    "⚠️": r"\textcolor{orange}{\textbullet}",
+    "⚠": r"\textcolor{orange}{\textbullet}",
+    "✓": r"\checkmark",
+}
+
+
+def _patch_emoji_for_latex(content: str) -> str:
+    """Replace common emoji with LaTeX equivalents for XeLaTeX compatibility."""
+    for emoji_char, latex in _EMOJI_TO_LATEX.items():
+        content = content.replace(emoji_char, latex)
+    return content
+
+
 # Puppeteer needs --no-sandbox inside Docker containers.
 _PUPPETEER_CONFIG = Path(__file__).parent.parent / "config" / "puppeteer-config.json"
 
@@ -96,7 +125,15 @@ async def patch_mermaid_blocks(
         try:
             cmd = ["mmdc", "-i", str(mmd_file), "-o", str(png_file)]
             if _PUPPETEER_CONFIG.exists():
-                cmd = ["mmdc", "-p", str(_PUPPETEER_CONFIG), "-i", str(mmd_file), "-o", str(png_file)]
+                cmd = [
+                    "mmdc",
+                    "-p",
+                    str(_PUPPETEER_CONFIG),
+                    "-i",
+                    str(mmd_file),
+                    "-o",
+                    str(png_file),
+                ]
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -104,7 +141,9 @@ async def patch_mermaid_blocks(
             )
             _, err_out = await proc.communicate()
             if proc.returncode != 0:
-                logger.warning("mmdc exited %d; falling back to code block", proc.returncode)
+                logger.warning(
+                    "mmdc exited %d; falling back to code block", proc.returncode
+                )
             elif png_file.exists():
                 return f"![Diagrama]({png_file})"
         except FileNotFoundError:
@@ -120,7 +159,7 @@ async def patch_mermaid_blocks(
     result = content
     for match in reversed(list(_MERMAID_RE.finditer(content))):
         replacement = await _replace(match)
-        result = result[: match.start()] + replacement + result[match.end():]
+        result = result[: match.start()] + replacement + result[match.end() :]
     return result
 
 
@@ -151,7 +190,7 @@ def _strip_front_matter(content: str) -> str:
     if end == -1:
         return content
     # Skip past the closing --- and any leading newline
-    rest = content[end + 3:]
+    rest = content[end + 3 :]
     return rest.lstrip("\n")
 
 
@@ -161,15 +200,84 @@ def _renumber_footnotes(content: str, prefix: str) -> str:
     Each wiki page resets footnotes from [^1]. When combined, pandoc
     sees duplicates. Prefix every label with *prefix* to make them unique.
     """
-    labels = set(re.findall(r'\[\^([^\]]+)\]', content))
+    labels = set(re.findall(r"\[\^([^\]]+)\]", content))
     if not labels:
         return content
     result = content
     # Replace longest labels first to avoid partial substitutions
     for label in sorted(labels, key=len, reverse=True):
         unique = f"{prefix}_{label}"
-        result = re.sub(r'\[\^' + re.escape(label) + r'\]', f'[^{unique}]', result)
+        result = re.sub(r"\[\^" + re.escape(label) + r"\]", f"[^{unique}]", result)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Template validation
+# ---------------------------------------------------------------------------
+
+
+async def validate_latex_template(template_path: Path) -> None:
+    """Compile a minimal document with *template_path* to catch LaTeX errors early.
+
+    Raises HTTPException(422) with ``latex_error`` in the detail dict if
+    xelatex fails, so callers can surface the error to the user before
+    storing or using the template.
+    """
+    import shutil as _shutil
+
+    tmp = tempfile.mkdtemp(prefix="wiki_tpl_check_")
+    try:
+        md = Path(tmp) / "probe.md"
+        md.write_text(
+            "# Validation probe\n\nParagraph with **bold** and *italic*.\n\n"
+            "```python\nx = 1\n```\n",
+            encoding="utf-8",
+        )
+        out_pdf = Path(tmp) / "probe.pdf"
+        cmd = [
+            "pandoc",
+            str(md),
+            "--from=markdown",
+            "--pdf-engine=xelatex",
+            f"--template={template_path}",
+            "--highlight-style=tango",
+            "--pdf-engine-opt=-no-shell-escape",
+            "-V",
+            "title=Validation probe",
+            "-V",
+            "date=2026-01-01",
+            "-o",
+            str(out_pdf),
+        ]
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"error": "pandoc not available"},
+            ) from exc
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            stderr_text = stderr.decode(errors="replace")
+            error_lines = [
+                line for line in stderr_text.splitlines() if line.startswith("!")
+            ]
+            latex_error = (
+                "\n".join(error_lines[:5]) if error_lines else stderr_text[-500:]
+            )
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "La plantilla LaTeX no compila correctamente",
+                    "latex_error": latex_error,
+                },
+            )
+    finally:
+        _shutil.rmtree(tmp, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -220,12 +328,15 @@ class ExportService:
         try:
             temp_dir = Path(tmp)
             combined_md = await self._build_combined_md(docs, temp_dir)
+            md_text = combined_md.read_text(encoding="utf-8")
+            combined_md.write_text(_patch_emoji_for_latex(md_text), encoding="utf-8")
             return await self._run_pandoc(combined_md, temp_dir, kb_name, template_path)
         except HTTPException:
             # Save combined.md for post-mortem inspection
             debug_path = Path(f"/tmp/pandoc_debug_{kb_id[:8]}.md")
             try:
                 import shutil as _shutil
+
                 _shutil.copy2(str(temp_dir / "combined.md"), str(debug_path))
                 logger.error("Combined markdown saved to %s for debugging", debug_path)
             except Exception:
@@ -233,6 +344,7 @@ class ExportService:
             raise
         finally:
             import shutil as _shutil
+
             _shutil.rmtree(tmp, ignore_errors=True)
 
     async def generate_office(
@@ -257,9 +369,12 @@ class ExportService:
         try:
             temp_dir = Path(tmp)
             combined_md = await self._build_combined_md(docs, temp_dir, page_break="")
-            return await self._run_pandoc_office(fmt, combined_md, temp_dir, kb_name, reference_doc_path)
+            return await self._run_pandoc_office(
+                fmt, combined_md, temp_dir, kb_name, reference_doc_path
+            )
         finally:
             import shutil as _shutil
+
             _shutil.rmtree(tmp, ignore_errors=True)
 
     # ------------------------------------------------------------------
@@ -324,7 +439,11 @@ class ExportService:
         """Invoke pandoc and return the resulting PDF bytes."""
         output_pdf = temp_dir / "export.pdf"
         cmd = [
-            "pandoc", str(input_md),
+            "pandoc",
+            str(input_md),
+            # Disable yaml_metadata_block so --- sections inside wiki pages are
+            # treated as thematic breaks, not parsed as YAML metadata blocks.
+            "--from=markdown-yaml_metadata_block",
             "--pdf-engine=xelatex",
             f"--template={template_path}",
             "--toc",
@@ -333,9 +452,12 @@ class ExportService:
             f"--resource-path={temp_dir}",
             f"--extract-media={temp_dir}",
             "--pdf-engine-opt=-no-shell-escape",  # prevent xelatex shell injection
-            "-V", f"title={kb_name}",
-            "-V", f"date={date.today().isoformat()}",
-            "-o", str(output_pdf),
+            "-V",
+            f"title={kb_name}",
+            "-V",
+            f"date={date.today().isoformat()}",
+            "-o",
+            str(output_pdf),
         ]
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -354,7 +476,9 @@ class ExportService:
         _, stderr = await proc.communicate()
         if proc.returncode != 0:
             stderr_text = stderr.decode(errors="replace")
-            logger.error("pandoc exited %d for kb=%s: %s", proc.returncode, input_md, stderr_text)
+            logger.error(
+                "pandoc exited %d for kb=%s: %s", proc.returncode, input_md, stderr_text
+            )
             raise HTTPException(
                 status_code=500,
                 detail={"error": "PDF compilation failed"},
@@ -372,15 +496,19 @@ class ExportService:
         """Invoke pandoc to produce DOCX or ODT and return the file bytes."""
         output_file = temp_dir / f"export.{fmt}"
         cmd = [
-            "pandoc", str(input_md),
+            "pandoc",
+            str(input_md),
             "--toc",
             "--toc-depth=3",
             "--highlight-style=tango",
             f"--resource-path={temp_dir}",
             f"--extract-media={temp_dir}",
-            "-V", f"title={kb_name}",
-            "-V", f"date={date.today().isoformat()}",
-            "-o", str(output_file),
+            "-V",
+            f"title={kb_name}",
+            "-V",
+            f"date={date.today().isoformat()}",
+            "-o",
+            str(output_file),
         ]
         if reference_doc_path is not None:
             cmd.append(f"--reference-doc={reference_doc_path}")
@@ -393,12 +521,17 @@ class ExportService:
         except FileNotFoundError as exc:
             raise HTTPException(
                 status_code=503,
-                detail={"error": "pandoc not available", "hint": "Install pandoc in the server environment"},
+                detail={
+                    "error": "pandoc not available",
+                    "hint": "Install pandoc in the server environment",
+                },
             ) from exc
         _, stderr = await proc.communicate()
         if proc.returncode != 0:
             stderr_text = stderr.decode(errors="replace")
-            logger.error("pandoc exited %d for kb=%s: %s", proc.returncode, input_md, stderr_text)
+            logger.error(
+                "pandoc exited %d for kb=%s: %s", proc.returncode, input_md, stderr_text
+            )
             raise HTTPException(
                 status_code=500,
                 detail={"error": f"{fmt.upper()} compilation failed"},

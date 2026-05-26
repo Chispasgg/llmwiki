@@ -1,3 +1,4 @@
+import json as _json
 import re
 import shutil
 import tempfile
@@ -5,13 +6,22 @@ from typing import Annotated
 from uuid import UUID
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from pydantic import BaseModel
 
 from config import settings
-from deps import get_export_service, get_kb_service, get_user_id
+from deps import _is_superadmin, get_export_service, get_kb_service, get_user_id
 from services.base import KBService
-from services.export import ExportService
+from services.export import ExportService, validate_latex_template
 
 
 def _safe_filename(value: str) -> str:
@@ -19,7 +29,9 @@ def _safe_filename(value: str) -> str:
     return re.sub(r'[\x00-\x1f\x7f"\\]', "_", value)
 
 
-async def _resolve_template(pool, template_type: str, suffix: str) -> tuple[Path | None, str | None]:
+async def _resolve_template(
+    pool, template_type: str, suffix: str
+) -> tuple[Path | None, str | None]:
     """Fetch a custom template from DB, write to a temp file, return (path, tmp_dir).
 
     Returns (None, None) if no custom template exists or pool is unavailable.
@@ -62,27 +74,60 @@ _OFFICE_MIME = {
         503: {"description": "Export tools not available"},
         500: {"description": "PDF compilation failed"},
     },
-    description="Export the wiki of a knowledge base as a PDF. Pass doc_ids to restrict pages; omit for all pages.",
+    description="Export the wiki as PDF. Superadmin may upload a one-time .tex template via tex_template.",
 )
 async def export_wiki_pdf(
     kb_id: UUID,
-    body: ExportRequest,
     request: Request,
     kb_service: Annotated[KBService, Depends(get_kb_service)],
     export_service: Annotated[ExportService, Depends(get_export_service)],
     user_id: Annotated[str, Depends(get_user_id)],
+    doc_ids: Annotated[str | None, Form()] = None,
+    tex_template: Annotated[UploadFile | None, File()] = None,
 ) -> Response:
+    pool = getattr(request.app.state, "pool", None)
+
+    if tex_template is not None and not await _is_superadmin(pool, user_id):
+        raise HTTPException(
+            status_code=403, detail="Solo el superadmin puede usar plantillas ad-hoc"
+        )
+
     kb = await kb_service.get(str(kb_id))
     if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
 
-    pool = getattr(request.app.state, "pool", None)
-    custom_tpl_path, custom_tpl_tmp = await _resolve_template(pool, "latex", ".tex")
+    doc_ids_list: list[str] | None = _json.loads(doc_ids) if doc_ids else None
 
-    template_path = custom_tpl_path or Path(settings.LATEX_TEMPLATE_PATH)
+    # Priority: ad-hoc upload > stored custom > default
+    ad_hoc_tmp: str | None = None
+    custom_tpl_path: Path | None = None
+    custom_tpl_tmp: str | None = None
+
+    if tex_template is not None:
+        content = await tex_template.read()
+        if not content:
+            raise HTTPException(status_code=422, detail="La plantilla LaTeX está vacía")
+        ad_hoc_tmp = tempfile.mkdtemp(prefix="wiki_adhoc_")
+        (Path(ad_hoc_tmp) / "template.tex").write_bytes(content)
+        try:
+            await validate_latex_template(Path(ad_hoc_tmp) / "template.tex")
+        except HTTPException:
+            shutil.rmtree(ad_hoc_tmp, ignore_errors=True)
+            ad_hoc_tmp = None
+            raise
+    else:
+        custom_tpl_path, custom_tpl_tmp = await _resolve_template(pool, "latex", ".tex")
+
+    template_path = (
+        Path(ad_hoc_tmp) / "template.tex"
+        if ad_hoc_tmp
+        else custom_tpl_path or Path(settings.LATEX_TEMPLATE_PATH)
+    )
+
     if not template_path.exists():
-        if custom_tpl_tmp:
-            shutil.rmtree(custom_tpl_tmp, ignore_errors=True)
+        for d in (ad_hoc_tmp, custom_tpl_tmp):
+            if d:
+                shutil.rmtree(d, ignore_errors=True)
         raise HTTPException(
             status_code=503,
             detail={"error": "LaTeX template not found", "path": str(template_path)},
@@ -91,11 +136,12 @@ async def export_wiki_pdf(
     kb_name = kb.get("name") or str(kb_id)
     try:
         pdf_bytes = await export_service.generate_pdf(
-            str(kb_id), user_id, kb_name, template_path, body.doc_ids
+            str(kb_id), user_id, kb_name, template_path, doc_ids_list
         )
     finally:
-        if custom_tpl_tmp:
-            shutil.rmtree(custom_tpl_tmp, ignore_errors=True)
+        for d in (ad_hoc_tmp, custom_tpl_tmp):
+            if d:
+                shutil.rmtree(d, ignore_errors=True)
 
     slug = _safe_filename(kb.get("slug") or kb.get("name") or str(kb_id))
     return Response(
@@ -142,7 +188,11 @@ async def _export_office(
     "/v1/knowledge-bases/{kb_id}/export.docx",
     response_class=Response,
     responses={
-        200: {"content": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document": {}}},
+        200: {
+            "content": {
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {}
+            }
+        },
         404: {"description": "Knowledge base not found"},
         503: {"description": "Export tools not available"},
         500: {"description": "DOCX compilation failed"},
@@ -157,7 +207,9 @@ async def export_wiki_docx(
     export_service: Annotated[ExportService, Depends(get_export_service)],
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> Response:
-    return await _export_office("docx", kb_id, body, request, kb_service, export_service, user_id)
+    return await _export_office(
+        "docx", kb_id, body, request, kb_service, export_service, user_id
+    )
 
 
 @router.post(
@@ -179,4 +231,6 @@ async def export_wiki_odt(
     export_service: Annotated[ExportService, Depends(get_export_service)],
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> Response:
-    return await _export_office("odt", kb_id, body, request, kb_service, export_service, user_id)
+    return await _export_office(
+        "odt", kb_id, body, request, kb_service, export_service, user_id
+    )

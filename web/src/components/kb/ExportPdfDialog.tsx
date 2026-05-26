@@ -1,106 +1,136 @@
-'use client'
+"use client";
 
-import * as React from 'react'
-import { Loader2, Square, CheckSquare, MinusSquare } from 'lucide-react'
+import * as React from "react";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from '@/components/ui/dialog'
-import { cn } from '@/lib/utils'
-import type { WikiNode } from '@/lib/types'
+  FileText,
+  Loader2,
+  Square,
+  CheckSquare,
+  MinusSquare,
+  X,
+} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
+import type { WikiNode } from "@/lib/types";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function collectLeafDocIds(nodes: WikiNode[]): string[] {
-  const result: string[] = []
+  const result: string[] = [];
   const traverse = (n: WikiNode) => {
-    if (n.docId != null && n.path) result.push(n.docId)
-    n.children?.forEach(traverse)
-  }
-  nodes.forEach(traverse)
-  return result
+    if (n.docId != null && n.path) result.push(n.docId);
+    n.children?.forEach(traverse);
+  };
+  nodes.forEach(traverse);
+  return result;
 }
 
 function getDescendantDocIds(node: WikiNode): string[] {
-  const result: string[] = []
+  const result: string[] = [];
   const traverse = (n: WikiNode) => {
-    if (n.docId != null && n.path) result.push(n.docId)
-    n.children?.forEach(traverse)
-  }
-  traverse(node)
-  return result
+    if (n.docId != null && n.path) result.push(n.docId);
+    n.children?.forEach(traverse);
+  };
+  traverse(node);
+  return result;
 }
 
-type CheckState = 'checked' | 'indeterminate' | 'unchecked'
+type CheckState = "checked" | "indeterminate" | "unchecked";
 
 function nodeCheckState(node: WikiNode, selected: Set<string>): CheckState {
-  const hasChildren = !!node.children?.length
+  const hasChildren = !!node.children?.length;
   if (!hasChildren) {
     if (node.docId != null && node.path) {
-      return selected.has(node.docId) ? 'checked' : 'unchecked'
+      return selected.has(node.docId) ? "checked" : "unchecked";
     }
-    return 'unchecked'
+    return "unchecked";
   }
-  const descendants = getDescendantDocIds(node)
-  if (descendants.length === 0) return 'unchecked'
-  const n = descendants.filter((d) => selected.has(d)).length
-  if (n === 0) return 'unchecked'
-  if (n === descendants.length) return 'checked'
-  return 'indeterminate'
+  const descendants = getDescendantDocIds(node);
+  if (descendants.length === 0) return "unchecked";
+  const n = descendants.filter((d) => selected.has(d)).length;
+  if (n === 0) return "unchecked";
+  if (n === descendants.length) return "checked";
+  return "indeterminate";
 }
 
 // ── Format selector ─────────────────────────────────────────────────────────
 
-type ExportFormat = 'pdf' | 'docx' | 'odt'
+type ExportFormat = "pdf" | "docx" | "odt";
 
 const FORMAT_LABELS: Record<ExportFormat, string> = {
-  pdf: 'PDF',
-  docx: 'Word (DOCX)',
-  odt: 'LibreOffice (ODT)',
-}
+  pdf: "PDF",
+  docx: "Word (DOCX)",
+  odt: "LibreOffice (ODT)",
+};
 
 // ── Public component ────────────────────────────────────────────────────────
 
 interface ExportPdfDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  kbName: string
-  wikiTree: WikiNode[]
-  onExport: (docIds: string[], format: ExportFormat) => void
-  loading: boolean
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  kbName: string;
+  wikiTree: WikiNode[];
+  onExport: (docIds: string[], format: ExportFormat, texFile?: File) => void;
+  loading: boolean;
+  isSuperadmin?: boolean;
 }
 
 export function ExportPdfDialog({
-  open, onOpenChange, kbName, wikiTree, onExport, loading,
+  open,
+  onOpenChange,
+  kbName,
+  wikiTree,
+  onExport,
+  loading,
+  isSuperadmin = false,
 }: ExportPdfDialogProps) {
-  const allDocIds = React.useMemo(() => collectLeafDocIds(wikiTree), [wikiTree])
-  const [selected, setSelected] = React.useState<Set<string>>(() => new Set(allDocIds))
-  const [format, setFormat] = React.useState<ExportFormat>('pdf')
+  const allDocIds = React.useMemo(
+    () => collectLeafDocIds(wikiTree),
+    [wikiTree],
+  );
+  const [selected, setSelected] = React.useState<Set<string>>(
+    () => new Set(allDocIds),
+  );
+  const [format, setFormat] = React.useState<ExportFormat>("pdf");
+  const [texFile, setTexFile] = React.useState<File | null>(null);
 
   React.useEffect(() => {
-    if (open) setSelected(new Set(allDocIds))
-  }, [open, allDocIds])
+    if (open) setSelected(new Set(allDocIds));
+  }, [open, allDocIds]);
+
+  // Reset plantilla ad-hoc al cerrar o cambiar de formato
+  React.useEffect(() => {
+    if (!open || format !== "pdf") setTexFile(null);
+  }, [open, format]);
 
   const toggleLeaf = React.useCallback((docId: string) => {
     setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(docId)) next.delete(docId)
-      else next.add(docId)
-      return next
-    })
-  }, [])
+      const next = new Set(prev);
+      if (next.has(docId)) next.delete(docId);
+      else next.add(docId);
+      return next;
+    });
+  }, []);
 
   const toggleNode = React.useCallback((node: WikiNode) => {
-    const descendants = getDescendantDocIds(node)
+    const descendants = getDescendantDocIds(node);
     setSelected((prev) => {
-      const state = nodeCheckState(node, prev)
-      const next = new Set(prev)
-      if (state === 'checked') descendants.forEach((d) => next.delete(d))
-      else descendants.forEach((d) => next.add(d))
-      return next
-    })
-  }, [])
+      const state = nodeCheckState(node, prev);
+      const next = new Set(prev);
+      if (state === "checked") descendants.forEach((d) => next.delete(d));
+      else descendants.forEach((d) => next.add(d));
+      return next;
+    });
+  }, []);
 
-  const handleExport = () => onExport(Array.from(selected), format)
+  const handleExport = () =>
+    onExport(Array.from(selected), format, texFile ?? undefined);
 
   return (
     <Dialog open={open} onOpenChange={loading ? undefined : onOpenChange}>
@@ -116,16 +146,54 @@ export function ExportPdfDialog({
               key={fmt}
               onClick={() => setFormat(fmt)}
               className={cn(
-                'flex-1 px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer',
+                "flex-1 px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer",
                 format === fmt
-                  ? 'border-primary bg-primary/10 text-primary font-medium'
-                  : 'border-border text-muted-foreground hover:text-foreground hover:bg-accent',
+                  ? "border-primary bg-primary/10 text-primary font-medium"
+                  : "border-border text-muted-foreground hover:text-foreground hover:bg-accent",
               )}
             >
               {FORMAT_LABELS[fmt]}
             </button>
           ))}
         </div>
+
+        {/* Plantilla LaTeX ad-hoc — solo superadmin + PDF */}
+        {isSuperadmin && format === "pdf" && (
+          <div className="space-y-1.5">
+            {texFile ? (
+              <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 rounded-md text-xs">
+                <FileText className="size-3.5 text-muted-foreground shrink-0" />
+                <span className="flex-1 truncate text-foreground">
+                  {texFile.name}
+                </span>
+                <span className="text-muted-foreground shrink-0">
+                  {(texFile.size / 1024).toFixed(1)} KB
+                </span>
+                <button
+                  onClick={() => setTexFile(null)}
+                  className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            ) : (
+              <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-border rounded-md text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors cursor-pointer">
+                <FileText className="size-3.5 shrink-0" />
+                <span>Plantilla LaTeX opcional (.tex)</span>
+                <input
+                  type="file"
+                  accept=".tex"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) setTexFile(f);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            )}
+          </div>
+        )}
 
         {/* Contador + acciones rápidas */}
         <div className="flex items-center justify-between px-0.5">
@@ -151,7 +219,9 @@ export function ExportPdfDialog({
         {/* Árbol de selección */}
         <div className="overflow-y-auto max-h-64 border border-border rounded-md px-1 py-1">
           {wikiTree.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-4">No hay páginas en este wiki.</p>
+            <p className="text-xs text-muted-foreground text-center py-4">
+              No hay páginas en este wiki.
+            </p>
           ) : (
             wikiTree.map((node, i) => (
               <TreeNodeRow
@@ -180,65 +250,76 @@ export function ExportPdfDialog({
             className="flex items-center gap-2 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading && <Loader2 className="size-3.5 animate-spin" />}
-            {loading ? 'Generando…' : `Generar ${FORMAT_LABELS[format]} (${selected.size})`}
+            {loading
+              ? "Generando…"
+              : `Generar ${FORMAT_LABELS[format]} (${selected.size})`}
           </button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 // ── Internal: checkbox visual ───────────────────────────────────────────────
 
 function CheckIcon({ state }: { state: CheckState }) {
-  if (state === 'checked') return <CheckSquare className="size-3.5 text-primary shrink-0" />
-  if (state === 'indeterminate') return <MinusSquare className="size-3.5 text-primary/50 shrink-0" />
-  return <Square className="size-3.5 text-muted-foreground/30 shrink-0" />
+  if (state === "checked")
+    return <CheckSquare className="size-3.5 text-primary shrink-0" />;
+  if (state === "indeterminate")
+    return <MinusSquare className="size-3.5 text-primary/50 shrink-0" />;
+  return <Square className="size-3.5 text-muted-foreground/30 shrink-0" />;
 }
 
 // ── Internal: tree row ──────────────────────────────────────────────────────
 
 function TreeNodeRow({
-  node, depth, selected, onToggleLeaf, onToggleNode,
+  node,
+  depth,
+  selected,
+  onToggleLeaf,
+  onToggleNode,
 }: {
-  node: WikiNode
-  depth: number
-  selected: Set<string>
-  onToggleLeaf: (id: string) => void
-  onToggleNode: (n: WikiNode) => void
+  node: WikiNode;
+  depth: number;
+  selected: Set<string>;
+  onToggleLeaf: (id: string) => void;
+  onToggleNode: (n: WikiNode) => void;
 }) {
-  const hasChildren = !!node.children?.length
-  const isLeaf = !hasChildren && node.path != null && node.docId != null
-  const checkState = nodeCheckState(node, selected)
+  const hasChildren = !!node.children?.length;
+  const isLeaf = !hasChildren && node.path != null && node.docId != null;
+  const checkState = nodeCheckState(node, selected);
 
   const handleClick = () => {
-    if (isLeaf && node.docId != null) onToggleLeaf(node.docId)
-    else onToggleNode(node)
-  }
+    if (isLeaf && node.docId != null) onToggleLeaf(node.docId);
+    else onToggleNode(node);
+  };
 
   return (
     <div>
       <button
         onClick={handleClick}
         className={cn(
-          'flex items-center gap-2 w-full text-left text-[13px] rounded-md py-1.5 hover:bg-accent/50 transition-colors cursor-pointer',
-          checkState === 'unchecked' ? 'text-muted-foreground' : 'text-foreground',
+          "flex items-center gap-2 w-full text-left text-[13px] rounded-md py-1.5 hover:bg-accent/50 transition-colors cursor-pointer",
+          checkState === "unchecked"
+            ? "text-muted-foreground"
+            : "text-foreground",
         )}
-        style={{ paddingLeft: `${depth * 14 + 8}px`, paddingRight: '8px' }}
+        style={{ paddingLeft: `${depth * 14 + 8}px`, paddingRight: "8px" }}
       >
         <CheckIcon state={checkState} />
         <span className="truncate flex-1">{node.title}</span>
       </button>
-      {hasChildren && node.children!.map((child, i) => (
-        <TreeNodeRow
-          key={child.path ?? child.title ?? i}
-          node={child}
-          depth={depth + 1}
-          selected={selected}
-          onToggleLeaf={onToggleLeaf}
-          onToggleNode={onToggleNode}
-        />
-      ))}
+      {hasChildren &&
+        node.children!.map((child, i) => (
+          <TreeNodeRow
+            key={child.path ?? child.title ?? i}
+            node={child}
+            depth={depth + 1}
+            selected={selected}
+            onToggleLeaf={onToggleLeaf}
+            onToggleNode={onToggleNode}
+          />
+        ))}
     </div>
-  )
+  );
 }
