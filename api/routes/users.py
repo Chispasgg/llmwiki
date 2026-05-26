@@ -18,7 +18,7 @@ class UserSuggestion(BaseModel):
 
 @router.get("/search", response_model=list[UserSuggestion])
 async def search_users(
-    q: Annotated[str, Query(min_length=2, max_length=100)],
+    q: Annotated[str, Query(min_length=3, max_length=100)],
     user_id: Annotated[str, Depends(get_user_id)],
     request: Request,
 ):
@@ -32,6 +32,6 @@ async def search_users(
         "ORDER BY display_name "
         "LIMIT 8",
         user_id,
-        f"%{q}%",
+        f"{q}%",
     )
     return [dict(r) for r in rows]

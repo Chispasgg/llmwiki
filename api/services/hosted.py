@@ -10,12 +10,17 @@ from fastapi import HTTPException
 
 from config import settings
 from services.chunker import chunk_text
-from .base import UserService, KBService, DocumentService, WorkspaceService, ServiceFactory
+from .base import (
+    UserService,
+    KBService,
+    DocumentService,
+    WorkspaceService,
+    ServiceFactory,
+)
 from .types import parse_frontmatter, title_from_filename, extract_tags
 
 
 class HostedUserService(UserService):
-
     def __init__(self, pool, user_id: str):
         self.pool = pool
         self.user_id = user_id
@@ -93,6 +98,7 @@ def _kb_row_to_dict(row) -> dict:
     d["wiki_page_count"] = int(d.get("wiki_page_count", 0))
     return d
 
+
 _OVERVIEW_TEMPLATE = """\
 This wiki tracks research on {name}. No sources have been ingested yet.
 
@@ -121,7 +127,6 @@ def _slugify(name: str) -> str:
 
 
 class HostedKBService(KBService):
-
     def __init__(self, pool, user_id: str, is_superadmin: bool = False):
         self.pool = pool
         self.user_id = user_id
@@ -161,7 +166,8 @@ class HostedKBService(KBService):
             f"{_KB_LIST_QUERY} "
             "LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
             "WHERE kb.id = $1 AND (kb.user_id = $2 OR ks.shared_with = $2::uuid)",
-            kb_id, self.user_id,
+            kb_id,
+            self.user_id,
         )
         return dict(row) if row else None
 
@@ -172,28 +178,39 @@ class HostedKBService(KBService):
         await self._scaffold_wiki(row["id"], name)
         return dict(row)
 
-    async def update(self, kb_id: str, name: str | None, description: str | None) -> dict | None:
+    async def update(
+        self, kb_id: str, name: str | None, description: str | None
+    ) -> dict | None:
         if name is not None:
             slug = await self._unique_slug(name)
             row = await self.pool.fetchrow(
                 "UPDATE knowledge_bases SET name = $1, slug = $2, description = COALESCE($3, description), updated_at = now() "
                 "WHERE id = $4 AND user_id = $5 "
                 "RETURNING id, user_id, name, slug, description, created_at, updated_at",
-                name, slug, description, kb_id, self.user_id,
+                name,
+                slug,
+                description,
+                kb_id,
+                self.user_id,
             )
         else:
             row = await self.pool.fetchrow(
                 "UPDATE knowledge_bases SET description = $1, updated_at = now() "
                 "WHERE id = $2 AND user_id = $3 "
                 "RETURNING id, user_id, name, slug, description, created_at, updated_at",
-                description, kb_id, self.user_id,
+                description,
+                kb_id,
+                self.user_id,
             )
         return dict(row) if row else None
 
     async def _check_capacity(self) -> None:
         user_count = await self.pool.fetchval("SELECT COUNT(DISTINCT id) FROM users")
         if user_count and user_count >= settings.GLOBAL_MAX_USERS:
-            raise HTTPException(status_code=503, detail="We've reached our user capacity for now. Please try again later.")
+            raise HTTPException(
+                status_code=503,
+                detail="We've reached our user capacity for now. Please try again later.",
+            )
 
     async def _insert_kb(self, name: str, slug: str, description: str | None) -> dict:
         conn = await self.pool.acquire()
@@ -206,7 +223,10 @@ class HostedKBService(KBService):
                             "INSERT INTO knowledge_bases (user_id, name, slug, description) "
                             "VALUES ($1, $2, $3, $4) "
                             "RETURNING id, user_id, name, slug, description, created_at, updated_at",
-                            self.user_id, current_name, slug, description,
+                            self.user_id,
+                            current_name,
+                            slug,
+                            description,
                         )
                         return dict(row)
                     except asyncpg.UniqueViolationError:
@@ -214,7 +234,9 @@ class HostedKBService(KBService):
                         slug = await self._unique_slug(current_name)
         finally:
             await self.pool.release(conn)
-        raise HTTPException(status_code=409, detail="Could not create wiki — too many duplicates.")
+        raise HTTPException(
+            status_code=409, detail="Could not create wiki — too many duplicates."
+        )
 
     async def _scaffold_wiki(self, kb_id, name: str) -> None:
         today = datetime.now().strftime("%Y-%m-%d")
@@ -222,19 +244,26 @@ class HostedKBService(KBService):
             "INSERT INTO documents (knowledge_base_id, user_id, filename, title, path, "
             "file_type, status, content, tags, version, sort_order) "
             "VALUES ($1, $2, 'overview.md', 'Overview', '/wiki/', 'md', 'ready', $3, $4, 0, -100)",
-            kb_id, self.user_id, _OVERVIEW_TEMPLATE.format(name=name), ["overview"],
+            kb_id,
+            self.user_id,
+            _OVERVIEW_TEMPLATE.format(name=name),
+            ["overview"],
         )
         await self.pool.execute(
             "INSERT INTO documents (knowledge_base_id, user_id, filename, title, path, "
             "file_type, status, content, tags, version, sort_order) "
             "VALUES ($1, $2, 'log.md', 'Log', '/wiki/', 'md', 'ready', $3, $4, 0, 100)",
-            kb_id, self.user_id, _LOG_TEMPLATE.format(name=name, date=today), ["log"],
+            kb_id,
+            self.user_id,
+            _LOG_TEMPLATE.format(name=name, date=today),
+            ["log"],
         )
 
     async def delete(self, kb_id: str) -> bool:
         result = await self.pool.execute(
             "DELETE FROM knowledge_bases WHERE id = $1 AND user_id = $2",
-            kb_id, self.user_id,
+            kb_id,
+            self.user_id,
         )
         return result != "DELETE 0"
 
@@ -244,7 +273,8 @@ class HostedKBService(KBService):
         counter = 2
         while await self.pool.fetchval(
             "SELECT 1 FROM knowledge_bases WHERE slug = $1 AND user_id = $2",
-            slug, self.user_id,
+            slug,
+            self.user_id,
         ):
             slug = f"{base}-{counter}"
             counter += 1
@@ -259,7 +289,6 @@ _DOC_COLUMNS = (
 
 
 class HostedDocumentService(DocumentService):
-
     def __init__(self, pool, user_id: str, storage=None, is_superadmin: bool = False):
         self.pool = pool
         self.user_id = user_id
@@ -273,7 +302,8 @@ class HostedDocumentService(DocumentService):
                     f"SELECT {_DOC_COLUMNS} FROM documents "
                     "WHERE knowledge_base_id = $1 AND archived = false AND path = $2 "
                     "ORDER BY filename",
-                    kb_id, path,
+                    kb_id,
+                    path,
                 )
             else:
                 rows = await self.pool.fetch(
@@ -290,7 +320,9 @@ class HostedDocumentService(DocumentService):
                 "AND EXISTS (SELECT 1 FROM knowledge_bases kb2 LEFT JOIN kb_shares ks2 ON ks2.kb_id = kb2.id "
                 "WHERE kb2.id = $1 AND (kb2.user_id = $3 OR ks2.shared_with = $3::uuid)) "
                 "ORDER BY filename",
-                kb_id, path, self.user_id,
+                kb_id,
+                path,
+                self.user_id,
             )
         else:
             rows = await self.pool.fetch(
@@ -299,7 +331,8 @@ class HostedDocumentService(DocumentService):
                 "AND EXISTS (SELECT 1 FROM knowledge_bases kb2 LEFT JOIN kb_shares ks2 ON ks2.kb_id = kb2.id "
                 "WHERE kb2.id = $1 AND (kb2.user_id = $2 OR ks2.shared_with = $2::uuid)) "
                 "ORDER BY filename",
-                kb_id, self.user_id,
+                kb_id,
+                self.user_id,
             )
         return [dict(r) for r in rows]
 
@@ -315,7 +348,8 @@ class HostedDocumentService(DocumentService):
             "WHERE d.id = $1 "
             "AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
             "WHERE kb.id = d.knowledge_base_id AND (kb.user_id = $2 OR ks.shared_with = $2::uuid))",
-            doc_id, self.user_id,
+            doc_id,
+            self.user_id,
         )
         return dict(row) if row else None
 
@@ -331,7 +365,8 @@ class HostedDocumentService(DocumentService):
             "WHERE d.id = $1 "
             "AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
             "WHERE kb.id = d.knowledge_base_id AND (kb.user_id = $2 OR ks.shared_with = $2::uuid))",
-            doc_id, self.user_id,
+            doc_id,
+            self.user_id,
         )
         return dict(row) if row else None
 
@@ -347,7 +382,8 @@ class HostedDocumentService(DocumentService):
                 "WHERE d.id = $1 "
                 "AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
                 "WHERE kb.id = d.knowledge_base_id AND (kb.user_id = $2 OR ks.shared_with = $2::uuid))",
-                doc_id, self.user_id,
+                doc_id,
+                self.user_id,
             )
         if not row:
             return None
@@ -356,35 +392,51 @@ class HostedDocumentService(DocumentService):
 
         doc_id = str(row["id"])
         filename = row["filename"]
-        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else row["file_type"]
+        ext = (
+            filename.rsplit(".", 1)[-1].lower() if "." in filename else row["file_type"]
+        )
         if ext in {"pptx", "ppt", "docx", "doc"}:
             key = f"{doc_id}/converted.pdf"
         elif ext in {"html", "htm"}:
             key = f"{doc_id}/tagged.html"
         else:
             key = f"{doc_id}/{filename}"
-        url = await self.storage.generate_presigned_get(key, user_id=str(row["user_id"]))
+        url = await self.storage.generate_presigned_get(
+            key, user_id=str(row["user_id"])
+        )
         return {"url": url}
 
-    async def create_note(self, kb_id: str, filename: str, path: str, content: str) -> dict:
+    async def create_note(
+        self, kb_id: str, filename: str, path: str, content: str
+    ) -> dict:
         kb = await self.pool.fetchval(
             "SELECT id FROM knowledge_bases WHERE id = $1 AND user_id = $2",
-            kb_id, self.user_id,
+            kb_id,
+            self.user_id,
         )
         if not kb:
             raise HTTPException(status_code=404, detail="Knowledge base not found")
 
         meta = parse_frontmatter(content)
         title = meta.get("title", "").strip() or title_from_filename(filename)
-        tags = [str(t) for t in meta.get("tags", []) if t is not None] if isinstance(meta.get("tags"), list) else []
+        tags = (
+            [str(t) for t in meta.get("tags", []) if t is not None]
+            if isinstance(meta.get("tags"), list)
+            else []
+        )
 
         existing = await self.pool.fetchval(
             "SELECT id FROM documents WHERE knowledge_base_id = $1 AND user_id = $2 "
             "AND filename = $3 AND path = $4 AND NOT archived",
-            kb_id, self.user_id, filename, path,
+            kb_id,
+            self.user_id,
+            filename,
+            path,
         )
         if existing:
-            raise HTTPException(status_code=409, detail=f"'{filename}' already exists at {path}")
+            raise HTTPException(
+                status_code=409, detail=f"'{filename}' already exists at {path}"
+            )
 
         conn = await self.pool.acquire()
         try:
@@ -394,11 +446,19 @@ class HostedDocumentService(DocumentService):
                     f"file_type, status, content, tags) "
                     f"VALUES ($1, $2, $3, $4, $5, 'md', 'ready', $6, $7) "
                     f"RETURNING {_DOC_COLUMNS}",
-                    kb_id, self.user_id, filename, path, title, content, tags,
+                    kb_id,
+                    self.user_id,
+                    filename,
+                    path,
+                    title,
+                    content,
+                    tags,
                 )
                 if content:
                     chunks = chunk_text(content)
-                    await store_chunks(conn, str(row["id"]), self.user_id, str(kb_id), chunks)
+                    await store_chunks(
+                        conn, str(row["id"]), self.user_id, str(kb_id), chunks
+                    )
         finally:
             await self.pool.release(conn)
         return dict(row)
@@ -406,30 +466,41 @@ class HostedDocumentService(DocumentService):
     async def update_content(self, doc_id: str, content: str) -> dict | None:
         current = await self.pool.fetchrow(
             "SELECT content, version, source_kind FROM documents WHERE id = $1 AND user_id = $2",
-            doc_id, self.user_id,
+            doc_id,
+            self.user_id,
         )
         if not current:
             return None
 
         old_content = current["content"] or ""
-        if old_content.strip() and old_content.strip() != content.strip() and current["source_kind"] == "wiki":
+        if (
+            old_content.strip()
+            and old_content.strip() != content.strip()
+            and current["source_kind"] == "wiki"
+        ):
             await self.pool.execute(
                 "INSERT INTO document_history (document_id, user_id, content, version) "
                 "VALUES ($1, $2, $3, $4)",
-                doc_id, self.user_id, old_content, current["version"],
+                doc_id,
+                self.user_id,
+                old_content,
+                current["version"],
             )
 
         row = await self.pool.fetchrow(
             "UPDATE documents SET content = $1, version = version + 1, updated_at = now() "
             "WHERE id = $2 AND user_id = $3 RETURNING id, content, version",
-            content, doc_id, self.user_id,
+            content,
+            doc_id,
+            self.user_id,
         )
         if not row:
             return None
 
         kb_id = await self.pool.fetchval(
             "SELECT knowledge_base_id::text FROM documents WHERE id = $1 AND user_id = $2",
-            doc_id, self.user_id,
+            doc_id,
+            self.user_id,
         )
         if kb_id:
             chunks = chunk_text(content) if content else []
@@ -457,20 +528,33 @@ class HostedDocumentService(DocumentService):
 
     async def update_metadata(self, doc_id: str, fields: dict) -> dict | None:
         import json as _json
+
         sets = []
-        params = []
+        params: list = []
         idx = 1
-        for key in ("filename", "path", "title", "date"):
-            if key in fields:
-                sets.append(f"{key} = ${idx}")
-                params.append(fields[key])
-                idx += 1
+        # Explicit per-column handling — column names never come from caller input
+        if "filename" in fields:
+            sets.append(f"filename = ${idx}")
+            params.append(fields["filename"])
+            idx += 1
+        if "path" in fields:
+            sets.append(f"path = ${idx}")
+            params.append(fields["path"])
+            idx += 1
+        if "title" in fields:
+            sets.append(f"title = ${idx}")
+            params.append(fields["title"])
+            idx += 1
+        if "date" in fields:
+            sets.append(f"date = ${idx}")
+            params.append(fields["date"])
+            idx += 1
         if "tags" in fields:
             sets.append(f"tags = ${idx}")
             params.append(fields["tags"])
             idx += 1
         if "metadata" in fields:
-            sets.append(f"metadata = ${idx}")
+            sets.append(f"metadata = ${idx}::jsonb")
             params.append(_json.dumps(fields["metadata"]))
             idx += 1
 
@@ -492,22 +576,32 @@ class HostedDocumentService(DocumentService):
         # source documents are hard-deleted so the filename can be re-used.
         row = await self.pool.fetchrow(
             "SELECT path, filename FROM documents WHERE id = $1 AND user_id = $2",
-            doc_id, self.user_id,
+            doc_id,
+            self.user_id,
         )
         if not row:
             return False
         if (row["path"] or "").startswith("/wiki/"):
             result = await self.pool.execute(
                 "UPDATE documents SET archived = true, updated_at = now() WHERE id = $1 AND user_id = $2",
-                doc_id, self.user_id,
+                doc_id,
+                self.user_id,
             )
             return result != "UPDATE 0"
-        await self.pool.execute("DELETE FROM document_pages WHERE document_id = $1", doc_id)
-        await self.pool.execute("DELETE FROM document_chunks WHERE document_id = $1", doc_id)
-        await self.pool.execute("DELETE FROM document_references WHERE source_document_id = $1 OR target_document_id = $1", doc_id)
+        await self.pool.execute(
+            "DELETE FROM document_pages WHERE document_id = $1", doc_id
+        )
+        await self.pool.execute(
+            "DELETE FROM document_chunks WHERE document_id = $1", doc_id
+        )
+        await self.pool.execute(
+            "DELETE FROM document_references WHERE source_document_id = $1 OR target_document_id = $1",
+            doc_id,
+        )
         result = await self.pool.execute(
             "DELETE FROM documents WHERE id = $1 AND user_id = $2",
-            doc_id, self.user_id,
+            doc_id,
+            self.user_id,
         )
         if result != "DELETE 0" and self.storage:
             await self._delete_storage_files(doc_id, row["filename"])
@@ -518,7 +612,8 @@ class HostedDocumentService(DocumentService):
             return 0
         rows = await self.pool.fetch(
             "SELECT id::text, path, filename FROM documents WHERE id = ANY($1::uuid[]) AND user_id = $2",
-            doc_ids, self.user_id,
+            doc_ids,
+            self.user_id,
         )
         wiki_ids = [r["id"] for r in rows if (r["path"] or "").startswith("/wiki/")]
         source_rows = [r for r in rows if not (r["path"] or "").startswith("/wiki/")]
@@ -527,16 +622,27 @@ class HostedDocumentService(DocumentService):
         if wiki_ids:
             result = await self.pool.execute(
                 "UPDATE documents SET archived = true, updated_at = now() WHERE id = ANY($1::uuid[]) AND user_id = $2",
-                wiki_ids, self.user_id,
+                wiki_ids,
+                self.user_id,
             )
             count += int(result.split()[-1]) if result else 0
         if source_ids:
-            await self.pool.execute("DELETE FROM document_pages WHERE document_id = ANY($1::uuid[])", source_ids)
-            await self.pool.execute("DELETE FROM document_chunks WHERE document_id = ANY($1::uuid[])", source_ids)
-            await self.pool.execute("DELETE FROM document_references WHERE source_document_id = ANY($1::uuid[]) OR target_document_id = ANY($1::uuid[])", source_ids)
+            await self.pool.execute(
+                "DELETE FROM document_pages WHERE document_id = ANY($1::uuid[])",
+                source_ids,
+            )
+            await self.pool.execute(
+                "DELETE FROM document_chunks WHERE document_id = ANY($1::uuid[])",
+                source_ids,
+            )
+            await self.pool.execute(
+                "DELETE FROM document_references WHERE source_document_id = ANY($1::uuid[]) OR target_document_id = ANY($1::uuid[])",
+                source_ids,
+            )
             result = await self.pool.execute(
                 "DELETE FROM documents WHERE id = ANY($1::uuid[]) AND user_id = $2",
-                source_ids, self.user_id,
+                source_ids,
+                self.user_id,
             )
             count += int(result.split()[-1]) if result else 0
             if self.storage:
@@ -548,6 +654,7 @@ class HostedDocumentService(DocumentService):
         import asyncio
         from pathlib import Path
         import logging
+
         _log = logging.getLogger(__name__)
         keys = [
             f"{doc_id}/{filename}",
@@ -572,7 +679,6 @@ class HostedDocumentService(DocumentService):
 
 
 class HostedWorkspaceService(WorkspaceService):
-
     def __init__(self, pool, user_id: str):
         self.pool = pool
         self.user_id = user_id
@@ -620,14 +726,20 @@ class HostedWorkspaceService(WorkspaceService):
             "SELECT ws.id, ws.name, ws.slug, ws.description, ws.created_by,"
             "  ws.created_at, ws.updated_at, 1::bigint AS member_count, 0::bigint AS wiki_count"
             " FROM ws",
-            name, slug, description, self.user_id,
+            name,
+            slug,
+            description,
+            self.user_id,
         )
         return self._row_to_dict(row)
 
-    async def update(self, workspace_id: str, name: str | None, description: str | None) -> dict | None:
+    async def update(
+        self, workspace_id: str, name: str | None, description: str | None
+    ) -> dict | None:
         is_admin = await self.pool.fetchval(
             "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND role = 'admin'",
-            workspace_id, self.user_id,
+            workspace_id,
+            self.user_id,
         )
         if not is_admin:
             return None
@@ -636,7 +748,9 @@ class HostedWorkspaceService(WorkspaceService):
             new_slug = _slugify(name)
             vals.append(name)
             vals.append(new_slug)
-            sets.append(f"name = ${len(vals)-1}, slug = ${len(vals)}, updated_at = now()")
+            sets.append(
+                f"name = ${len(vals) - 1}, slug = ${len(vals)}, updated_at = now()"
+            )
         if description is not None:
             vals.append(description)
             sets.append(f"description = ${len(vals)}, updated_at = now()")
@@ -657,11 +771,14 @@ class HostedWorkspaceService(WorkspaceService):
     async def delete(self, workspace_id: str) -> bool:
         is_admin = await self.pool.fetchval(
             "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND role = 'admin'",
-            workspace_id, self.user_id,
+            workspace_id,
+            self.user_id,
         )
         if not is_admin:
             return False
-        result = await self.pool.execute("DELETE FROM workspaces WHERE id = $1", workspace_id)
+        result = await self.pool.execute(
+            "DELETE FROM workspaces WHERE id = $1", workspace_id
+        )
         return result == "DELETE 1"
 
     async def list_wikis(self, workspace_id: str) -> list[dict]:
@@ -676,7 +793,8 @@ class HostedWorkspaceService(WorkspaceService):
         )
         is_member = await self.pool.fetchval(
             "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
-            workspace_id, self.user_id,
+            workspace_id,
+            self.user_id,
         )
         if is_member:
             rows = await self.pool.fetch(
@@ -690,36 +808,54 @@ class HostedWorkspaceService(WorkspaceService):
             _KB_SELECT
             + " JOIN kb_shares ks ON ks.kb_id = kb.id"
             + " WHERE kb.workspace_id = $1 AND ks.shared_with = $2::uuid ORDER BY kb.name",
-            workspace_id, self.user_id,
+            workspace_id,
+            self.user_id,
         )
         if not rows:
-            raise HTTPException(status_code=403, detail={"error": "Not a member of this workspace"})
+            raise HTTPException(
+                status_code=403, detail={"error": "Not a member of this workspace"}
+            )
         return [_kb_row_to_dict(r) for r in rows]
 
     async def move_wiki(self, kb_id: str, target_workspace_id: str) -> dict:
         is_target_member = await self.pool.fetchval(
             "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
-            target_workspace_id, self.user_id,
+            target_workspace_id,
+            self.user_id,
         )
         if not is_target_member:
-            raise HTTPException(status_code=403, detail={"error": "Not a member of target workspace"})
+            raise HTTPException(
+                status_code=403, detail={"error": "Not a member of target workspace"}
+            )
         row = await self.pool.fetchrow(
             "UPDATE knowledge_bases SET workspace_id = $1, updated_at = now()"
             " WHERE id = $2 AND user_id = $3"
             " RETURNING id, name, slug, workspace_id",
-            target_workspace_id, kb_id, self.user_id,
+            target_workspace_id,
+            kb_id,
+            self.user_id,
         )
         if not row:
-            raise HTTPException(status_code=404, detail={"error": "Wiki not found or not owned by you"})
-        return {"id": str(row["id"]), "name": row["name"], "slug": row["slug"], "workspace_id": str(row["workspace_id"])}
+            raise HTTPException(
+                status_code=404, detail={"error": "Wiki not found or not owned by you"}
+            )
+        return {
+            "id": str(row["id"]),
+            "name": row["name"],
+            "slug": row["slug"],
+            "workspace_id": str(row["workspace_id"]),
+        }
 
     async def add_member(self, workspace_id: str, user_email: str, role: str) -> dict:
         is_admin = await self.pool.fetchval(
             "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND role = 'admin'",
-            workspace_id, self.user_id,
+            workspace_id,
+            self.user_id,
         )
         if not is_admin:
-            raise HTTPException(status_code=403, detail={"error": "Only admins can add members"})
+            raise HTTPException(
+                status_code=403, detail={"error": "Only admins can add members"}
+            )
         target = await self.pool.fetchrow(
             "SELECT id, email FROM users WHERE email = $1", user_email
         )
@@ -728,13 +864,19 @@ class HostedWorkspaceService(WorkspaceService):
         await self.pool.execute(
             "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, $3)"
             " ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = $3",
-            workspace_id, str(target["id"]), role,
+            workspace_id,
+            str(target["id"]),
+            role,
         )
-        return {"workspace_id": workspace_id, "user_id": str(target["id"]), "email": target["email"], "role": role}
+        return {
+            "workspace_id": workspace_id,
+            "user_id": str(target["id"]),
+            "email": target["email"],
+            "role": role,
+        }
 
 
 class HostedServiceFactory(ServiceFactory):
-
     def __init__(self, pool, storage=None, ocr=None):
         self.pool = pool
         self.storage = storage
@@ -743,11 +885,17 @@ class HostedServiceFactory(ServiceFactory):
     def user_service(self, user_id: str) -> HostedUserService:
         return HostedUserService(self.pool, user_id)
 
-    def kb_service(self, user_id: str, *, is_superadmin: bool = False) -> "HostedKBService":
+    def kb_service(
+        self, user_id: str, *, is_superadmin: bool = False
+    ) -> "HostedKBService":
         return HostedKBService(self.pool, user_id, is_superadmin=is_superadmin)
 
-    def document_service(self, user_id: str, *, is_superadmin: bool = False) -> "HostedDocumentService":
-        return HostedDocumentService(self.pool, user_id, self.storage, is_superadmin=is_superadmin)
+    def document_service(
+        self, user_id: str, *, is_superadmin: bool = False
+    ) -> "HostedDocumentService":
+        return HostedDocumentService(
+            self.pool, user_id, self.storage, is_superadmin=is_superadmin
+        )
 
     def workspace_service(self, user_id: str) -> HostedWorkspaceService:
         return HostedWorkspaceService(self.pool, user_id)
@@ -756,23 +904,34 @@ class HostedServiceFactory(ServiceFactory):
 # ── Chunk persistence (Postgres-specific) ─────────────────────────────────────
 
 import logging as _logging
+
 _chunk_logger = _logging.getLogger(__name__)
 
 
-async def store_chunks(pool_or_conn, document_id: str, user_id: str, knowledge_base_id: str, chunks):
+async def store_chunks(
+    pool_or_conn, document_id: str, user_id: str, knowledge_base_id: str, chunks
+):
     """Persiste chunks en Postgres. Acepta un pool asyncpg o una conexión directa."""
     if isinstance(pool_or_conn, asyncpg.Connection):
-        await _store_chunks_on_conn(pool_or_conn, document_id, user_id, knowledge_base_id, chunks)
+        await _store_chunks_on_conn(
+            pool_or_conn, document_id, user_id, knowledge_base_id, chunks
+        )
     else:
         conn = await pool_or_conn.acquire()
         try:
-            await _store_chunks_on_conn(conn, document_id, user_id, knowledge_base_id, chunks)
+            await _store_chunks_on_conn(
+                conn, document_id, user_id, knowledge_base_id, chunks
+            )
         finally:
             await pool_or_conn.release(conn)
 
 
-async def _store_chunks_on_conn(conn, document_id: str, user_id: str, knowledge_base_id: str, chunks):
-    await conn.execute("DELETE FROM document_chunks WHERE document_id = $1", document_id)
+async def _store_chunks_on_conn(
+    conn, document_id: str, user_id: str, knowledge_base_id: str, chunks
+):
+    await conn.execute(
+        "DELETE FROM document_chunks WHERE document_id = $1", document_id
+    )
     if not chunks:
         return
 
@@ -782,8 +941,17 @@ async def _store_chunks_on_conn(conn, document_id: str, user_id: str, knowledge_
         "start_char, token_count, header_breadcrumb) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         [
-            (document_id, user_id, knowledge_base_id, c.index, c.content,
-             c.page, c.start_char, c.token_count, c.header_breadcrumb)
+            (
+                document_id,
+                user_id,
+                knowledge_base_id,
+                c.index,
+                c.content,
+                c.page,
+                c.start_char,
+                c.token_count,
+                c.header_breadcrumb,
+            )
             for c in chunks
         ],
     )

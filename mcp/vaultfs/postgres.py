@@ -11,6 +11,7 @@ from db import (
     scoped_execute,
     service_queryrow,
     service_execute,
+    get_pool,
 )
 from .base import VaultFS
 
@@ -87,30 +88,44 @@ class PostgresVaultFS(VaultFS):
             self.user_id,
         )
 
-    async def _store_chunks(self, doc_id: str, kb_id: str, content: str) -> None:
+    async def _store_chunks(self, doc_id, kb_id: str, content: str, conn=None) -> None:
         import uuid as _uuid
         from chunker import chunk_text
 
         chunks = chunk_text(content)
-        await service_execute(
-            "DELETE FROM document_chunks WHERE document_id = $1",
-            _uuid.UUID(doc_id),
-        )
-        for c in chunks:
-            await service_execute(
-                "INSERT INTO document_chunks "
-                "(document_id, user_id, knowledge_base_id, chunk_index, content, page, start_char, token_count, header_breadcrumb) "
-                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-                _uuid.UUID(doc_id),
-                _uuid.UUID(self.user_id),
-                _uuid.UUID(kb_id),
-                c.index,
-                c.content,
-                c.page,
-                c.start_char,
-                c.token_count,
-                c.header_breadcrumb or "",
+        # Accept UUID objects or strings
+        doc_uuid = doc_id if isinstance(doc_id, _uuid.UUID) else _uuid.UUID(str(doc_id))
+        user_uuid = _uuid.UUID(self.user_id)
+        kb_uuid = _uuid.UUID(kb_id)
+
+        async def _run(c):
+            await c.execute(
+                "DELETE FROM document_chunks WHERE document_id = $1",
+                doc_uuid,
             )
+            for ch in chunks:
+                await c.execute(
+                    "INSERT INTO document_chunks "
+                    "(document_id, user_id, knowledge_base_id, chunk_index, content, page, start_char, token_count, header_breadcrumb) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+                    doc_uuid,
+                    user_uuid,
+                    kb_uuid,
+                    ch.index,
+                    ch.content,
+                    ch.page,
+                    ch.start_char,
+                    ch.token_count,
+                    ch.header_breadcrumb or "",
+                )
+
+        if conn is not None:
+            await _run(conn)
+        else:
+            pool = await get_pool()
+            async with pool.acquire() as c:
+                async with c.transaction():
+                    await _run(c)
 
     async def create_document(
         self,
@@ -126,23 +141,27 @@ class PostgresVaultFS(VaultFS):
     ) -> dict:
         import json as _json
 
-        doc = await service_queryrow(
-            "INSERT INTO documents (knowledge_base_id, user_id, filename, title, path, "
-            "file_type, status, content, tags, date, metadata, version) "
-            "VALUES ($1, $2, $3, $4, $5, $6, 'ready', $7, $8, $9, $10::jsonb, 0) RETURNING id, filename, path",
-            kb_id,
-            self.user_id,
-            filename,
-            title,
-            dir_path,
-            file_type,
-            content,
-            tags,
-            date,
-            _json.dumps(metadata) if metadata else None,
-        )
-        if doc and content.strip():
-            await self._store_chunks(doc["id"], kb_id, content)
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    "INSERT INTO documents (knowledge_base_id, user_id, filename, title, path, "
+                    "file_type, status, content, tags, date, metadata, version) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, 'ready', $7, $8, $9, $10::jsonb, 0) RETURNING id, filename, path",
+                    kb_id,
+                    self.user_id,
+                    filename,
+                    title,
+                    dir_path,
+                    file_type,
+                    content,
+                    tags,
+                    date,
+                    _json.dumps(metadata) if metadata else None,
+                )
+                doc = dict(row) if row else None
+                if doc and content.strip():
+                    await self._store_chunks(doc["id"], kb_id, content, conn=conn)
         return doc
 
     async def update_document(
@@ -156,65 +175,71 @@ class PostgresVaultFS(VaultFS):
     ) -> dict | None:
         import json as _json
 
-        # Fetch current state to save history for wiki documents
-        current = await service_queryrow(
-            "SELECT content, version, path, knowledge_base_id FROM documents WHERE id = $1",
-            doc_id,
-        )
-        if current:
-            old_content = current["content"] or ""
-            is_wiki = (current["path"] or "").startswith("/wiki/")
-            if (
-                is_wiki
-                and old_content.strip()
-                and old_content.strip() != content.strip()
-            ):
-                await service_execute(
-                    "INSERT INTO document_history (document_id, user_id, content, version) "
-                    "VALUES ($1, $2, $3, $4)",
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                current = await conn.fetchrow(
+                    "SELECT content, version, path, knowledge_base_id FROM documents WHERE id = $1",
                     doc_id,
-                    self.user_id,
-                    old_content,
-                    current["version"],
                 )
+                if not current:
+                    return None
 
-        # Build SET clauses dynamically based on what's provided
-        sets = [
-            "content = $1",
-            "version = version + 1",
-            "updated_at = now()",
-            "stale_since = NULL",
-        ]
-        args: list = [content, doc_id]
-        idx = 3  # next param index
+                old_content = current["content"] or ""
+                is_wiki = (current["path"] or "").startswith("/wiki/")
+                if (
+                    is_wiki
+                    and old_content.strip()
+                    and old_content.strip() != content.strip()
+                ):
+                    await conn.execute(
+                        "INSERT INTO document_history (document_id, user_id, content, version) "
+                        "VALUES ($1, $2, $3, $4)",
+                        doc_id,
+                        self.user_id,
+                        old_content,
+                        current["version"],
+                    )
 
-        if title is not None:
-            sets.append(f"title = ${idx}")
-            args.append(title)
-            idx += 1
-        if tags is not None:
-            sets.append(f"tags = ${idx}")
-            args.append(tags)
-            idx += 1
-        if date is not None:
-            sets.append(f"date = ${idx}")
-            args.append(date)
-            idx += 1
-        if metadata is not None:
-            sets.append(f"metadata = ${idx}::jsonb")
-            args.append(_json.dumps(metadata))
-            idx += 1
+                sets = [
+                    "content = $1",
+                    "version = version + 1",
+                    "updated_at = now()",
+                    "stale_since = NULL",
+                ]
+                args: list = [content, doc_id]
+                idx = 3
 
-        sql = f"UPDATE documents SET {', '.join(sets)} WHERE id = $2"
-        result = None
-        if title is not None:
-            sql += " RETURNING id, filename, path"
-            result = await service_queryrow(sql, *args)
-        else:
-            await service_execute(sql, *args)
+                if title is not None:
+                    sets.append(f"title = ${idx}")
+                    args.append(title)
+                    idx += 1
+                if tags is not None:
+                    sets.append(f"tags = ${idx}")
+                    args.append(tags)
+                    idx += 1
+                if date is not None:
+                    sets.append(f"date = ${idx}")
+                    args.append(date)
+                    idx += 1
+                if metadata is not None:
+                    sets.append(f"metadata = ${idx}::jsonb")
+                    args.append(_json.dumps(metadata))
+                    idx += 1
 
-        if current and content.strip():
-            await self._store_chunks(doc_id, str(current["knowledge_base_id"]), content)
+                sql = f"UPDATE documents SET {', '.join(sets)} WHERE id = $2"
+                result = None
+                if title is not None:
+                    sql += " RETURNING id, filename, path"
+                    row = await conn.fetchrow(sql, *args)
+                    result = dict(row) if row else None
+                else:
+                    await conn.execute(sql, *args)
+
+                if content.strip():
+                    await self._store_chunks(
+                        doc_id, str(current["knowledge_base_id"]), content, conn=conn
+                    )
 
         return result
 
@@ -222,14 +247,17 @@ class PostgresVaultFS(VaultFS):
         import uuid as _uuid
 
         doc_uuids = [_uuid.UUID(id_str) for id_str in doc_ids]
-        await service_execute(
-            "DELETE FROM document_chunks WHERE document_id = ANY($1)",
-            doc_uuids,
-        )
-        result = await service_execute(
-            "UPDATE documents SET archived = true, updated_at = now() WHERE id = ANY($1)",
-            doc_uuids,
-        )
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "DELETE FROM document_chunks WHERE document_id = ANY($1)",
+                    doc_uuids,
+                )
+                result = await conn.execute(
+                    "UPDATE documents SET archived = true, updated_at = now() WHERE id = ANY($1)",
+                    doc_uuids,
+                )
         count = int(result.split()[-1]) if result else 0
         if count == 0:
             logger.warning(
@@ -345,8 +373,7 @@ class PostgresVaultFS(VaultFS):
         pass
 
     async def delete_references(self, source_doc_id: str) -> None:
-        await scoped_execute(
-            self.user_id,
+        await service_execute(
             "DELETE FROM document_references WHERE source_document_id = $1",
             source_doc_id,
         )

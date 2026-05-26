@@ -1,25 +1,29 @@
-'use client'
+"use client";
 
-import * as React from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
-import 'katex/dist/katex.min.css'
-import type { Components } from 'react-markdown'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { FileText, Copy, Download, Check, Network, Clock } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { apiFetch } from '@/lib/api'
-import { MermaidBlock } from './MermaidBlock'
-import { ExpandableMedia } from './DiagramViewer'
-import type { DocumentListItem, HistoryVersion } from '@/lib/types'
+import * as React from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
+import type { Components } from "react-markdown";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { FileText, Copy, Download, Check, Network, Clock } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
+import { MermaidBlock } from "./MermaidBlock";
+import { ExpandableMedia } from "./DiagramViewer";
+import type { DocumentListItem, HistoryVersion } from "@/lib/types";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
+} from "@/components/ui/dialog";
 import {
   Breadcrumb,
   BreadcrumbItem as BreadcrumbItemUI,
@@ -27,86 +31,98 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb'
+} from "@/components/ui/breadcrumb";
 
 export interface TocItem {
-  id: string
-  text: string
-  level: 2 | 3
+  id: string;
+  text: string;
+  level: 2 | 3;
 }
 
 export function extractTocFromMarkdown(md: string): TocItem[] {
-  const items: TocItem[] = []
-  const lines = md.split('\n')
+  const items: TocItem[] = [];
+  const lines = md.split("\n");
   for (const line of lines) {
-    const m2 = line.match(/^##\s+(.+)/)
-    const m3 = line.match(/^###\s+(.+)/)
+    const m2 = line.match(/^##\s+(.+)/);
+    const m3 = line.match(/^###\s+(.+)/);
     if (m2) {
-      const text = m2[1].replace(/\*\*/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').trim()
-      items.push({ id: slugify(text), text, level: 2 })
+      const text = m2[1]
+        .replace(/\*\*/g, "")
+        .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+        .trim();
+      items.push({ id: slugify(text), text, level: 2 });
     } else if (m3) {
-      const text = m3[1].replace(/\*\*/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').trim()
-      items.push({ id: slugify(text), text, level: 3 })
+      const text = m3[1]
+        .replace(/\*\*/g, "")
+        .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+        .trim();
+      items.push({ id: slugify(text), text, level: 3 });
     }
   }
-  return items
+  return items;
 }
 
 function slugify(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 function stripLeadingH1(content: string, title: string): string {
-  const trimmed = content.trimStart()
-  const match = trimmed.match(/^#\s+(.+)\n?/)
+  const trimmed = content.trimStart();
+  const match = trimmed.match(/^#\s+(.+)\n?/);
   if (match) {
-    const h1Text = match[1].replace(/\*\*/g, '').trim()
-    const normalizedH1 = h1Text.toLowerCase().replace(/[^\w\s]/g, '').trim()
-    const normalizedTitle = title.toLowerCase().replace(/[^\w\s]/g, '').trim()
+    const h1Text = match[1].replace(/\*\*/g, "").trim();
+    const normalizedH1 = h1Text
+      .toLowerCase()
+      .replace(/[^\w\s]/g, "")
+      .trim();
+    const normalizedTitle = title
+      .toLowerCase()
+      .replace(/[^\w\s]/g, "")
+      .trim();
     if (normalizedH1 === normalizedTitle) {
-      return trimmed.slice(match[0].length)
+      return trimmed.slice(match[0].length);
     }
   }
-  return content
+  return content;
 }
 
 function TableOfContents({ items }: { items: TocItem[] }) {
-  const [activeId, setActiveId] = React.useState<string | null>(null)
+  const [activeId, setActiveId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (items.length === 0) return
+    if (items.length === 0) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
         // Find the first visible heading
-        const visible = entries.filter((e) => e.isIntersecting)
+        const visible = entries.filter((e) => e.isIntersecting);
         if (visible.length > 0) {
-          setActiveId(visible[0].target.id)
+          setActiveId(visible[0].target.id);
         }
       },
-      { rootMargin: '-80px 0px -70% 0px', threshold: 0 },
-    )
+      { rootMargin: "-80px 0px -70% 0px", threshold: 0 },
+    );
 
     // Small delay to ensure headings are rendered
     const timeout = setTimeout(() => {
       for (const item of items) {
-        const el = document.getElementById(item.id)
-        if (el) observer.observe(el)
+        const el = document.getElementById(item.id);
+        if (el) observer.observe(el);
       }
-    }, 100)
+    }, 100);
 
     return () => {
-      clearTimeout(timeout)
-      observer.disconnect()
-    }
-  }, [items])
+      clearTimeout(timeout);
+      observer.disconnect();
+    };
+  }, [items]);
 
-  if (items.length === 0) return null
+  if (items.length === 0) return null;
 
   return (
     <nav className="space-y-0.5 overflow-hidden">
@@ -119,44 +135,44 @@ function TableOfContents({ items }: { items: TocItem[] }) {
           href={`#${item.id}`}
           title={item.text}
           onClick={(e) => {
-            e.preventDefault()
-            const el = document.getElementById(item.id)
+            e.preventDefault();
+            const el = document.getElementById(item.id);
             if (el) {
-              el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              setActiveId(item.id)
+              el.scrollIntoView({ behavior: "smooth", block: "start" });
+              setActiveId(item.id);
             }
           }}
           className={cn(
-            'block text-xs leading-snug py-1 px-1 rounded transition-colors truncate',
-            item.level === 3 && 'pl-4',
+            "block text-xs leading-snug py-1 px-1 rounded transition-colors truncate",
+            item.level === 3 && "pl-4",
             activeId === item.id
-              ? 'text-foreground font-medium'
-              : 'text-muted-foreground/60 hover:text-muted-foreground',
+              ? "text-foreground font-medium"
+              : "text-muted-foreground/60 hover:text-muted-foreground",
           )}
         >
           {item.text}
         </a>
       ))}
     </nav>
-  )
+  );
 }
 
 function parseFootnoteSources(content: string): Map<string, string> {
-  const map = new Map<string, string>()
+  const map = new Map<string, string>();
   // Match footnote definitions: [^1]: full source text until end of line
-  const regex = /\[\^(\d+)\]:\s*(.+)$/gm
-  let m
+  const regex = /\[\^(\d+)\]:\s*(.+)$/gm;
+  let m;
   while ((m = regex.exec(content)) !== null) {
-    const num = m[1]
-    let source = m[2].trim()
+    const num = m[1];
+    let source = m[2].trim();
     // Strip surrounding bold markers
-    source = source.replace(/^\*{1,2}/, '').replace(/\*{1,2}$/, '')
+    source = source.replace(/^\*{1,2}/, "").replace(/\*{1,2}$/, "");
     // Clean up markdown links
-    const linkMatch = source.match(/\[([^\]]+)\]\([^)]*\)/)
-    if (linkMatch) source = linkMatch[1]
-    map.set(num, source)
+    const linkMatch = source.match(/\[([^\]]+)\]\([^)]*\)/);
+    if (linkMatch) source = linkMatch[1];
+    map.set(num, source);
   }
-  return map
+  return map;
 }
 
 function CitationBadge({
@@ -164,34 +180,36 @@ function CitationBadge({
   source,
   onSourceClick,
 }: {
-  num: string
-  source: string
-  onSourceClick: (source: string, page?: number) => void
+  num: string;
+  source: string;
+  onSourceClick: (source: string, page?: number) => void;
 }) {
-  const [isOpen, setIsOpen] = React.useState(false)
-  const hoverTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [isOpen, setIsOpen] = React.useState(false);
+  const hoverTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const handleMouseEnter = React.useCallback(() => {
-    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
-    hoverTimeoutRef.current = setTimeout(() => setIsOpen(true), 80)
-  }, [])
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    hoverTimeoutRef.current = setTimeout(() => setIsOpen(true), 80);
+  }, []);
 
   const handleMouseLeave = React.useCallback(() => {
-    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
-    hoverTimeoutRef.current = setTimeout(() => setIsOpen(false), 160)
-  }, [])
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    hoverTimeoutRef.current = setTimeout(() => setIsOpen(false), 160);
+  }, []);
 
   React.useEffect(() => {
     return () => {
-      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
-    }
-  }, [])
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    };
+  }, []);
 
   // Parse source into filename and page reference
-  const parts = source.match(/^(.+?)(?:,\s*p\.?\s*(.+))?$/)
-  const filename = parts?.[1]?.trim() ?? source
-  const pageRef = parts?.[2]?.trim()
-  const pageNum = pageRef ? parseInt(pageRef, 10) : undefined
+  const parts = source.match(/^(.+?)(?:,\s*p\.?\s*(.+))?$/);
+  const filename = parts?.[1]?.trim() ?? source;
+  const pageRef = parts?.[2]?.trim();
+  const pageNum = pageRef ? parseInt(pageRef, 10) : undefined;
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -201,8 +219,8 @@ function CitationBadge({
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
           onClick={(e) => {
-            e.preventDefault()
-            onSourceClick(filename, pageNum)
+            e.preventDefault();
+            onSourceClick(filename, pageNum);
           }}
           className="inline-flex items-center gap-0.5 px-1.5 py-0 text-[10px] font-medium bg-accent-blue/10 text-accent-blue rounded-full border border-accent-blue/20 hover:bg-accent-blue/20 transition-colors leading-tight cursor-pointer"
         >
@@ -221,8 +239,8 @@ function CitationBadge({
           role="button"
           className="flex items-start gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-accent/50 transition-colors"
           onClick={() => {
-            setIsOpen(false)
-            onSourceClick(filename, pageNum)
+            setIsOpen(false);
+            onSourceClick(filename, pageNum);
           }}
         >
           <span className="text-muted-foreground shrink-0 mt-0.5">
@@ -241,7 +259,7 @@ function CitationBadge({
         </div>
       </PopoverContent>
     </Popover>
-  )
+  );
 }
 
 function WikiImage({
@@ -250,72 +268,82 @@ function WikiImage({
   documents,
   wikiActivePath,
 }: {
-  src?: string
-  alt?: string
-  documents?: DocumentListItem[]
-  wikiActivePath?: string
+  src?: string;
+  alt?: string;
+  documents?: DocumentListItem[];
+  wikiActivePath?: string;
 }) {
-  const [svgContent, setSvgContent] = React.useState<string | null>(null)
-  const [imageUrl, setImageUrl] = React.useState<string | null>(null)
-  const [loading, setLoading] = React.useState(false)
+  const [svgContent, setSvgContent] = React.useState<string | null>(null);
+  const [imageUrl, setImageUrl] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
-    if (!src || !documents) return
+    if (!src || !documents) return;
     // Only resolve relative paths (not http:// or data: URIs)
-    if (src.startsWith('http') || src.startsWith('data:')) return
+    if (src.startsWith("http") || src.startsWith("data:")) return;
 
     // Resolve relative path: strip leading ./ and resolve against current wiki path
-    let filename = src.replace(/^\.\//, '')
+    let filename = src.replace(/^\.\//, "");
     const doc = documents.find((d) => {
-      return d.filename === filename || d.filename === filename.split('/').pop()
-    })
+      return (
+        d.filename === filename || d.filename === filename.split("/").pop()
+      );
+    });
 
-    if (!doc) return
+    if (!doc) return;
 
-    const isSvg = doc.file_type === 'svg'
-    const isTextAsset = ['svg', 'csv', 'xml', 'html'].includes(doc.file_type)
-    const isImageBinary = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(doc.file_type)
+    const isSvg = doc.file_type === "svg";
+    const isTextAsset = ["svg", "csv", "xml", "html"].includes(doc.file_type);
+    const isImageBinary = ["png", "jpg", "jpeg", "webp", "gif"].includes(
+      doc.file_type,
+    );
 
-    setLoading(true)
+    setLoading(true);
 
     if (isSvg || isTextAsset) {
       // Text-based assets stored in the content column — fetch via API
       apiFetch<{ content: string }>(`/v1/documents/${doc.id}/content`)
         .then((res) => {
           if (isSvg && res.content) {
-            setSvgContent(res.content)
+            setSvgContent(res.content);
           } else if (res.content) {
             // For non-SVG text assets, render as data URI
-            const blob = new Blob([res.content], { type: `image/${doc.file_type}+xml` })
-            setImageUrl(URL.createObjectURL(blob))
+            const blob = new Blob([res.content], {
+              type: `image/${doc.file_type}+xml`,
+            });
+            setImageUrl(URL.createObjectURL(blob));
           }
         })
-        .catch(() => { /* silent fail — image just won't render */ })
-        .finally(() => setLoading(false))
+        .catch(() => {
+          /* silent fail — image just won't render */
+        })
+        .finally(() => setLoading(false));
     } else if (isImageBinary) {
       // Binary images stored in S3 — use the /url endpoint
       apiFetch<{ url: string }>(`/v1/documents/${doc.id}/url`)
         .then((res) => setImageUrl(res.url))
-        .catch(() => { /* silent fail */ })
-        .finally(() => setLoading(false))
+        .catch(() => {
+          /* silent fail */
+        })
+        .finally(() => setLoading(false));
     } else {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [src, documents, wikiActivePath])
+  }, [src, documents, wikiActivePath]);
 
   // Inline SVG rendering
   if (svgContent) {
-    const dataUri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgContent)}`
+    const dataUri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgContent)}`;
     return (
       <ExpandableMedia content={svgContent} type="svg" alt={alt}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={dataUri}
-          alt={alt || ''}
+          alt={alt || ""}
           className="max-w-full h-auto my-5 mx-auto block"
         />
       </ExpandableMedia>
-    )
+    );
   }
 
   // Resolved image URL (binary or data URI)
@@ -325,11 +353,11 @@ function WikiImage({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={imageUrl}
-          alt={alt || ''}
+          alt={alt || ""}
           className="max-w-full h-auto rounded-lg my-5 border border-border/30"
         />
       </ExpandableMedia>
-    )
+    );
   }
 
   // Still loading — use span to avoid div-inside-p hydration error
@@ -338,7 +366,7 @@ function WikiImage({
       <span className="block my-5 flex justify-center">
         <span className="block w-48 h-32 rounded-lg bg-muted/60 animate-pulse" />
       </span>
-    )
+    );
   }
 
   // Fallback: render as a normal image tag (external URLs, unresolved paths)
@@ -346,33 +374,41 @@ function WikiImage({
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={src}
-      alt={alt || ''}
+      alt={alt || ""}
       className="max-w-full h-auto rounded-lg my-5 border border-border/30"
     />
-  )
+  );
 }
 
 function HistoryPanel({ docId }: { docId: string }) {
-  const [open, setOpen] = React.useState(false)
-  const [versions, setVersions] = React.useState<HistoryVersion[]>([])
-  const [loading, setLoading] = React.useState(false)
-  const [preview, setPreview] = React.useState<{ content: string; version: number } | null>(null)
+  const [open, setOpen] = React.useState(false);
+  const [versions, setVersions] = React.useState<HistoryVersion[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [preview, setPreview] = React.useState<{
+    content: string;
+    version: number;
+  } | null>(null);
 
   React.useEffect(() => {
-    if (!open) return
-    setLoading(true)
-    setPreview(null)
+    if (!open) return;
+    setLoading(true);
+    setPreview(null);
     apiFetch<HistoryVersion[]>(`/v1/documents/${docId}/history`)
       .then(setVersions)
       .catch(() => setVersions([]))
-      .finally(() => setLoading(false))
-  }, [open, docId])
+      .finally(() => setLoading(false));
+  }, [open, docId]);
 
-  const loadPreview = React.useCallback((v: HistoryVersion) => {
-    apiFetch<{ content: string; version: number }>(`/v1/documents/${docId}/history/${v.id}`)
-      .then((r) => setPreview({ content: r.content, version: r.version }))
-      .catch(() => {})
-  }, [docId])
+  const loadPreview = React.useCallback(
+    (v: HistoryVersion) => {
+      apiFetch<{ content: string; version: number }>(
+        `/v1/documents/${docId}/history/${v.id}`,
+      )
+        .then((r) => setPreview({ content: r.content, version: r.version }))
+        .catch((err) => console.error("Failed to load history version:", err));
+    },
+    [docId],
+  );
 
   return (
     <>
@@ -389,9 +425,13 @@ function HistoryPanel({ docId }: { docId: string }) {
             <DialogTitle>Version history</DialogTitle>
           </DialogHeader>
           {loading ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              Loading…
+            </div>
           ) : versions.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">No saved versions yet</div>
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              No saved versions yet
+            </div>
           ) : (
             <div className="space-y-0.5 max-h-72 overflow-y-auto pr-1">
               {versions.map((v) => (
@@ -399,28 +439,30 @@ function HistoryPanel({ docId }: { docId: string }) {
                   key={v.id}
                   onClick={() => loadPreview(v)}
                   className={cn(
-                    'w-full text-left px-3 py-2 rounded-md text-sm transition-colors',
+                    "w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
                     preview?.version === v.version
-                      ? 'bg-accent text-foreground'
-                      : 'hover:bg-accent/60 text-muted-foreground hover:text-foreground',
+                      ? "bg-accent text-foreground"
+                      : "hover:bg-accent/60 text-muted-foreground hover:text-foreground",
                   )}
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <span className="font-medium text-foreground">v{v.version}</span>
+                    <span className="font-medium text-foreground">
+                      v{v.version}
+                    </span>
                     <span className="text-xs shrink-0">
                       {new Date(v.created_at).toLocaleString(undefined, {
-                        dateStyle: 'medium',
-                        timeStyle: 'short',
+                        dateStyle: "medium",
+                        timeStyle: "short",
                       })}
                     </span>
                   </div>
                   <div className="text-xs mt-0.5 flex items-center justify-between">
                     <span className="text-muted-foreground/70">
                       {v.user_id
-                        ? v.user_id.includes('@')
+                        ? v.user_id.includes("@")
                           ? v.user_id
                           : v.user_id.slice(0, 8)
-                        : 'desconocido'}
+                        : "desconocido"}
                     </span>
                     <span>{(v.content_length / 1024).toFixed(1)} KB</span>
                   </div>
@@ -430,10 +472,12 @@ function HistoryPanel({ docId }: { docId: string }) {
           )}
           {preview && (
             <div className="border-t pt-3 mt-1">
-              <p className="text-xs font-semibold text-muted-foreground mb-2">Preview — v{preview.version}</p>
+              <p className="text-xs font-semibold text-muted-foreground mb-2">
+                Preview — v{preview.version}
+              </p>
               <pre className="text-xs bg-muted/50 rounded-md p-3 max-h-52 overflow-y-auto font-mono whitespace-pre-wrap break-words">
                 {preview.content.length > 2000
-                  ? preview.content.slice(0, 2000) + '\n…'
+                  ? preview.content.slice(0, 2000) + "\n…"
                   : preview.content}
               </pre>
             </div>
@@ -441,161 +485,209 @@ function HistoryPanel({ docId }: { docId: string }) {
         </DialogContent>
       </Dialog>
     </>
-  )
+  );
 }
 
 export interface BreadcrumbItem {
-  title: string
-  path?: string
-  docNumber?: number | null
+  title: string;
+  path?: string;
+  docNumber?: number | null;
 }
 
 interface WikiContentProps {
-  content: string
-  title: string
-  onNavigate: (path: string, docNumber?: number | null) => void
-  onSourceClick?: (filename: string, page?: number) => void
-  onGraphClick?: () => void
-  documents?: DocumentListItem[]
-  breadcrumbs?: BreadcrumbItem[]
-  searchTerm?: string
-  docId?: string | null
+  content: string;
+  title: string;
+  onNavigate: (path: string, docNumber?: number | null) => void;
+  onSourceClick?: (filename: string, page?: number) => void;
+  onGraphClick?: () => void;
+  documents?: DocumentListItem[];
+  breadcrumbs?: BreadcrumbItem[];
+  searchTerm?: string;
+  docId?: string | null;
 }
 
-export function WikiContent({ content, title, onNavigate, onSourceClick, onGraphClick, documents, breadcrumbs, searchTerm, docId }: WikiContentProps) {
-  const processedContent = React.useMemo(() => stripLeadingH1(content, title), [content, title])
-  const wikiContentRef = React.useRef<HTMLDivElement>(null)
-  const tocItems = React.useMemo(() => extractTocFromMarkdown(processedContent), [processedContent])
-  const footnoteSources = React.useMemo(() => parseFootnoteSources(processedContent), [processedContent])
-  const [copied, setCopied] = React.useState(false)
+export function WikiContent({
+  content,
+  title,
+  onNavigate,
+  onSourceClick,
+  onGraphClick,
+  documents,
+  breadcrumbs,
+  searchTerm,
+  docId,
+}: WikiContentProps) {
+  const processedContent = React.useMemo(
+    () => stripLeadingH1(content, title),
+    [content, title],
+  );
+  const wikiContentRef = React.useRef<HTMLDivElement>(null);
+  const tocItems = React.useMemo(
+    () => extractTocFromMarkdown(processedContent),
+    [processedContent],
+  );
+  const footnoteSources = React.useMemo(
+    () => parseFootnoteSources(processedContent),
+    [processedContent],
+  );
+  const [copied, setCopied] = React.useState(false);
 
   const handleCopy = React.useCallback(() => {
     navigator.clipboard.writeText(content).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }, [content])
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [content]);
 
   const handleDownload = React.useCallback(() => {
-    const filename = title ? `${title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').toLowerCase()}.md` : 'page.md'
-    const blob = new Blob([content], { type: 'text/markdown' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    a.click()
-    URL.revokeObjectURL(url)
-  }, [content, title])
+    const filename = title
+      ? `${title
+          .replace(/[^\w\s-]/g, "")
+          .replace(/\s+/g, "-")
+          .toLowerCase()}.md`
+      : "page.md";
+    const blob = new Blob([content], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [content, title]);
 
   React.useLayoutEffect(() => {
-    const el = wikiContentRef.current
-    if (!el) return
+    const el = wikiContentRef.current;
+    if (!el) return;
 
     // Clear previous marks
-    const existing = Array.from(el.querySelectorAll('mark'))
+    const existing = Array.from(el.querySelectorAll("mark"));
     for (const m of existing) {
-      const parent = m.parentNode
+      const parent = m.parentNode;
       if (parent) {
-        parent.replaceChild(document.createTextNode(m.textContent ?? ''), m)
-        parent.normalize()
+        parent.replaceChild(document.createTextNode(m.textContent ?? ""), m);
+        parent.normalize();
       }
     }
 
-    if (!searchTerm?.trim()) return
+    if (!searchTerm?.trim()) return;
 
-    const term = searchTerm.trim()
-    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const regex = new RegExp(escaped, 'gi')
+    const term = searchTerm.trim();
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(escaped, "gi");
 
     function walk(node: Node): void {
       if (node.nodeType === Node.ELEMENT_NODE) {
-        const tag = (node as Element).tagName
-        if (tag === 'CODE' || tag === 'PRE' || tag === 'SCRIPT' || tag === 'MARK') return
-        Array.from(node.childNodes).forEach(walk)
+        const tag = (node as Element).tagName;
+        if (
+          tag === "CODE" ||
+          tag === "PRE" ||
+          tag === "SCRIPT" ||
+          tag === "MARK"
+        )
+          return;
+        Array.from(node.childNodes).forEach(walk);
       } else if (node.nodeType === Node.TEXT_NODE) {
-        const text = node.textContent ?? ''
-        if (!regex.test(text)) { regex.lastIndex = 0; return }
-        regex.lastIndex = 0
-        const fragment = document.createDocumentFragment()
-        let last = 0
-        let m: RegExpExecArray | null
-        while ((m = regex.exec(text)) !== null) {
-          if (m.index > last) fragment.appendChild(document.createTextNode(text.slice(last, m.index)))
-          const mark = document.createElement('mark')
-          mark.textContent = m[0]
-          fragment.appendChild(mark)
-          last = m.index + m[0].length
+        const text = node.textContent ?? "";
+        if (!regex.test(text)) {
+          regex.lastIndex = 0;
+          return;
         }
-        if (last < text.length) fragment.appendChild(document.createTextNode(text.slice(last)))
-        node.parentNode?.replaceChild(fragment, node)
+        regex.lastIndex = 0;
+        const fragment = document.createDocumentFragment();
+        let last = 0;
+        let m: RegExpExecArray | null;
+        while ((m = regex.exec(text)) !== null) {
+          if (m.index > last)
+            fragment.appendChild(
+              document.createTextNode(text.slice(last, m.index)),
+            );
+          const mark = document.createElement("mark");
+          mark.textContent = m[0];
+          fragment.appendChild(mark);
+          last = m.index + m[0].length;
+        }
+        if (last < text.length)
+          fragment.appendChild(document.createTextNode(text.slice(last)));
+        node.parentNode?.replaceChild(fragment, node);
       }
     }
 
-    walk(el)
+    walk(el);
 
     // Scroll to first match
-    const firstMark = el.querySelector('mark')
+    const firstMark = el.querySelector("mark");
     if (firstMark) {
-      firstMark.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      firstMark.scrollIntoView({ behavior: "smooth", block: "center" });
     }
-  }, [searchTerm, processedContent])
+  }, [searchTerm, processedContent]);
 
   const components: Components = React.useMemo(
     () => ({
       h1({ children }) {
-        const text = childrenToText(children)
-        const id = slugify(text)
+        const text = childrenToText(children);
+        const id = slugify(text);
         return (
-          <h1 id={id} className="text-2xl font-bold tracking-tight mt-8 mb-3 first:mt-0 scroll-mt-20">
+          <h1
+            id={id}
+            className="text-2xl font-bold tracking-tight mt-8 mb-3 first:mt-0 scroll-mt-20"
+          >
             {children}
           </h1>
-        )
+        );
       },
       h2({ children }) {
-        const text = childrenToText(children)
-        const id = slugify(text)
+        const text = childrenToText(children);
+        const id = slugify(text);
         return (
-          <h2 id={id} className="text-xl font-semibold tracking-tight mt-6 mb-2 pt-2 border-t border-border/50 first:border-0 first:pt-0 scroll-mt-20">
+          <h2
+            id={id}
+            className="text-xl font-semibold tracking-tight mt-6 mb-2 pt-2 border-t border-border/50 first:border-0 first:pt-0 scroll-mt-20"
+          >
             {children}
           </h2>
-        )
+        );
       },
       h3({ children }) {
-        const text = childrenToText(children)
-        const id = slugify(text)
+        const text = childrenToText(children);
+        const id = slugify(text);
         return (
-          <h3 id={id} className="text-lg font-medium tracking-tight mt-6 mb-1.5 scroll-mt-20">
+          <h3
+            id={id}
+            className="text-lg font-medium tracking-tight mt-6 mb-1.5 scroll-mt-20"
+          >
             {children}
           </h3>
-        )
+        );
       },
       h4({ children }) {
-        const text = childrenToText(children)
-        const id = slugify(text)
+        const text = childrenToText(children);
+        const id = slugify(text);
         return (
           <h4 id={id} className="text-base font-medium mt-5 mb-1 scroll-mt-20">
             {children}
           </h4>
-        )
+        );
       },
       p({ children }) {
-        return <p className="my-2 leading-[1.65] text-foreground/90">{children}</p>
+        return (
+          <p className="my-2 leading-[1.65] text-foreground/90">{children}</p>
+        );
       },
       pre({ children, ...props }) {
-        const child = React.Children.toArray(children)[0]
+        const child = React.Children.toArray(children)[0];
         if (
           React.isValidElement(child) &&
-          typeof child.props === 'object' &&
+          typeof child.props === "object" &&
           child.props !== null &&
-          'className' in child.props &&
-          typeof child.props.className === 'string' &&
-          child.props.className.includes('language-mermaid')
+          "className" in child.props &&
+          typeof child.props.className === "string" &&
+          child.props.className.includes("language-mermaid")
         ) {
           const text =
-            'children' in child.props
-              ? String(child.props.children).replace(/\n$/, '')
-              : ''
-          return <MermaidBlock chart={text} />
+            "children" in child.props
+              ? String(child.props.children).replace(/\n$/, "")
+              : "";
+          return <MermaidBlock chart={text} />;
         }
         return (
           <pre
@@ -604,16 +696,16 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
           >
             {children}
           </pre>
-        )
+        );
       },
       code({ className, children, ...props }) {
-        const isBlock = className?.startsWith('language-')
+        const isBlock = className?.startsWith("language-");
         if (isBlock) {
           return (
             <code className={className} {...props}>
               {children}
             </code>
-          )
+          );
         }
         return (
           <code
@@ -622,18 +714,18 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
           >
             {children}
           </code>
-        )
+        );
       },
       a({ href, children }) {
         // Footnote back-references (↩ arrows) — hide entirely
-        if (href?.includes('fnref')) {
-          return null
+        if (href?.includes("fnref")) {
+          return null;
         }
-        const text = childrenToText(children)
-        if (text.includes('↩') || text.includes('↵')) {
-          return null
+        const text = childrenToText(children);
+        if (text.includes("↩") || text.includes("↵")) {
+          return null;
         }
-        if (href?.startsWith('#fn-') || href?.startsWith('#user-content-fn-')) {
+        if (href?.startsWith("#fn-") || href?.startsWith("#user-content-fn-")) {
           return (
             <a
               href={href}
@@ -641,15 +733,15 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
             >
               {children}
             </a>
-          )
+          );
         }
 
         // Internal wiki links
         if (
           href &&
-          !href.startsWith('http') &&
-          !href.startsWith('#') &&
-          !href.startsWith('mailto:')
+          !href.startsWith("http") &&
+          !href.startsWith("#") &&
+          !href.startsWith("mailto:")
         ) {
           return (
             <button
@@ -658,25 +750,26 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
             >
               {children}
             </button>
-          )
+          );
         }
 
         // Anchor links (headings)
-        if (href?.startsWith('#')) {
+        if (href?.startsWith("#")) {
           return (
             <a
               href={href}
               onClick={(e) => {
-                e.preventDefault()
-                const id = href.slice(1)
-                const el = document.getElementById(id)
-                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                e.preventDefault();
+                const id = href.slice(1);
+                const el = document.getElementById(id);
+                if (el)
+                  el.scrollIntoView({ behavior: "smooth", block: "start" });
               }}
               className="text-accent-blue underline underline-offset-2 decoration-accent-blue/30 hover:decoration-accent-blue transition-colors"
             >
               {children}
             </a>
-          )
+          );
         }
 
         return (
@@ -688,17 +781,22 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
           >
             {children}
           </a>
-        )
+        );
       },
       sup({ children, ...props }) {
         // Detect footnote references like [^1] which render as <sup> with an <a> inside
-        const child = React.Children.toArray(children)[0]
-        const childProps = React.isValidElement(child) ? (child.props as Record<string, unknown>) : null
-        const childHref = childProps && typeof childProps.href === 'string' ? childProps.href : null
-        if (childHref && childHref.includes('fn')) {
-          const text = childrenToText(children)
-          const num = text.replace(/[^\d]/g, '')
-          const source = footnoteSources.get(num)
+        const child = React.Children.toArray(children)[0];
+        const childProps = React.isValidElement(child)
+          ? (child.props as Record<string, unknown>)
+          : null;
+        const childHref =
+          childProps && typeof childProps.href === "string"
+            ? childProps.href
+            : null;
+        if (childHref && childHref.includes("fn")) {
+          const text = childrenToText(children);
+          const num = text.replace(/[^\d]/g, "");
+          const source = footnoteSources.get(num);
           if (source) {
             return (
               <sup {...props}>
@@ -706,14 +804,14 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
                   num={num}
                   source={source}
                   onSourceClick={(filename, page) => {
-                    if (onSourceClick) onSourceClick(filename, page)
+                    if (onSourceClick) onSourceClick(filename, page);
                   }}
                 />
               </sup>
-            )
+            );
           }
         }
-        return <sup {...props}>{children}</sup>
+        return <sup {...props}>{children}</sup>;
       },
       table({ children, ...props }) {
         return (
@@ -722,14 +820,14 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
               {children}
             </table>
           </div>
-        )
+        );
       },
       thead({ children, ...props }) {
         return (
           <thead className="bg-muted/50" {...props}>
             {children}
           </thead>
-        )
+        );
       },
       th({ children, ...props }) {
         return (
@@ -739,14 +837,17 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
           >
             {children}
           </th>
-        )
+        );
       },
       td({ children, ...props }) {
         return (
-          <td className="text-sm px-3 py-2 border-b border-border/50" {...props}>
+          <td
+            className="text-sm px-3 py-2 border-b border-border/50"
+            {...props}
+          >
             {children}
           </td>
-        )
+        );
       },
       blockquote({ children, ...props }) {
         return (
@@ -756,32 +857,38 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
           >
             {children}
           </blockquote>
-        )
+        );
       },
       ul({ children, ...props }) {
         return (
-          <ul className="my-2.5 space-y-0.5 list-disc pl-5 marker:text-muted-foreground/40" {...props}>
+          <ul
+            className="my-2.5 space-y-0.5 list-disc pl-5 marker:text-muted-foreground/40"
+            {...props}
+          >
             {children}
           </ul>
-        )
+        );
       },
       ol({ children, ...props }) {
         return (
-          <ol className="my-2.5 space-y-0.5 list-decimal pl-5 marker:text-muted-foreground/40" {...props}>
+          <ol
+            className="my-2.5 space-y-0.5 list-decimal pl-5 marker:text-muted-foreground/40"
+            {...props}
+          >
             {children}
           </ol>
-        )
+        );
       },
       li({ children, ...props }) {
         // Style footnote list items (inside <section data-footnotes>)
-        const id = (props as Record<string, unknown>).id
-        if (typeof id === 'string' && (id.startsWith('fn-') || id.startsWith('user-content-fn-'))) {
-          const text = childrenToText(children).replace(/↩.*$/, '').trim()
+        const id = (props as Record<string, unknown>).id;
+        if (
+          typeof id === "string" &&
+          (id.startsWith("fn-") || id.startsWith("user-content-fn-"))
+        ) {
+          const text = childrenToText(children).replace(/↩.*$/, "").trim();
           return (
-            <li
-              id={id}
-              className="my-2 text-sm pl-1 scroll-mt-20"
-            >
+            <li id={id} className="my-2 text-sm pl-1 scroll-mt-20">
               <button
                 onClick={() => onSourceClick?.(text)}
                 className="text-muted-foreground hover:text-foreground hover:underline transition-colors cursor-pointer text-left"
@@ -789,33 +896,37 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
                 {text}
               </button>
             </li>
-          )
+          );
         }
         return (
           <li className="my-0.5 leading-[1.65]" {...props}>
             {children}
           </li>
-        )
+        );
       },
       hr() {
-        return <hr className="my-6 border-border/60" />
+        return <hr className="my-6 border-border/60" />;
       },
       img({ src, alt }) {
         return (
           <WikiImage
-            src={typeof src === 'string' ? src : undefined}
-            alt={typeof alt === 'string' ? alt : undefined}
+            src={typeof src === "string" ? src : undefined}
+            alt={typeof alt === "string" ? alt : undefined}
             documents={documents}
           />
-        )
+        );
       },
       section({ children, ...props }) {
         // Replace the auto-generated footnotes section with our own clean version
-        const dp = props as Record<string, unknown>
-        if (dp['data-footnotes'] !== undefined || dp.dataFootnotes !== undefined || dp.className === 'footnotes') {
+        const dp = props as Record<string, unknown>;
+        if (
+          dp["data-footnotes"] !== undefined ||
+          dp.dataFootnotes !== undefined ||
+          dp.className === "footnotes"
+        ) {
           // Render our own clean footnotes from parsed sources
-          const entries = Array.from(footnoteSources.entries())
-          if (entries.length === 0) return null
+          const entries = Array.from(footnoteSources.entries());
+          if (entries.length === 0) return null;
           return (
             <section className="mt-12 pt-6 border-t border-border">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/50 mb-3">
@@ -823,7 +934,7 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
               </p>
               <ol className="list-decimal pl-5 space-y-1.5">
                 {entries.map(([num, source]) => {
-                  const filename = source.replace(/,\s*p\.?\s*.+$/, '').trim()
+                  const filename = source.replace(/,\s*p\.?\s*.+$/, "").trim();
                   return (
                     <li key={num} className="text-sm pl-1">
                       <button
@@ -833,45 +944,49 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
                         {source}
                       </button>
                     </li>
-                  )
+                  );
                 })}
               </ol>
             </section>
-          )
+          );
         }
-        return <section {...props}>{children}</section>
+        return <section {...props}>{children}</section>;
       },
     }),
     [onNavigate, onSourceClick, footnoteSources, documents],
-  )
+  );
 
-  const hasToc = tocItems.length > 0
+  const hasToc = tocItems.length > 0;
 
   return (
     <div className="h-full overflow-y-auto" id="wiki-scroll-container">
-      <div className={cn(
-        'mx-auto px-4 py-6 md:px-6 md:py-10',
-        hasToc ? 'max-w-5xl' : 'max-w-3xl',
-      )}>
-        <div className={cn(
-          hasToc && 'flex gap-8',
-        )}>
+      <div
+        className={cn(
+          "mx-auto px-4 py-6 md:px-6 md:py-10",
+          hasToc ? "max-w-5xl" : "max-w-3xl",
+        )}
+      >
+        <div className={cn(hasToc && "flex gap-8")}>
           {/* Main content */}
-          <div className={cn(
-            'min-w-0',
-            hasToc ? 'flex-1 max-w-[720px]' : 'w-full',
-          )}>
+          <div
+            className={cn(
+              "min-w-0",
+              hasToc ? "flex-1 max-w-[720px]" : "w-full",
+            )}
+          >
             {breadcrumbs && breadcrumbs.length > 1 && (
               <Breadcrumb className="mb-4">
                 <BreadcrumbList className="text-xs gap-1 sm:gap-1.5">
                   {breadcrumbs.map((crumb, i) => {
-                    const isLast = i === breadcrumbs.length - 1
+                    const isLast = i === breadcrumbs.length - 1;
                     return (
                       <React.Fragment key={i}>
                         {i > 0 && <BreadcrumbSeparator />}
                         <BreadcrumbItemUI>
                           {isLast ? (
-                            <BreadcrumbPage className="text-xs">{crumb.title}</BreadcrumbPage>
+                            <BreadcrumbPage className="text-xs">
+                              {crumb.title}
+                            </BreadcrumbPage>
                           ) : crumb.path != null ? (
                             <BreadcrumbLink
                               asChild
@@ -879,17 +994,21 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
                             >
                               <button
                                 type="button"
-                                onClick={() => onNavigate(crumb.path!, crumb.docNumber)}
+                                onClick={() =>
+                                  onNavigate(crumb.path!, crumb.docNumber)
+                                }
                               >
                                 {crumb.title}
                               </button>
                             </BreadcrumbLink>
                           ) : (
-                            <span className="text-xs text-muted-foreground">{crumb.title}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {crumb.title}
+                            </span>
                           )}
                         </BreadcrumbItemUI>
                       </React.Fragment>
-                    )
+                    );
                   })}
                 </BreadcrumbList>
               </Breadcrumb>
@@ -903,7 +1022,11 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
                     className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-accent transition-colors cursor-pointer"
                     title="Copy markdown"
                   >
-                    {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                    {copied ? (
+                      <Check className="size-3.5" />
+                    ) : (
+                      <Copy className="size-3.5" />
+                    )}
                   </button>
                   {/* <button
                     onClick={handleDownload}
@@ -925,7 +1048,10 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
                 </div>
               </div>
             )}
-            <div className="wiki-content text-[15px] leading-relaxed" ref={wikiContentRef}>
+            <div
+              className="wiki-content text-[15px] leading-relaxed"
+              ref={wikiContentRef}
+            >
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex]}
@@ -947,16 +1073,17 @@ export function WikiContent({ content, title, onNavigate, onSourceClick, onGraph
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 function childrenToText(children: React.ReactNode): string {
-  if (typeof children === 'string') return children
-  if (typeof children === 'number') return String(children)
-  if (Array.isArray(children)) return children.map(childrenToText).join('')
+  if (typeof children === "string") return children;
+  if (typeof children === "number") return String(children);
+  if (Array.isArray(children)) return children.map(childrenToText).join("");
   if (React.isValidElement(children) && children.props) {
-    const props = children.props as Record<string, unknown>
-    if (props.children) return childrenToText(props.children as React.ReactNode)
+    const props = children.props as Record<string, unknown>;
+    if (props.children)
+      return childrenToText(props.children as React.ReactNode);
   }
-  return ''
+  return "";
 }

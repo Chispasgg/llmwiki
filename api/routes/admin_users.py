@@ -1,4 +1,5 @@
 """Admin endpoints for user management. Requires role=superadmin."""
+
 from typing import Annotated
 from uuid import UUID
 
@@ -70,12 +71,16 @@ async def create_user(
             "VALUES ($1, $2, $3, $4) "
             "RETURNING id::text, email, display_name, role, is_active, "
             "          created_at::text, last_login_at::text",
-            body.email.lower(), hash_password(body.password),
-            body.display_name, body.role,
+            body.email.lower(),
+            hash_password(body.password),
+            body.display_name,
+            body.role,
         )
     except Exception as e:
         if "users_email_unique" in str(e):
-            raise HTTPException(status_code=409, detail={"message": "Email already exists"})
+            raise HTTPException(
+                status_code=409, detail={"message": "Email already exists"}
+            )
         raise
     return dict(row)
 
@@ -88,9 +93,7 @@ async def update_user(
     request: Request,
 ):
     pool = request.app.state.pool
-    target = await pool.fetchrow(
-        "SELECT email FROM users WHERE id = $1", user_id
-    )
+    target = await pool.fetchrow("SELECT email FROM users WHERE id = $1", user_id)
     if not target:
         raise HTTPException(status_code=404, detail={"message": "User not found"})
     if _is_protected(target["email"]):
@@ -98,11 +101,16 @@ async def update_user(
         if "role" in updates or "is_active" in updates:
             raise HTTPException(
                 status_code=403,
-                detail={"message": "Cannot modify role or active status of the protected superadmin account"},
+                detail={
+                    "message": "Cannot modify role or active status of the protected superadmin account"
+                },
             )
 
-    updates = {k: v for k, v in body.model_dump(exclude_none=True).items()
-               if k in PATCHABLE_COLUMNS}
+    updates = {
+        k: v
+        for k, v in body.model_dump(exclude_none=True).items()
+        if k in PATCHABLE_COLUMNS
+    }
     if body.password is not None:
         requester = await pool.fetchrow(
             "SELECT email FROM users WHERE id = $1", UUID(_sa)
@@ -118,14 +126,20 @@ async def update_user(
     if "role" in updates and updates["role"] not in ALLOWED_ROLES:
         raise HTTPException(status_code=422, detail={"message": "Invalid role"})
 
-    set_clause = ", ".join(f"{k} = ${i+2}" for i, k in enumerate(updates))
-    values = list(updates.values())
+    # Build SET clause with explicit column names — never from caller input
+    set_parts = []
+    values = []
+    for col in ("role", "is_active", "display_name", "password_hash"):
+        if col in updates:
+            set_parts.append(f"{col} = ${len(values) + 2}")
+            values.append(updates[col])
     row = await pool.fetchrow(
-        f"UPDATE users SET {set_clause}, updated_at = now() "
+        f"UPDATE users SET {', '.join(set_parts)}, updated_at = now() "
         f"WHERE id = $1 "
         f"RETURNING id::text, email, display_name, role, is_active, "
         f"          created_at::text, last_login_at::text",
-        user_id, *values,
+        user_id,
+        *values,
     )
     if not row:
         raise HTTPException(status_code=404, detail={"message": "User not found"})
@@ -139,9 +153,7 @@ async def delete_user(
     request: Request,
 ):
     pool = request.app.state.pool
-    target = await pool.fetchrow(
-        "SELECT email FROM users WHERE id = $1", user_id
-    )
+    target = await pool.fetchrow("SELECT email FROM users WHERE id = $1", user_id)
     if not target:
         raise HTTPException(status_code=404, detail={"message": "User not found"})
     if _is_protected(target["email"]):

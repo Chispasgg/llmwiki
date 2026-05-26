@@ -38,6 +38,12 @@ export function ShareDialog({ kbId, kbName, open, onOpenChange }: Props) {
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
+  React.useEffect(() => {
     if (!open) return;
     setLoading(true);
     listShares(kbId)

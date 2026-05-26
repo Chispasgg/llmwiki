@@ -3,9 +3,11 @@
 Owner can list/add/remove shares for their own KBs.
 Superadmin can also remove any share.
 """
+
 import uuid
 from typing import Annotated
 
+import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
@@ -36,7 +38,9 @@ async def _require_kb_owner(kb_id: uuid.UUID, user_id: str, pool) -> None:
     if not row:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     if str(row["user_id"]) != user_id:
-        raise HTTPException(status_code=403, detail="Not the owner of this knowledge base")
+        raise HTTPException(
+            status_code=403, detail="Not the owner of this knowledge base"
+        )
 
 
 @router.get("/{kb_id}/shares", response_model=list[ShareOut])
@@ -68,7 +72,9 @@ async def create_share(
     pool = request.app.state.pool
 
     if body.access_level not in ("viewer", "editor"):
-        raise HTTPException(status_code=400, detail="access_level must be 'viewer' or 'editor'")
+        raise HTTPException(
+            status_code=400, detail="access_level must be 'viewer' or 'editor'"
+        )
 
     await _require_kb_owner(kb_id, user_id, pool)
 
@@ -83,20 +89,22 @@ async def create_share(
         raise HTTPException(status_code=400, detail="Cannot share a wiki with yourself")
 
     try:
-        row = await pool.fetchrow(
-            "INSERT INTO kb_shares (kb_id, shared_with, access_level) "
-            "VALUES ($1, $2, $3) "
-            "ON CONFLICT ON CONSTRAINT kb_shares_unique DO UPDATE SET access_level = EXCLUDED.access_level "
-            "RETURNING id::text, kb_id::text, shared_with::text AS shared_with_id, access_level, created_at::text",
-            kb_id, target["id"], body.access_level,
-        )
-    except Exception:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    "INSERT INTO kb_shares (kb_id, shared_with, access_level) "
+                    "VALUES ($1, $2, $3) "
+                    "ON CONFLICT ON CONSTRAINT kb_shares_unique DO UPDATE SET access_level = EXCLUDED.access_level "
+                    "RETURNING id::text, kb_id::text, shared_with::text AS shared_with_id, access_level, created_at::text",
+                    kb_id,
+                    target["id"],
+                    body.access_level,
+                )
+                await conn.execute(
+                    "UPDATE knowledge_bases SET is_shared = true WHERE id = $1", kb_id
+                )
+    except asyncpg.UniqueViolationError:
         raise HTTPException(status_code=409, detail="Share already exists")
-
-    # Mark KB as shared
-    await pool.execute(
-        "UPDATE knowledge_bases SET is_shared = true WHERE id = $1", kb_id
-    )
 
     return {
         **dict(row),
@@ -115,7 +123,9 @@ async def delete_share(
     pool = request.app.state.pool
 
     # Allow owner OR superadmin
-    kb_row = await pool.fetchrow("SELECT user_id FROM knowledge_bases WHERE id = $1", kb_id)
+    kb_row = await pool.fetchrow(
+        "SELECT user_id FROM knowledge_bases WHERE id = $1", kb_id
+    )
     if not kb_row:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
 
@@ -126,11 +136,14 @@ async def delete_share(
             "SELECT role FROM users WHERE id = $1 AND is_active = true", user_id
         )
         if not role_row or role_row["role"] != "superadmin":
-            raise HTTPException(status_code=403, detail="Not authorized to remove this share")
+            raise HTTPException(
+                status_code=403, detail="Not authorized to remove this share"
+            )
 
     result = await pool.execute(
         "DELETE FROM kb_shares WHERE id = $1 AND kb_id = $2",
-        share_id, kb_id,
+        share_id,
+        kb_id,
     )
     if result == "DELETE 0":
         raise HTTPException(status_code=404, detail="Share not found")
