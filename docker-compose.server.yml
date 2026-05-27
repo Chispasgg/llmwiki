@@ -29,6 +29,7 @@ services:
     volumes:
       - ${WIKI_BASE_PATH:-/home/ubuntu/wiki}/files:${WIKI_BASE_PATH:-/home/ubuntu/wiki}/files
       - ${WIKI_BASE_PATH:-/home/ubuntu/wiki}/logs/app:/app/logs
+      - ${WIKI_BASE_PATH:-/home/ubuntu/wiki}/config/tex_templates:/app/config/tex_templates:ro
     ports:
       - "1502:1502"
     depends_on:
