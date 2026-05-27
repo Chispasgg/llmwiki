@@ -754,14 +754,13 @@ class HostedWorkspaceService(WorkspaceService):
             new_slug = _slugify(name)
             vals.append(name)
             vals.append(new_slug)
-            sets.append(
-                f"name = ${len(vals) - 1}, slug = ${len(vals)}, updated_at = now()"
-            )
+            sets.append(f"name = ${len(vals) - 1}, slug = ${len(vals)}")
         if description is not None:
             vals.append(description)
-            sets.append(f"description = ${len(vals)}, updated_at = now()")
+            sets.append(f"description = ${len(vals)}")
         if not sets:
             return None
+        sets.append("updated_at = now()")
         sql = f"UPDATE workspaces SET {', '.join(sets)} WHERE id = $1 RETURNING id, name, slug, description, created_by, created_at, updated_at"
         row = await self.pool.fetchrow(sql, *vals)
         if not row:
