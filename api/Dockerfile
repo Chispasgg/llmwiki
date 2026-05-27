@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-latex-extra \
     texlive-plain-generic \
     texlive-fonts-recommended \
+    texlive-lang-spanish \
     fonts-liberation \
     fonts-ebgaramond \
     chromium \
@@ -84,7 +85,8 @@ RUN pip install --quiet --target=/tmp/ft fonttools \
 
 # En producción LATEX_TEMPLATE_PATH debe ser una ruta absoluta porque
 # el proceso uvicorn puede tener un CWD distinto al esperado.
-ENV LATEX_TEMPLATE_PATH=/app/config/wiki-export.tex
+ENV LATEX_TEMPLATE_PATH=/app/config/wiki-export.tex \
+    LATEX_TEMPLATES_DIR=/app/config/tex_templates
 
 RUN useradd -m -u 1000 appuser
 

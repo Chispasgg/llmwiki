@@ -1,4 +1,5 @@
 """Superadmin-only management endpoints."""
+
 from typing import Annotated
 from uuid import UUID
 
@@ -11,6 +12,7 @@ router = APIRouter(prefix="/v1/superadmin", tags=["superadmin"])
 
 
 # ── API Keys ─────────────────────────────────────────────────────
+
 
 class AdminAPIKeyOut(BaseModel):
     id: str
@@ -51,10 +53,13 @@ async def revoke_any_api_key(
         key_id,
     )
     if result == "UPDATE 0":
-        raise HTTPException(status_code=404, detail={"message": "API key not found or already revoked"})
+        raise HTTPException(
+            status_code=404, detail={"message": "API key not found or already revoked"}
+        )
 
 
 # ── Knowledge Bases ───────────────────────────────────────────────
+
 
 class AdminKBOut(BaseModel):
     id: str
@@ -65,6 +70,8 @@ class AdminKBOut(BaseModel):
     description: str | None
     is_shared: bool
     created_at: str
+    latex_template_id: str | None = None
+    latex_template_name: str | None = None
 
 
 @router.get("/knowledge-bases", response_model=list[AdminKBOut])
@@ -74,9 +81,12 @@ async def list_all_knowledge_bases(
 ):
     rows = await request.app.state.pool.fetch(
         "SELECT kb.id::text, kb.user_id::text, u.email AS user_email, "
-        "       kb.name, kb.slug, kb.description, kb.is_shared, kb.created_at::text "
-        "FROM knowledge_bases kb JOIN users u ON u.id = kb.user_id "
-        "ORDER BY kb.created_at DESC"
+        "       kb.name, kb.slug, kb.description, kb.is_shared, kb.created_at::text, "
+        "       lt.id::text AS latex_template_id, lt.name AS latex_template_name "
+        "FROM knowledge_bases kb "
+        "JOIN users u ON u.id = kb.user_id "
+        "LEFT JOIN latex_templates lt ON lt.id = kb.latex_template_id "
+        "ORDER BY kb.name"
     )
     return [dict(r) for r in rows]
 
@@ -91,10 +101,13 @@ async def delete_any_knowledge_base(
         "DELETE FROM knowledge_bases WHERE id = $1", kb_id
     )
     if result == "DELETE 0":
-        raise HTTPException(status_code=404, detail={"message": "Knowledge base not found"})
+        raise HTTPException(
+            status_code=404, detail={"message": "Knowledge base not found"}
+        )
 
 
 # ── KB Shares ────────────────────────────────────────────────────
+
 
 class AdminShareOut(BaseModel):
     id: str
@@ -137,9 +150,7 @@ async def delete_any_share(
     request: Request,
 ):
     pool = request.app.state.pool
-    kb_id = await pool.fetchval(
-        "SELECT kb_id FROM kb_shares WHERE id = $1", share_id
-    )
+    kb_id = await pool.fetchval("SELECT kb_id FROM kb_shares WHERE id = $1", share_id)
     if not kb_id:
         raise HTTPException(status_code=404, detail={"message": "Share not found"})
 
@@ -155,6 +166,7 @@ async def delete_any_share(
 
 
 # ── Usage Logs ────────────────────────────────────────────────────
+
 
 class UsageLogOut(BaseModel):
     id: int
@@ -190,7 +202,7 @@ async def list_usage_logs(
         f"FROM usage_logs l LEFT JOIN users u ON u.id = l.user_id "
         f"{where} "
         f"ORDER BY l.created_at DESC "
-        f"LIMIT ${len(params)-1} OFFSET ${len(params)}",
+        f"LIMIT ${len(params) - 1} OFFSET ${len(params)}",
         *params,
     )
     return [dict(r) for r in rows]

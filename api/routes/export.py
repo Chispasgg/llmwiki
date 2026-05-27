@@ -22,6 +22,7 @@ from config import settings
 from deps import _is_superadmin, get_export_service, get_kb_service, get_user_id
 from services.base import KBService
 from services.export import ExportService, validate_latex_template
+from services.latex_templates import get_kb_template_name, resolve_template_dir
 
 
 def _safe_filename(value: str) -> str:
@@ -84,12 +85,18 @@ async def export_wiki_pdf(
     user_id: Annotated[str, Depends(get_user_id)],
     doc_ids: Annotated[str | None, Form()] = None,
     tex_template: Annotated[UploadFile | None, File()] = None,
+    template_name: Annotated[str | None, Form()] = None,
 ) -> Response:
     pool = getattr(request.app.state, "pool", None)
+    is_superadmin = await _is_superadmin(pool, user_id)
 
-    if tex_template is not None and not await _is_superadmin(pool, user_id):
+    if tex_template is not None and not is_superadmin:
         raise HTTPException(
             status_code=403, detail="Solo el superadmin puede usar plantillas ad-hoc"
+        )
+    if template_name is not None and not is_superadmin:
+        raise HTTPException(
+            status_code=403, detail="Solo el superadmin puede seleccionar plantillas"
         )
 
     kb = await kb_service.get(str(kb_id))
@@ -98,10 +105,11 @@ async def export_wiki_pdf(
 
     doc_ids_list: list[str] | None = _json.loads(doc_ids) if doc_ids else None
 
-    # Priority: ad-hoc upload > stored custom > default
+    # Priority: ad-hoc upload > named template param > kb assignment > default folder > fallback
     ad_hoc_tmp: str | None = None
-    custom_tpl_path: Path | None = None
-    custom_tpl_tmp: str | None = None
+    named_tpl_tmp: str | None = None
+    template_path: Path
+    template_cwd: Path | None = None
 
     if tex_template is not None:
         content = await tex_template.read()
@@ -115,17 +123,24 @@ async def export_wiki_pdf(
             shutil.rmtree(ad_hoc_tmp, ignore_errors=True)
             ad_hoc_tmp = None
             raise
+        template_path = Path(ad_hoc_tmp) / "template.tex"
     else:
-        custom_tpl_path, custom_tpl_tmp = await _resolve_template(pool, "latex", ".tex")
-
-    template_path = (
-        Path(ad_hoc_tmp) / "template.tex"
-        if ad_hoc_tmp
-        else custom_tpl_path or Path(settings.LATEX_TEMPLATE_PATH)
-    )
+        resolved_name = (
+            template_name or await get_kb_template_name(pool, str(kb_id)) or "default"
+        )
+        tpl_dir = resolve_template_dir(settings.LATEX_TEMPLATES_DIR, resolved_name)
+        if tpl_dir is None and resolved_name != "default":
+            tpl_dir = resolve_template_dir(settings.LATEX_TEMPLATES_DIR, "default")
+        if tpl_dir is not None:
+            named_tpl_tmp = tempfile.mkdtemp(prefix="wiki_ntpl_")
+            shutil.copytree(tpl_dir, named_tpl_tmp, dirs_exist_ok=True)
+            template_path = Path(named_tpl_tmp) / "template.tex"
+            template_cwd = Path(named_tpl_tmp)
+        else:
+            template_path = Path(settings.LATEX_TEMPLATE_PATH)
 
     if not template_path.exists():
-        for d in (ad_hoc_tmp, custom_tpl_tmp):
+        for d in (ad_hoc_tmp, named_tpl_tmp):
             if d:
                 shutil.rmtree(d, ignore_errors=True)
         raise HTTPException(
@@ -136,10 +151,15 @@ async def export_wiki_pdf(
     kb_name = kb.get("name") or str(kb_id)
     try:
         pdf_bytes = await export_service.generate_pdf(
-            str(kb_id), user_id, kb_name, template_path, doc_ids_list
+            str(kb_id),
+            user_id,
+            kb_name,
+            template_path,
+            doc_ids_list,
+            template_cwd=template_cwd,
         )
     finally:
-        for d in (ad_hoc_tmp, custom_tpl_tmp):
+        for d in (ad_hoc_tmp, named_tpl_tmp):
             if d:
                 shutil.rmtree(d, ignore_errors=True)
 

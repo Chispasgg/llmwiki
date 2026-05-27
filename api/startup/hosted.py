@@ -30,21 +30,31 @@ async def hosted_lifespan(app: FastAPI):
     app.state.s3_service = None
 
     from infra.storage.server import ServerStorageService
+
     storage = ServerStorageService(settings.SERVER_FILES_ROOT, settings.API_URL)
     app.state.storage_service = storage
 
     from services.ocr import OCRService
+
     app.state.ocr_service = OCRService(storage, pool)
 
     app.state.factory = HostedServiceFactory(pool, storage, None)
 
     from routes.ws import setup_listener
+
     listener_task = await setup_listener(settings.DATABASE_URL)
 
     from infra.tus import cleanup_stale_uploads
+
     cleanup_task = asyncio.create_task(cleanup_stale_uploads())
 
-    logger.info("Hosted mode started — auth: cookie-session, storage: ServerStorageService (T9)")
+    from services.latex_templates import sync_latex_templates
+
+    await sync_latex_templates(pool, settings.LATEX_TEMPLATES_DIR)
+
+    logger.info(
+        "Hosted mode started — auth: cookie-session, storage: ServerStorageService (T9)"
+    )
     yield
 
     cleanup_task.cancel()

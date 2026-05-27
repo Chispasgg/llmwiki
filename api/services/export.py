@@ -312,6 +312,7 @@ class ExportService:
         kb_name: str,
         template_path: Path,
         doc_ids: list[str] | None = None,
+        template_cwd: Path | None = None,
     ) -> bytes:
         """Return raw PDF bytes for the wiki associated with *kb_id*.
 
@@ -330,7 +331,9 @@ class ExportService:
             combined_md = await self._build_combined_md(docs, temp_dir)
             md_text = combined_md.read_text(encoding="utf-8")
             combined_md.write_text(_patch_emoji_for_latex(md_text), encoding="utf-8")
-            return await self._run_pandoc(combined_md, temp_dir, kb_name, template_path)
+            return await self._run_pandoc(
+                combined_md, temp_dir, kb_name, template_path, cwd=template_cwd
+            )
         except HTTPException:
             # Save combined.md for post-mortem inspection
             debug_path = Path(f"/tmp/pandoc_debug_{kb_id[:8]}.md")
@@ -435,6 +438,7 @@ class ExportService:
         temp_dir: Path,
         kb_name: str,
         template_path: Path,
+        cwd: Path | None = None,
     ) -> bytes:
         """Invoke pandoc and return the resulting PDF bytes."""
         output_pdf = temp_dir / "export.pdf"
@@ -464,6 +468,7 @@ class ExportService:
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                cwd=str(cwd) if cwd else None,
             )
         except FileNotFoundError as exc:
             raise HTTPException(

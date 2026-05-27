@@ -40,7 +40,9 @@ class Settings(BaseSettings):
     SENTRY_DSN: str = ""
     ADMIN_USER_IDS: list[str] = []
     MISTRAL_OCR_URL: str = "https://api.mistral.ai/v1/ocr"
-    WATCHER_MAX_HASH_BYTES: int = 100_000_000  # 100 MB — ficheros más grandes no se hashean
+    WATCHER_MAX_HASH_BYTES: int = (
+        100_000_000  # 100 MB — ficheros más grandes no se hashean
+    )
 
     @field_validator("ADMIN_USER_IDS", mode="before")
     @classmethod
@@ -52,6 +54,7 @@ class Settings(BaseSettings):
                 return []
             if v.startswith("["):
                 import json
+
                 return json.loads(v)
             return [uid.strip() for uid in v.split(",") if uid.strip()]
         return v
@@ -68,6 +71,7 @@ class Settings(BaseSettings):
     ARGON2_PARALLELISM: int = 4
 
     LATEX_TEMPLATE_PATH: str = "config/wiki-export.tex"
+    LATEX_TEMPLATES_DIR: str = "/app/config/tex_templates"
 
 
 settings = Settings()
