@@ -736,13 +736,18 @@ class HostedWorkspaceService(WorkspaceService):
     async def update(
         self, workspace_id: str, name: str | None, description: str | None
     ) -> dict | None:
-        is_admin = await self.pool.fetchval(
-            "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND role = 'admin'",
-            workspace_id,
-            self.user_id,
-        )
-        if not is_admin:
-            return None
+        if not self.is_superadmin:
+            can_edit = await self.pool.fetchval(
+                "SELECT 1 FROM workspaces w "
+                "WHERE w.id = $1 AND ("
+                "  w.created_by = $2 "
+                "  OR EXISTS (SELECT 1 FROM workspace_members wm WHERE wm.workspace_id = $1 AND wm.user_id = $2 AND wm.role = 'admin')"
+                ")",
+                workspace_id,
+                self.user_id,
+            )
+            if not can_edit:
+                return None
         sets, vals = [], [workspace_id]
         if name is not None:
             new_slug = _slugify(name)

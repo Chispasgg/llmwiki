@@ -1,14 +1,19 @@
-import { create } from 'zustand'
-import { apiFetch } from '@/lib/api'
-import type { Workspace } from '@/lib/types'
+import { create } from "zustand";
+import { apiFetch } from "@/lib/api";
+import type { Workspace } from "@/lib/types";
 
 interface WorkspaceState {
-  workspaces: Workspace[]
-  loading: boolean
-  fetchWorkspaces: () => Promise<Workspace[]>
-  createWorkspace: (name: string, description?: string) => Promise<Workspace>
-  deleteWorkspace: (id: string) => Promise<void>
-  moveWiki: (kbId: string, targetWorkspaceId: string) => Promise<void>
+  workspaces: Workspace[];
+  loading: boolean;
+  fetchWorkspaces: () => Promise<Workspace[]>;
+  createWorkspace: (name: string, description?: string) => Promise<Workspace>;
+  updateWorkspace: (
+    id: string,
+    name?: string,
+    description?: string | null,
+  ) => Promise<Workspace>;
+  deleteWorkspace: (id: string) => Promise<void>;
+  moveWiki: (kbId: string, targetWorkspaceId: string) => Promise<void>;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
@@ -16,35 +21,46 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   loading: false,
 
   fetchWorkspaces: async () => {
-    set({ loading: true })
+    set({ loading: true });
     try {
-      const data = await apiFetch<Workspace[]>('/v1/workspaces')
-      set({ workspaces: data, loading: false })
-      return data
+      const data = await apiFetch<Workspace[]>("/v1/workspaces");
+      set({ workspaces: data, loading: false });
+      return data;
     } catch {
-      set({ loading: false })
-      return []
+      set({ loading: false });
+      return [];
     }
   },
 
   createWorkspace: async (name, description) => {
-    const ws = await apiFetch<Workspace>('/v1/workspaces', {
-      method: 'POST',
+    const ws = await apiFetch<Workspace>("/v1/workspaces", {
+      method: "POST",
       body: JSON.stringify({ name, description }),
-    })
-    set((s) => ({ workspaces: [...s.workspaces, ws] }))
-    return ws
+    });
+    set((s) => ({ workspaces: [...s.workspaces, ws] }));
+    return ws;
+  },
+
+  updateWorkspace: async (id, name, description) => {
+    const ws = await apiFetch<Workspace>(`/v1/workspaces/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name, description }),
+    });
+    set((s) => ({
+      workspaces: s.workspaces.map((w) => (w.id === id ? ws : w)),
+    }));
+    return ws;
   },
 
   deleteWorkspace: async (id) => {
-    await apiFetch(`/v1/workspaces/${id}`, { method: 'DELETE' })
-    set((s) => ({ workspaces: s.workspaces.filter((w) => w.id !== id) }))
+    await apiFetch(`/v1/workspaces/${id}`, { method: "DELETE" });
+    set((s) => ({ workspaces: s.workspaces.filter((w) => w.id !== id) }));
   },
 
   moveWiki: async (kbId, targetWorkspaceId) => {
     await apiFetch(`/v1/workspaces/wikis/${kbId}/move`, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ target_workspace_id: targetWorkspaceId }),
-    })
+    });
   },
-}))
+}));

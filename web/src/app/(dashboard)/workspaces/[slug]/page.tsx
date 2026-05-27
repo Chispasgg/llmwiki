@@ -12,7 +12,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api'
-import { useWorkspaceStore, useKBStore } from '@/stores'
+import { useWorkspaceStore, useKBStore, useUserStore } from '@/stores'
 import type { KnowledgeBase, Workspace } from '@/lib/types'
 
 function relativeTime(dateStr: string): string {
@@ -161,8 +161,9 @@ function MoveWikiModal({
 export default function WorkspaceDetailPage() {
   const params = useParams<{ slug: string }>()
   const router = useRouter()
-  const { workspaces, fetchWorkspaces } = useWorkspaceStore()
+  const { workspaces, fetchWorkspaces, updateWorkspace } = useWorkspaceStore()
   const createKB = useKBStore((s) => s.createKB)
+  const user = useUserStore((s) => s.user)
   const [ws, setWs] = React.useState<Workspace | null>(null)
   const [wikis, setWikis] = React.useState<KnowledgeBase[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -171,6 +172,43 @@ export default function WorkspaceDetailPage() {
   const [createOpen, setCreateOpen] = React.useState(false)
   const [newKBName, setNewKBName] = React.useState('')
   const [creating, setCreating] = React.useState(false)
+  const [editOpen, setEditOpen] = React.useState(false)
+  const [editName, setEditName] = React.useState('')
+  const [editDescription, setEditDescription] = React.useState('')
+  const [saving, setSaving] = React.useState(false)
+
+  const canEdit = ws !== null && user !== null && (
+    user.role === 'superadmin' || user.id === ws.created_by
+  )
+
+  const openEdit = () => {
+    if (!ws) return
+    setEditName(ws.name)
+    setEditDescription(ws.description ?? '')
+    setEditOpen(true)
+  }
+
+  const handleSave = async () => {
+    if (!ws || !editName.trim()) return
+    setSaving(true)
+    try {
+      const updated = await updateWorkspace(
+        ws.id,
+        editName.trim(),
+        editDescription.trim() || null,
+      )
+      setWs(updated)
+      setEditOpen(false)
+      toast.success('Workspace updated')
+      if (updated.slug !== ws.slug) {
+        router.replace(`/workspaces/${updated.slug}`)
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update workspace')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   React.useEffect(() => {
     const load = async () => {
@@ -245,10 +283,29 @@ export default function WorkspaceDetailPage() {
             All workspaces
           </button>
           <div className="flex items-start justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">{ws.name}</h1>
-              {ws.description && (
-                <p className="text-sm text-muted-foreground mt-1">{ws.description}</p>
+            <div className="flex items-center gap-2">
+              <div>
+                <h1 className="text-2xl font-bold text-foreground">{ws.name}</h1>
+                {ws.description && (
+                  <p className="text-sm text-muted-foreground mt-1">{ws.description}</p>
+                )}
+              </div>
+              {canEdit && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="p-1.5 rounded-md hover:bg-accent transition-colors text-muted-foreground hover:text-foreground cursor-pointer shrink-0 self-start mt-0.5">
+                      <MoreHorizontal className="size-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem onClick={openEdit}>
+                      Rename workspace
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={openEdit}>
+                      Change description
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
             </div>
             <button
@@ -324,6 +381,53 @@ export default function WorkspaceDetailPage() {
               className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 cursor-pointer"
             >
               {creating ? 'Creating…' : 'Create'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editOpen} onOpenChange={(v) => { if (!saving) setEditOpen(v) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit workspace</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium text-foreground">Name</label>
+              <input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                placeholder="Workspace name"
+                autoFocus
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground">Description</label>
+              <textarea
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                placeholder="Optional description"
+                rows={3}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <button
+              onClick={() => setEditOpen(false)}
+              disabled={saving}
+              className="px-3 py-1.5 text-sm border rounded-md hover:bg-accent cursor-pointer disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !editName.trim()}
+              className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 cursor-pointer"
+            >
+              {saving ? 'Saving…' : 'Save'}
             </button>
           </DialogFooter>
         </DialogContent>
