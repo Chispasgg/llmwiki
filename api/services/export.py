@@ -463,6 +463,10 @@ class ExportService:
             "-o",
             str(output_pdf),
         ]
+        # Lua filter for proportional column widths (optional, volume-mounted)
+        lua_filter = template_path.parent.parent / "table-widths.lua"
+        if lua_filter.exists():
+            cmd.extend(["-L", str(lua_filter)])
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
