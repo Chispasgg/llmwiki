@@ -42,8 +42,6 @@ docs/
 /mcp/wiki/
 /emails/
 
-# Deploy
-deploy.sh
 
 # Local Netlify folder
 .netlify
