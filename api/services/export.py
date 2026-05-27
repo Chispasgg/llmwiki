@@ -478,8 +478,8 @@ class ExportService:
             cmd.extend(["-V", f"doc-code={doc_code}"])
         if doc_rev:
             cmd.extend(["-V", f"doc-rev={doc_rev}"])
-        # Lua filter for proportional column widths (optional, volume-mounted)
-        lua_filter = template_path.parent.parent / "table-widths.lua"
+        # Lua filter for proportional column widths (copied alongside template by route)
+        lua_filter = template_path.parent / "table-widths.lua"
         if lua_filter.exists():
             cmd.extend(["-L", str(lua_filter)])
         try:
