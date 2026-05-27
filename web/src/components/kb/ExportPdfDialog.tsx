@@ -17,7 +17,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import type { WikiNode } from "@/lib/types";
+import type { WikiNode, LatexTemplate } from "@/lib/types";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -76,9 +76,15 @@ interface ExportPdfDialogProps {
   onOpenChange: (open: boolean) => void;
   kbName: string;
   wikiTree: WikiNode[];
-  onExport: (docIds: string[], format: ExportFormat, texFile?: File) => void;
+  onExport: (
+    docIds: string[],
+    format: ExportFormat,
+    texFile?: File,
+    templateName?: string,
+  ) => void;
   loading: boolean;
   isSuperadmin?: boolean;
+  templates?: LatexTemplate[];
 }
 
 export function ExportPdfDialog({
@@ -89,6 +95,7 @@ export function ExportPdfDialog({
   onExport,
   loading,
   isSuperadmin = false,
+  templates = [],
 }: ExportPdfDialogProps) {
   const allDocIds = React.useMemo(
     () => collectLeafDocIds(wikiTree),
@@ -99,14 +106,18 @@ export function ExportPdfDialog({
   );
   const [format, setFormat] = React.useState<ExportFormat>("pdf");
   const [texFile, setTexFile] = React.useState<File | null>(null);
+  const [templateName, setTemplateName] = React.useState<string>("");
 
   React.useEffect(() => {
     if (open) setSelected(new Set(allDocIds));
   }, [open, allDocIds]);
 
-  // Reset plantilla ad-hoc al cerrar o cambiar de formato
+  // Reset plantilla ad-hoc y selección de template al cerrar o cambiar de formato
   React.useEffect(() => {
-    if (!open || format !== "pdf") setTexFile(null);
+    if (!open || format !== "pdf") {
+      setTexFile(null);
+      setTemplateName("");
+    }
   }, [open, format]);
 
   const toggleLeaf = React.useCallback((docId: string) => {
@@ -130,7 +141,12 @@ export function ExportPdfDialog({
   }, []);
 
   const handleExport = () =>
-    onExport(Array.from(selected), format, texFile ?? undefined);
+    onExport(
+      Array.from(selected),
+      format,
+      texFile ?? undefined,
+      templateName || undefined,
+    );
 
   return (
     <Dialog open={open} onOpenChange={loading ? undefined : onOpenChange}>
@@ -157,41 +173,63 @@ export function ExportPdfDialog({
           ))}
         </div>
 
-        {/* Plantilla LaTeX ad-hoc — solo superadmin + PDF */}
+        {/* Opciones de plantilla — solo superadmin + PDF */}
         {isSuperadmin && format === "pdf" && (
           <div className="space-y-1.5">
-            {texFile ? (
-              <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 rounded-md text-xs">
-                <FileText className="size-3.5 text-muted-foreground shrink-0" />
-                <span className="flex-1 truncate text-foreground">
-                  {texFile.name}
-                </span>
-                <span className="text-muted-foreground shrink-0">
-                  {(texFile.size / 1024).toFixed(1)} KB
-                </span>
-                <button
-                  onClick={() => setTexFile(null)}
-                  className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            {/* Selector de plantilla nombrada */}
+            {templates.length > 0 && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-muted-foreground shrink-0">
+                  Plantilla:
+                </label>
+                <select
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  className="flex-1 border rounded px-2 py-1 text-xs bg-background"
                 >
-                  <X className="size-3.5" />
-                </button>
+                  <option value="">Auto (asignada a la wiki)</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.name}>
+                      {t.display_name}
+                    </option>
+                  ))}
+                </select>
               </div>
-            ) : (
-              <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-border rounded-md text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors cursor-pointer">
-                <FileText className="size-3.5 shrink-0" />
-                <span>Plantilla LaTeX opcional (.tex)</span>
-                <input
-                  type="file"
-                  accept=".tex"
-                  className="sr-only"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) setTexFile(f);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
             )}
+            {/* Plantilla ad-hoc — solo si no se ha seleccionado plantilla nombrada */}
+            {!templateName &&
+              (texFile ? (
+                <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 rounded-md text-xs">
+                  <FileText className="size-3.5 text-muted-foreground shrink-0" />
+                  <span className="flex-1 truncate text-foreground">
+                    {texFile.name}
+                  </span>
+                  <span className="text-muted-foreground shrink-0">
+                    {(texFile.size / 1024).toFixed(1)} KB
+                  </span>
+                  <button
+                    onClick={() => setTexFile(null)}
+                    className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-border rounded-md text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors cursor-pointer">
+                  <FileText className="size-3.5 shrink-0" />
+                  <span>Plantilla LaTeX ad-hoc opcional (.tex)</span>
+                  <input
+                    type="file"
+                    accept=".tex"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) setTexFile(f);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              ))}
           </div>
         )}
 

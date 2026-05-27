@@ -44,8 +44,9 @@ import { ShareDialog } from "@/components/kb/ShareDialog";
 import { WikiPageContextMenu } from "@/components/kb/ContextMenus";
 import { ExportPdfDialog } from "@/components/kb/ExportPdfDialog";
 import { apiFetch, API_URL, API_CREDENTIALS } from "@/lib/api";
+import { listLatexTemplates } from "@/lib/admin";
 import { useKBStore, useUserStore } from "@/stores";
-import type { DocumentListItem, WikiNode } from "@/lib/types";
+import type { DocumentListItem, WikiNode, LatexTemplate } from "@/lib/types";
 
 interface Usage {
   total_pages: number;
@@ -188,6 +189,9 @@ export function KBSidenav({
   const [exportDialogOpen, setExportDialogOpen] = React.useState(false);
   const [exportLoading, setExportLoading] = React.useState(false);
   const [actionsOpen, setActionsOpen] = React.useState(false);
+  const [latexTemplates, setLatexTemplates] = React.useState<LatexTemplate[]>(
+    [],
+  );
   const actionsRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -208,10 +212,18 @@ export function KBSidenav({
   const isOwner = !!currentUser && !!kb && kb.user_id === currentUser.id;
   const isSuperadmin = currentUser?.role === "superadmin";
 
+  React.useEffect(() => {
+    if (!isSuperadmin) return;
+    listLatexTemplates()
+      .then(setLatexTemplates)
+      .catch(() => {});
+  }, [isSuperadmin]);
+
   const handleExport = async (
     docIds: string[],
     format: "pdf" | "docx" | "odt",
     texFile?: File,
+    templateName?: string,
   ) => {
     setExportLoading(true);
     try {
@@ -222,6 +234,7 @@ export function KBSidenav({
         const form = new FormData();
         form.append("doc_ids", JSON.stringify(docIds));
         if (texFile) form.append("tex_template", texFile);
+        if (templateName) form.append("template_name", templateName);
         body = form;
       } else {
         headers["Content-Type"] = "application/json";
@@ -449,6 +462,7 @@ export function KBSidenav({
         onExport={handleExport}
         loading={exportLoading}
         isSuperadmin={isSuperadmin}
+        templates={latexTemplates}
       />
 
       {/* Search palette */}
