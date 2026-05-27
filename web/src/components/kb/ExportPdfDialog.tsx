@@ -17,6 +17,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 import type { WikiNode, LatexTemplate } from "@/lib/types";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -81,6 +82,8 @@ interface ExportPdfDialogProps {
     format: ExportFormat,
     texFile?: File,
     templateName?: string,
+    docCode?: string,
+    docRev?: string,
   ) => void;
   loading: boolean;
   isSuperadmin?: boolean;
@@ -107,6 +110,8 @@ export function ExportPdfDialog({
   const [format, setFormat] = React.useState<ExportFormat>("pdf");
   const [texFile, setTexFile] = React.useState<File | null>(null);
   const [templateName, setTemplateName] = React.useState<string>("");
+  const [docCode, setDocCode] = React.useState("");
+  const [docRev, setDocRev] = React.useState("00");
 
   React.useEffect(() => {
     if (open) setSelected(new Set(allDocIds));
@@ -117,8 +122,47 @@ export function ExportPdfDialog({
     if (!open || format !== "pdf") {
       setTexFile(null);
       setTemplateName("");
+      setDocCode("");
+      setDocRev("00");
     }
   }, [open, format]);
+
+  // Auto-poblar Revisión desde el historial del overview cuando se selecciona HUL
+  React.useEffect(() => {
+    if (!open || templateName !== "HUL") {
+      if (templateName !== "HUL") {
+        setDocCode("");
+        setDocRev("00");
+      }
+      return;
+    }
+    const findOverviewDocId = (nodes: WikiNode[]): string | null => {
+      for (const n of nodes) {
+        if (
+          n.docId &&
+          (n.path === "overview.md" ||
+            n.path?.toLowerCase().endsWith("/overview.md") ||
+            n.title?.toLowerCase() === "overview")
+        )
+          return n.docId;
+        if (n.children) {
+          const found = findOverviewDocId(n.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    const docId = findOverviewDocId(wikiTree);
+    if (!docId) return;
+    apiFetch<{ id: string; version: number }[]>(
+      `/v1/documents/${docId}/history`,
+    )
+      .then((history) => {
+        const latest = history.length > 0 ? history[0].version : 0;
+        setDocRev(String(latest).padStart(2, "0"));
+      })
+      .catch(() => {});
+  }, [open, templateName, wikiTree]);
 
   const toggleLeaf = React.useCallback((docId: string) => {
     setSelected((prev) => {
@@ -146,6 +190,8 @@ export function ExportPdfDialog({
       format,
       texFile ?? undefined,
       templateName || undefined,
+      docCode || undefined,
+      docRev || undefined,
     );
 
   return (
@@ -230,6 +276,38 @@ export function ExportPdfDialog({
                   />
                 </label>
               ))}
+            {/* Metadatos de cabecera — solo para plantilla HUL */}
+            {templateName === "HUL" && (
+              <div className="space-y-1.5 border-t border-border pt-2 mt-0.5">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Cabecera del documento
+                </p>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground w-16 shrink-0">
+                    Código:
+                  </label>
+                  <input
+                    type="text"
+                    value={docCode}
+                    onChange={(e) => setDocCode(e.target.value)}
+                    placeholder="SOP-016"
+                    className="flex-1 border rounded px-2 py-1 text-xs bg-background"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground w-16 shrink-0">
+                    Revisión:
+                  </label>
+                  <input
+                    type="text"
+                    value={docRev}
+                    onChange={(e) => setDocRev(e.target.value)}
+                    placeholder="00"
+                    className="flex-1 border rounded px-2 py-1 text-xs bg-background"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 

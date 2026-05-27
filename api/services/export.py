@@ -313,6 +313,8 @@ class ExportService:
         template_path: Path,
         doc_ids: list[str] | None = None,
         template_cwd: Path | None = None,
+        doc_code: str | None = None,
+        doc_rev: str | None = None,
     ) -> bytes:
         """Return raw PDF bytes for the wiki associated with *kb_id*.
 
@@ -332,7 +334,13 @@ class ExportService:
             md_text = combined_md.read_text(encoding="utf-8")
             combined_md.write_text(_patch_emoji_for_latex(md_text), encoding="utf-8")
             return await self._run_pandoc(
-                combined_md, temp_dir, kb_name, template_path, cwd=template_cwd
+                combined_md,
+                temp_dir,
+                kb_name,
+                template_path,
+                cwd=template_cwd,
+                doc_code=doc_code,
+                doc_rev=doc_rev,
             )
         except HTTPException:
             # Save combined.md for post-mortem inspection
@@ -439,6 +447,8 @@ class ExportService:
         kb_name: str,
         template_path: Path,
         cwd: Path | None = None,
+        doc_code: str | None = None,
+        doc_rev: str | None = None,
     ) -> bytes:
         """Invoke pandoc and return the resulting PDF bytes."""
         output_pdf = temp_dir / "export.pdf"
@@ -463,6 +473,11 @@ class ExportService:
             "-o",
             str(output_pdf),
         ]
+        # Optional template-specific metadata variables
+        if doc_code:
+            cmd.extend(["-V", f"doc-code={doc_code}"])
+        if doc_rev:
+            cmd.extend(["-V", f"doc-rev={doc_rev}"])
         # Lua filter for proportional column widths (optional, volume-mounted)
         lua_filter = template_path.parent.parent / "table-widths.lua"
         if lua_filter.exists():

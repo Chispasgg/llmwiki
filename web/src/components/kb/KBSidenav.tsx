@@ -224,6 +224,8 @@ export function KBSidenav({
     format: "pdf" | "docx" | "odt",
     texFile?: File,
     templateName?: string,
+    docCode?: string,
+    docRev?: string,
   ) => {
     setExportLoading(true);
     try {
@@ -235,6 +237,8 @@ export function KBSidenav({
         form.append("doc_ids", JSON.stringify(docIds));
         if (texFile) form.append("tex_template", texFile);
         if (templateName) form.append("template_name", templateName);
+        if (docCode) form.append("doc_code", docCode);
+        if (docRev) form.append("doc_rev", docRev);
         body = form;
       } else {
         headers["Content-Type"] = "application/json";

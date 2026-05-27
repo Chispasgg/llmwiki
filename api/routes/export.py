@@ -86,6 +86,8 @@ async def export_wiki_pdf(
     doc_ids: Annotated[str | None, Form()] = None,
     tex_template: Annotated[UploadFile | None, File()] = None,
     template_name: Annotated[str | None, Form()] = None,
+    doc_code: Annotated[str | None, Form()] = None,
+    doc_rev: Annotated[str | None, Form()] = None,
 ) -> Response:
     pool = getattr(request.app.state, "pool", None)
     is_superadmin = await _is_superadmin(pool, user_id)
@@ -157,6 +159,8 @@ async def export_wiki_pdf(
             template_path,
             doc_ids_list,
             template_cwd=template_cwd,
+            doc_code=doc_code or None,
+            doc_rev=doc_rev or None,
         )
     finally:
         for d in (ad_hoc_tmp, named_tpl_tmp):
