@@ -136,9 +136,6 @@ async def export_wiki_pdf(
         if tpl_dir is not None:
             named_tpl_tmp = tempfile.mkdtemp(prefix="wiki_ntpl_")
             shutil.copytree(tpl_dir, named_tpl_tmp, dirs_exist_ok=True)
-            # Copy shared Lua filters from templates root into temp dir so pandoc can find them
-            for _lua in Path(settings.LATEX_TEMPLATES_DIR).glob("*.lua"):
-                shutil.copy2(str(_lua), str(Path(named_tpl_tmp) / _lua.name))
             template_path = Path(named_tpl_tmp) / "template.tex"
             template_cwd = Path(named_tpl_tmp)
         else:

@@ -61,6 +61,7 @@ def _patch_emoji_for_latex(content: str) -> str:
 
 # Puppeteer needs --no-sandbox inside Docker containers.
 _PUPPETEER_CONFIG = Path(__file__).parent.parent / "config" / "puppeteer-config.json"
+_LUA_TABLE_WIDTHS = Path(__file__).parent.parent / "config" / "table-widths.lua"
 
 
 # ---------------------------------------------------------------------------
@@ -478,10 +479,8 @@ class ExportService:
             cmd.extend(["-V", f"doc-code={doc_code}"])
         if doc_rev:
             cmd.extend(["-V", f"doc-rev={doc_rev}"])
-        # Lua filter for proportional column widths (copied alongside template by route)
-        lua_filter = template_path.parent / "table-widths.lua"
-        if lua_filter.exists():
-            cmd.extend(["-L", str(lua_filter)])
+        if _LUA_TABLE_WIDTHS.exists():
+            cmd.extend(["-L", str(_LUA_TABLE_WIDTHS)])
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
