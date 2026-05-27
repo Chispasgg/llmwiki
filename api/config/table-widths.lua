@@ -8,7 +8,7 @@
 
 function Table(el)
     local ok, result = pcall(function()
-        local spec = el.colspec
+        local spec = el.colspecs
         local n = #spec
         if n < 2 then return el end
 
@@ -54,7 +54,7 @@ function Table(el)
             end
         end
 
-        el.colspec = spec
+        el.colspecs = spec
         return el
     end)
 
