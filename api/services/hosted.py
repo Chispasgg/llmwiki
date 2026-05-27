@@ -679,9 +679,10 @@ class HostedDocumentService(DocumentService):
 
 
 class HostedWorkspaceService(WorkspaceService):
-    def __init__(self, pool, user_id: str):
+    def __init__(self, pool, user_id: str, is_superadmin: bool = False):
         self.pool = pool
         self.user_id = user_id
+        self.is_superadmin = is_superadmin
 
     def _row_to_dict(self, row) -> dict:
         d = dict(row)
@@ -902,8 +903,10 @@ class HostedServiceFactory(ServiceFactory):
             self.pool, user_id, self.storage, is_superadmin=is_superadmin
         )
 
-    def workspace_service(self, user_id: str) -> HostedWorkspaceService:
-        return HostedWorkspaceService(self.pool, user_id)
+    def workspace_service(
+        self, user_id: str, *, is_superadmin: bool = False
+    ) -> HostedWorkspaceService:
+        return HostedWorkspaceService(self.pool, user_id, is_superadmin=is_superadmin)
 
 
 # ── Chunk persistence (Postgres-specific) ─────────────────────────────────────

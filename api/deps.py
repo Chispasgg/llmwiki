@@ -49,7 +49,9 @@ async def get_kb_service(request: Request):
 async def get_document_service(request: Request):
     user_id = await get_user_id(request)
     is_superadmin = await _is_superadmin(request.app.state.pool, user_id)
-    return request.app.state.factory.document_service(user_id, is_superadmin=is_superadmin)
+    return request.app.state.factory.document_service(
+        user_id, is_superadmin=is_superadmin
+    )
 
 
 async def get_scoped_db(
@@ -122,4 +124,6 @@ async def require_admin(request: Request) -> str:
 
 async def get_workspace_service(request: Request):
     user_id = await get_user_id(request)
-    return request.app.state.factory.workspace_service(user_id)
+    pool = getattr(request.app.state, "pool", None)
+    is_sa = await _is_superadmin(pool, user_id)
+    return request.app.state.factory.workspace_service(user_id, is_superadmin=is_sa)
