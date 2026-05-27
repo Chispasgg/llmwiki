@@ -44,11 +44,11 @@ _EMOJI_TO_LATEX: dict[str, str] = {
     "⚪": r"\textcolor{gray}{\textbullet}",
     "🔶": r"\textcolor{orange}{\textbullet}",
     "🔷": r"\textcolor{cyan!60!blue}{\textbullet}",
-    "✅": r"\textcolor{green!60!black}{\checkmark}",
-    "❌": r"\(\times\)",
+    "✅": r"\textcolor{green!60!black}{\ensuremath{\checkmark}}",
+    "❌": r"\ensuremath{\times}",
     "⚠️": r"\textcolor{orange}{\textbullet}",
     "⚠": r"\textcolor{orange}{\textbullet}",
-    "✓": r"\checkmark",
+    "✓": r"\ensuremath{\checkmark}",
 }
 
 
