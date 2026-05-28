@@ -327,15 +327,19 @@ class PostgresVaultFS(VaultFS):
             tags_clause = f" AND d.tags @> ${len(params) + 1}::text[]"
             params.append(tags)
 
+        # Usa FTS nativo de PostgreSQL (tsvector/tsquery + ts_rank).
+        # 'simple' dictionary: solo lowercase+split, funciona para ES+EN sin configuración extra.
+        tsv = "to_tsvector('simple', dc.content)"
+        tsq = "plainto_tsquery('simple', $2)"
         return await scoped_query(
             self.user_id,
             f"SELECT dc.content, dc.page, dc.header_breadcrumb, dc.chunk_index, "
             f"  d.filename, d.title, d.path, d.file_type, d.tags, "
-            f"  pgroonga_score(dc.tableoid, dc.ctid) AS score "
+            f"  ts_rank({tsv}, {tsq}) AS score "
             f"FROM document_chunks dc "
             f"JOIN documents d ON dc.document_id = d.id "
             f"WHERE dc.knowledge_base_id = $1 "
-            f"  AND dc.content &@~ $2 "
+            f"  AND {tsv} @@ {tsq} "
             f"  AND NOT d.archived "
             f"  AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
             f"    WHERE kb.id = $1 AND (kb.user_id = $3 OR ks.shared_with = $3::uuid))"
