@@ -823,23 +823,34 @@ class HostedWorkspaceService(WorkspaceService):
         return [_kb_row_to_dict(r) for r in rows]
 
     async def move_wiki(self, kb_id: str, target_workspace_id: str) -> dict:
-        is_target_member = await self.pool.fetchval(
-            "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
-            target_workspace_id,
-            self.user_id,
-        )
-        if not is_target_member:
-            raise HTTPException(
-                status_code=403, detail={"error": "Not a member of target workspace"}
+        if not self.is_superadmin:
+            is_target_member = await self.pool.fetchval(
+                "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+                target_workspace_id,
+                self.user_id,
             )
-        row = await self.pool.fetchrow(
-            "UPDATE knowledge_bases SET workspace_id = $1, updated_at = now()"
-            " WHERE id = $2 AND user_id = $3"
-            " RETURNING id, name, slug, workspace_id",
-            target_workspace_id,
-            kb_id,
-            self.user_id,
-        )
+            if not is_target_member:
+                raise HTTPException(
+                    status_code=403,
+                    detail={"error": "Not a member of target workspace"},
+                )
+        if self.is_superadmin:
+            row = await self.pool.fetchrow(
+                "UPDATE knowledge_bases SET workspace_id = $1, updated_at = now()"
+                " WHERE id = $2"
+                " RETURNING id, name, slug, workspace_id",
+                target_workspace_id,
+                kb_id,
+            )
+        else:
+            row = await self.pool.fetchrow(
+                "UPDATE knowledge_bases SET workspace_id = $1, updated_at = now()"
+                " WHERE id = $2 AND user_id = $3"
+                " RETURNING id, name, slug, workspace_id",
+                target_workspace_id,
+                kb_id,
+                self.user_id,
+            )
         if not row:
             raise HTTPException(
                 status_code=404, detail={"error": "Wiki not found or not owned by you"}
