@@ -104,6 +104,7 @@ export interface Workspace {
   created_by: string;
   member_count: number;
   wiki_count: number;
+  is_member: boolean;
   created_at: string;
   updated_at: string;
 }

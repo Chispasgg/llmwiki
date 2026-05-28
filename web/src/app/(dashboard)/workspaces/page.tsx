@@ -1,35 +1,58 @@
-'use client'
+"use client";
 
-import * as React from 'react'
-import { useRouter } from 'next/navigation'
-import { Plus, Users, BookOpen, Loader2, Trash2 } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { useWorkspaceStore } from '@/stores'
-import type { Workspace } from '@/lib/types'
+import * as React from "react";
+import { useRouter } from "next/navigation";
+import { Plus, Users, BookOpen, Loader2, Trash2, UserX } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { useWorkspaceStore, useUserStore } from "@/stores";
+import type { Workspace } from "@/lib/types";
 
 function relativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d ago`
-  return `${Math.floor(days / 30)}mo ago`
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return `${Math.floor(days / 30)}mo ago`;
 }
 
-function WorkspaceCard({ ws, onClick, onDelete }: { ws: Workspace; onClick: () => void; onDelete: (e: React.MouseEvent) => void }) {
+function WorkspaceCard({
+  ws,
+  isForeign,
+  onClick,
+  onDelete,
+}: {
+  ws: Workspace;
+  isForeign: boolean;
+  onClick: () => void;
+  onDelete: (e: React.MouseEvent) => void;
+}) {
   return (
     <div
       onClick={onClick}
-      className="group relative text-left w-full rounded-xl border border-border bg-card hover:bg-accent/40 transition-colors p-5 flex flex-col gap-3 cursor-pointer"
+      className={`group relative text-left w-full rounded-xl border p-5 flex flex-col gap-3 cursor-pointer transition-colors ${
+        isForeign
+          ? "border-amber-300/50 bg-amber-50/40 hover:bg-amber-50/70 dark:bg-amber-950/20 dark:border-amber-700/40 dark:hover:bg-amber-950/30"
+          : "border-border bg-card hover:bg-accent/40"
+      }`}
     >
       <div className="flex items-start justify-between gap-2">
         <h2 className="text-base font-semibold text-foreground group-hover:text-primary transition-colors leading-tight">
           {ws.name}
         </h2>
         <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+          {isForeign && (
+            <UserX className="size-3.5 text-amber-500/70 dark:text-amber-400/70" />
+          )}
           <span className="text-[10px] text-muted-foreground/50">
             {relativeTime(ws.updated_at)}
           </span>
@@ -42,58 +65,75 @@ function WorkspaceCard({ ws, onClick, onDelete }: { ws: Workspace; onClick: () =
         </div>
       </div>
       {ws.description && (
-        <p className="text-sm text-muted-foreground line-clamp-2">{ws.description}</p>
+        <p className="text-sm text-muted-foreground line-clamp-2">
+          {ws.description}
+        </p>
       )}
       <div className="flex items-center gap-4 mt-auto pt-1">
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <BookOpen className="size-3.5" />
-          {ws.wiki_count} {ws.wiki_count === 1 ? 'wiki' : 'wikis'}
+          {ws.wiki_count} {ws.wiki_count === 1 ? "wiki" : "wikis"}
         </span>
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Users className="size-3.5" />
-          {ws.member_count} {ws.member_count === 1 ? 'member' : 'members'}
+          {ws.member_count} {ws.member_count === 1 ? "member" : "members"}
         </span>
       </div>
     </div>
-  )
+  );
 }
 
 export default function WorkspacesPage() {
-  const router = useRouter()
-  const { workspaces, loading, fetchWorkspaces, createWorkspace, deleteWorkspace } = useWorkspaceStore()
-  const [createOpen, setCreateOpen] = React.useState(false)
-  const [newName, setNewName] = React.useState('')
-  const [newDesc, setNewDesc] = React.useState('')
-  const [creating, setCreating] = React.useState(false)
-  const [deleteTarget, setDeleteTarget] = React.useState<Workspace | null>(null)
-  const [deleting, setDeleting] = React.useState(false)
+  const router = useRouter();
+  const {
+    workspaces,
+    loading,
+    fetchWorkspaces,
+    createWorkspace,
+    deleteWorkspace,
+  } = useWorkspaceStore();
+  const user = useUserStore((s) => s.user);
+  const isSuperadmin = user?.role === "superadmin";
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [newName, setNewName] = React.useState("");
+  const [newDesc, setNewDesc] = React.useState("");
+  const [creating, setCreating] = React.useState(false);
+  const [deleteTarget, setDeleteTarget] = React.useState<Workspace | null>(
+    null,
+  );
+  const [deleting, setDeleting] = React.useState(false);
 
-  React.useEffect(() => { fetchWorkspaces() }, [])
+  React.useEffect(() => {
+    fetchWorkspaces();
+  }, []);
 
   const handleDelete = async () => {
-    if (!deleteTarget) return
-    setDeleting(true)
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await deleteWorkspace(deleteTarget.id)
-      setDeleteTarget(null)
+      await deleteWorkspace(deleteTarget.id);
+      setDeleteTarget(null);
     } finally {
-      setDeleting(false)
+      setDeleting(false);
     }
-  }
+  };
 
   const handleCreate = async () => {
-    if (!newName.trim()) return
-    setCreating(true)
+    if (!newName.trim()) return;
+    setCreating(true);
     try {
-      const ws = await createWorkspace(newName.trim(), newDesc.trim() || undefined)
-      setCreateOpen(false)
-      setNewName('')
-      setNewDesc('')
-      router.push(`/workspaces/${ws.slug}`)
+      const ws = await createWorkspace(
+        newName.trim(),
+        newDesc.trim() || undefined,
+      );
+      setCreateOpen(false);
+      setNewName("");
+      setNewDesc("");
+      router.push(`/workspaces/${ws.slug}`);
     } finally {
-      setCreating(false)
+      setCreating(false);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -101,7 +141,9 @@ export default function WorkspacesPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Workspaces</h1>
-            <p className="text-sm text-muted-foreground mt-1">Select a workspace to view its wikis</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Select a workspace to view its wikis
+            </p>
           </div>
           <button
             onClick={() => setCreateOpen(true)}
@@ -126,21 +168,30 @@ export default function WorkspacesPage() {
               <WorkspaceCard
                 key={ws.id}
                 ws={ws}
+                isForeign={isSuperadmin && !ws.is_member}
                 onClick={() => router.push(`/workspaces/${ws.slug}`)}
-                onDelete={(e) => { e.stopPropagation(); setDeleteTarget(ws) }}
+                onDelete={(e) => {
+                  e.stopPropagation();
+                  setDeleteTarget(ws);
+                }}
               />
             ))}
           </div>
         )}
       </div>
 
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete workspace</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? Its wikis will be unassigned. This cannot be undone.
+            Are you sure you want to delete{" "}
+            <strong>{deleteTarget?.name}</strong>? Its wikis will be unassigned.
+            This cannot be undone.
           </p>
           <DialogFooter>
             <button
@@ -154,7 +205,7 @@ export default function WorkspacesPage() {
               disabled={deleting}
               className="rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:opacity-90 disabled:opacity-50 cursor-pointer"
             >
-              {deleting ? 'Deleting...' : 'Delete'}
+              {deleting ? "Deleting..." : "Delete"}
             </button>
           </DialogFooter>
         </DialogContent>
@@ -169,7 +220,7 @@ export default function WorkspacesPage() {
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
               placeholder="Workspace name"
               autoFocus
               className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
@@ -188,11 +239,11 @@ export default function WorkspacesPage() {
               disabled={creating || !newName.trim()}
               className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 cursor-pointer"
             >
-              {creating ? 'Creating...' : 'Create'}
+              {creating ? "Creating..." : "Create"}
             </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }

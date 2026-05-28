@@ -662,9 +662,14 @@ export function KBSidenav({
         </button>
       </div>
 
-      {/* User menu */}
+      {/* User menu + version */}
       <div className="shrink-0 border-t border-border p-2">
         <SidenavUserMenu />
+        {process.env.NEXT_PUBLIC_APP_VERSION && (
+          <p className="mt-1.5 text-center text-[10px] text-muted-foreground/30 select-none">
+            v{process.env.NEXT_PUBLIC_APP_VERSION}
+          </p>
+        )}
       </div>
     </div>
   );

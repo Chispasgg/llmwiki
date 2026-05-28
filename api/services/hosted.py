@@ -73,7 +73,8 @@ _WS_FIELDS = (
     "  WHEN EXISTS (SELECT 1 FROM workspace_members wm3 WHERE wm3.workspace_id = w.id AND wm3.user_id = $1) "
     "  THEN (SELECT COUNT(*) FROM knowledge_bases kb WHERE kb.workspace_id = w.id) "
     "  ELSE (SELECT COUNT(*) FROM knowledge_bases kb2 JOIN kb_shares ks2 ON ks2.kb_id = kb2.id WHERE kb2.workspace_id = w.id AND ks2.shared_with = $1::uuid) "
-    "END AS wiki_count "
+    "END AS wiki_count, "
+    "EXISTS (SELECT 1 FROM workspace_members wm0 WHERE wm0.workspace_id = w.id AND wm0.user_id = $1) AS is_member "
     "FROM workspaces w "
     "WHERE ("
     "  EXISTS (SELECT 1 FROM workspace_members wm WHERE wm.workspace_id = w.id AND wm.user_id = $1) "
@@ -82,6 +83,15 @@ _WS_FIELDS = (
     "    WHERE kb.workspace_id = w.id AND ks.shared_with = $1::uuid"
     "  )"
     ")"
+)
+
+# Query para superadmin: todos los workspaces sin filtro de membresía
+_WS_FIELDS_SUPERADMIN = (
+    "SELECT w.id, w.name, w.slug, w.description, w.created_by, w.created_at, w.updated_at, "
+    "(SELECT COUNT(*) FROM workspace_members wm2 WHERE wm2.workspace_id = w.id) AS member_count, "
+    "(SELECT COUNT(*) FROM knowledge_bases kb WHERE kb.workspace_id = w.id) AS wiki_count, "
+    "EXISTS (SELECT 1 FROM workspace_members wm0 WHERE wm0.workspace_id = w.id AND wm0.user_id = $1) AS is_member "
+    "FROM workspaces w"
 )
 
 
@@ -694,10 +704,16 @@ class HostedWorkspaceService(WorkspaceService):
                 d[k] = d[k].isoformat()
         d["member_count"] = int(d.get("member_count", 0))
         d["wiki_count"] = int(d.get("wiki_count", 0))
+        d["is_member"] = bool(d.get("is_member", True))
         return d
 
     async def list(self) -> list[dict]:
-        rows = await self.pool.fetch(_WS_FIELDS + " ORDER BY w.name", self.user_id)
+        if self.is_superadmin:
+            rows = await self.pool.fetch(
+                _WS_FIELDS_SUPERADMIN + " ORDER BY w.name", self.user_id
+            )
+        else:
+            rows = await self.pool.fetch(_WS_FIELDS + " ORDER BY w.name", self.user_id)
         return [self._row_to_dict(r) for r in rows]
 
     async def get_by_slug(self, slug: str) -> dict | None:
@@ -796,6 +812,13 @@ class HostedWorkspaceService(WorkspaceService):
             "  (SELECT u.email FROM users u WHERE u.id = kb.user_id) AS owner_email"
             " FROM knowledge_bases kb"
         )
+        if self.is_superadmin:
+            rows = await self.pool.fetch(
+                _KB_SELECT + " WHERE kb.workspace_id = $1 ORDER BY kb.name",
+                workspace_id,
+            )
+            return [_kb_row_to_dict(r) for r in rows]
+
         is_member = await self.pool.fetchval(
             "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
             workspace_id,

@@ -62,5 +62,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       method: "POST",
       body: JSON.stringify({ target_workspace_id: targetWorkspaceId }),
     });
+    set((s) => ({
+      workspaces: s.workspaces.map((w) => {
+        if (w.id === targetWorkspaceId)
+          return { ...w, wiki_count: w.wiki_count + 1 };
+        return w;
+      }),
+    }));
   },
 }));

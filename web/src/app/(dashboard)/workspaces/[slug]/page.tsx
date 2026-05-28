@@ -1,43 +1,70 @@
-'use client'
+"use client";
 
-import * as React from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import * as React from "react";
+import { useParams, useRouter } from "next/navigation";
 import {
-  ArrowLeft, Plus, BookOpen, FileText, Clock,
-  MoreHorizontal, MoveRight, Loader2, Search,
-} from 'lucide-react'
+  ArrowLeft,
+  Plus,
+  BookOpen,
+  FileText,
+  Clock,
+  MoreHorizontal,
+  MoveRight,
+  Loader2,
+  Search,
+  UserX,
+} from "lucide-react";
 import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
-} from '@/components/ui/dropdown-menu'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { toast } from 'sonner'
-import { apiFetch } from '@/lib/api'
-import { useWorkspaceStore, useKBStore, useUserStore } from '@/stores'
-import type { KnowledgeBase, Workspace } from '@/lib/types'
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
+import { apiFetch } from "@/lib/api";
+import { useWorkspaceStore, useKBStore, useUserStore } from "@/stores";
+import type { KnowledgeBase, Workspace } from "@/lib/types";
 
 function relativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d ago`
-  return `${Math.floor(days / 30)}mo ago`
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return `${Math.floor(days / 30)}mo ago`;
 }
 
 function WikiCard({
   kb,
+  isForeign,
+  canMove,
   onOpen,
   onMove,
 }: {
-  kb: KnowledgeBase
-  onOpen: () => void
-  onMove: () => void
+  kb: KnowledgeBase;
+  isForeign: boolean;
+  canMove: boolean;
+  onOpen: () => void;
+  onMove: () => void;
 }) {
   return (
-    <div className="group rounded-xl border border-border bg-card hover:bg-accent/20 transition-colors p-5 flex flex-col gap-3">
+    <div
+      className={`group rounded-xl border p-5 flex flex-col gap-3 transition-colors ${
+        isForeign
+          ? "border-amber-300/50 bg-amber-50/40 hover:bg-amber-50/70 dark:bg-amber-950/20 dark:border-amber-700/40 dark:hover:bg-amber-950/30"
+          : "border-border bg-card hover:bg-accent/20"
+      }`}
+    >
       <div className="flex items-start justify-between gap-2">
         <button
           onClick={onOpen}
@@ -45,22 +72,31 @@ function WikiCard({
         >
           {kb.name}
         </button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="p-1 rounded hover:bg-accent transition-colors opacity-0 group-hover:opacity-100 cursor-pointer">
-              <MoreHorizontal className="size-4 text-muted-foreground" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onMove}>
-              <MoveRight className="size-3.5 mr-2" />
-              Move to workspace…
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center gap-1 shrink-0">
+          {isForeign && (
+            <UserX className="size-3.5 text-amber-500/70 dark:text-amber-400/70" />
+          )}
+          {canMove && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="p-1 rounded hover:bg-accent transition-colors opacity-0 group-hover:opacity-100 cursor-pointer">
+                  <MoreHorizontal className="size-4 text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={onMove}>
+                  <MoveRight className="size-3.5 mr-2" />
+                  Move to workspace…
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       </div>
       {kb.description && (
-        <p className="text-sm text-muted-foreground line-clamp-2">{kb.description}</p>
+        <p className="text-sm text-muted-foreground line-clamp-2">
+          {kb.description}
+        </p>
       )}
       <div className="flex items-center gap-4 mt-auto pt-1">
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -77,7 +113,7 @@ function WikiCard({
         </span>
       </div>
     </div>
-  )
+  );
 }
 
 function MoveWikiModal({
@@ -87,62 +123,78 @@ function MoveWikiModal({
   currentWorkspaceId,
   onMoved,
 }: {
-  open: boolean
-  onClose: () => void
-  kb: KnowledgeBase | null
-  currentWorkspaceId: string
-  onMoved: (kbId: string) => void
+  open: boolean;
+  onClose: () => void;
+  kb: KnowledgeBase | null;
+  currentWorkspaceId: string;
+  onMoved: (kbId: string) => void;
 }) {
-  const workspaces = useWorkspaceStore((s) => s.workspaces)
-  const [selected, setSelected] = React.useState<string | null>(null)
-  const [moving, setMoving] = React.useState(false)
-  const choices = workspaces.filter((w) => w.id !== currentWorkspaceId)
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
+  const [selected, setSelected] = React.useState<string | null>(null);
+  const [moving, setMoving] = React.useState(false);
+  const choices = workspaces.filter((w) => w.id !== currentWorkspaceId);
 
-  React.useEffect(() => { if (!open) setSelected(null) }, [open])
+  React.useEffect(() => {
+    if (!open) setSelected(null);
+  }, [open]);
 
   const handleMove = async () => {
-    if (!selected || !kb) return
-    setMoving(true)
+    if (!selected || !kb) return;
+    setMoving(true);
     try {
       await apiFetch(`/v1/workspaces/wikis/${kb.id}/move`, {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify({ target_workspace_id: selected }),
-      })
-      toast.success(`"${kb.name}" moved successfully`)
-      onMoved(kb.id)
-      onClose()
+      });
+      toast.success(`"${kb.name}" moved successfully`);
+      onMoved(kb.id);
+      onClose();
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to move wiki')
+      toast.error(err instanceof Error ? err.message : "Failed to move wiki");
     } finally {
-      setMoving(false)
+      setMoving(false);
     }
-  }
+  };
 
-  if (!open) return null
+  if (!open) return null;
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>Move &ldquo;{kb?.name}&rdquo; to workspace</DialogTitle>
         </DialogHeader>
         <div className="space-y-1 max-h-60 overflow-y-auto">
           {choices.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">No other workspaces available</p>
-          ) : choices.map((ws) => (
-            <button
-              key={ws.id}
-              onClick={() => setSelected(ws.id)}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors cursor-pointer ${
-                selected === ws.id ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'
-              }`}
-            >
-              {ws.name}
-            </button>
-          ))}
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No other workspaces available
+            </p>
+          ) : (
+            choices.map((ws) => (
+              <button
+                key={ws.id}
+                onClick={() => setSelected(ws.id)}
+                className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors cursor-pointer ${
+                  selected === ws.id
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-accent"
+                }`}
+              >
+                {ws.name}
+              </button>
+            ))
+          )}
         </div>
         <DialogFooter>
-          <button onClick={onClose} className="px-3 py-1.5 text-sm border rounded-md hover:bg-accent cursor-pointer">
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 text-sm border rounded-md hover:bg-accent cursor-pointer"
+          >
             Cancel
           </button>
           <button
@@ -150,117 +202,125 @@ function MoveWikiModal({
             onClick={handleMove}
             className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 cursor-pointer"
           >
-            {moving ? 'Moving…' : 'Move'}
+            {moving ? "Moving…" : "Move"}
           </button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 export default function WorkspaceDetailPage() {
-  const params = useParams<{ slug: string }>()
-  const router = useRouter()
-  const { workspaces, fetchWorkspaces, updateWorkspace } = useWorkspaceStore()
-  const createKB = useKBStore((s) => s.createKB)
-  const user = useUserStore((s) => s.user)
-  const [ws, setWs] = React.useState<Workspace | null>(null)
-  const [wikis, setWikis] = React.useState<KnowledgeBase[]>([])
-  const [loading, setLoading] = React.useState(true)
-  const [search, setSearch] = React.useState('')
-  const [moveTarget, setMoveTarget] = React.useState<KnowledgeBase | null>(null)
-  const [createOpen, setCreateOpen] = React.useState(false)
-  const [newKBName, setNewKBName] = React.useState('')
-  const [creating, setCreating] = React.useState(false)
-  const [editOpen, setEditOpen] = React.useState(false)
-  const [editName, setEditName] = React.useState('')
-  const [editDescription, setEditDescription] = React.useState('')
-  const [saving, setSaving] = React.useState(false)
+  const params = useParams<{ slug: string }>();
+  const router = useRouter();
+  const { workspaces, fetchWorkspaces, updateWorkspace } = useWorkspaceStore();
+  const createKB = useKBStore((s) => s.createKB);
+  const user = useUserStore((s) => s.user);
+  const [ws, setWs] = React.useState<Workspace | null>(null);
+  const [wikis, setWikis] = React.useState<KnowledgeBase[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [search, setSearch] = React.useState("");
+  const [moveTarget, setMoveTarget] = React.useState<KnowledgeBase | null>(
+    null,
+  );
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [newKBName, setNewKBName] = React.useState("");
+  const [creating, setCreating] = React.useState(false);
+  const [editOpen, setEditOpen] = React.useState(false);
+  const [editName, setEditName] = React.useState("");
+  const [editDescription, setEditDescription] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
 
-  const canEdit = ws !== null && user !== null && (
-    user.role === 'superadmin' || user.id === ws.created_by
-  )
+  const canEdit =
+    ws !== null &&
+    user !== null &&
+    (user.role === "superadmin" || user.id === ws.created_by);
 
   const openEdit = () => {
-    if (!ws) return
-    setEditName(ws.name)
-    setEditDescription(ws.description ?? '')
-    setEditOpen(true)
-  }
+    if (!ws) return;
+    setEditName(ws.name);
+    setEditDescription(ws.description ?? "");
+    setEditOpen(true);
+  };
 
   const handleSave = async () => {
-    if (!ws || !editName.trim()) return
-    setSaving(true)
+    if (!ws || !editName.trim()) return;
+    setSaving(true);
     try {
       const updated = await updateWorkspace(
         ws.id,
         editName.trim(),
         editDescription.trim() || null,
-      )
-      setWs(updated)
-      setEditOpen(false)
-      toast.success('Workspace updated')
+      );
+      setWs(updated);
+      setEditOpen(false);
+      toast.success("Workspace updated");
       if (updated.slug !== ws.slug) {
-        router.replace(`/workspaces/${updated.slug}`)
+        router.replace(`/workspaces/${updated.slug}`);
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update workspace')
+      toast.error(
+        err instanceof Error ? err.message : "Failed to update workspace",
+      );
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   React.useEffect(() => {
     const load = async () => {
-      setLoading(true)
+      setLoading(true);
       try {
-        let wsList = workspaces
-        if (!wsList.length) wsList = await fetchWorkspaces()
-        const found = wsList.find((w) => w.slug === params.slug) ?? null
-        setWs(found)
+        let wsList = workspaces;
+        if (!wsList.length) wsList = await fetchWorkspaces();
+        const found = wsList.find((w) => w.slug === params.slug) ?? null;
+        setWs(found);
         if (found) {
-          const kbs = await apiFetch<KnowledgeBase[]>(`/v1/workspaces/${found.id}/wikis`)
-          setWikis(kbs)
+          const kbs = await apiFetch<KnowledgeBase[]>(
+            `/v1/workspaces/${found.id}/wikis`,
+          );
+          setWikis(kbs);
         }
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
-    load()
-  }, [params.slug])
+    };
+    load();
+  }, [params.slug]);
 
   const filteredWikis = React.useMemo(() => {
     const sorted = [...wikis].sort(
-      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-    )
-    if (!search.trim()) return sorted
-    const q = search.toLowerCase()
-    return sorted.filter((kb) => kb.name.toLowerCase().includes(q))
-  }, [wikis, search])
+      (a, b) =>
+        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+    );
+    if (!search.trim()) return sorted;
+    const q = search.toLowerCase();
+    return sorted.filter((kb) => kb.name.toLowerCase().includes(q));
+  }, [wikis, search]);
 
   const handleCreateKB = async () => {
-    if (!newKBName.trim() || !ws) return
-    setCreating(true)
+    if (!newKBName.trim() || !ws) return;
+    setCreating(true);
     try {
-      const kb = await createKB(newKBName.trim())
+      const kb = await createKB(newKBName.trim());
       await apiFetch(`/v1/workspaces/wikis/${kb.id}/move`, {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify({ target_workspace_id: ws.id }),
-      })
-      router.push(`/wikis/${kb.slug}`)
+      });
+      router.push(`/wikis/${kb.slug}`);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create wiki')
+      toast.error(err instanceof Error ? err.message : "Failed to create wiki");
     } finally {
-      setCreating(false)
+      setCreating(false);
     }
-  }
+  };
 
   if (loading) {
     return (
       <div className="flex justify-center py-20">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
       </div>
-    )
+    );
   }
 
   if (!ws) {
@@ -268,7 +328,7 @@ export default function WorkspaceDetailPage() {
       <div className="max-w-5xl mx-auto px-6 py-10 text-center text-muted-foreground">
         Workspace not found.
       </div>
-    )
+    );
   }
 
   return (
@@ -276,7 +336,7 @@ export default function WorkspaceDetailPage() {
       <div className="max-w-5xl mx-auto px-6 py-10">
         <div className="mb-8">
           <button
-            onClick={() => router.push('/workspaces')}
+            onClick={() => router.push("/workspaces")}
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors cursor-pointer"
           >
             <ArrowLeft className="size-3.5" />
@@ -285,9 +345,13 @@ export default function WorkspaceDetailPage() {
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-2">
               <div>
-                <h1 className="text-2xl font-bold text-foreground">{ws.name}</h1>
+                <h1 className="text-2xl font-bold text-foreground">
+                  {ws.name}
+                </h1>
                 {ws.description && (
-                  <p className="text-sm text-muted-foreground mt-1">{ws.description}</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {ws.description}
+                  </p>
                 )}
               </div>
               {canEdit && (
@@ -341,14 +405,20 @@ export default function WorkspaceDetailPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredWikis.map((kb) => (
-              <WikiCard
-                key={kb.id}
-                kb={kb}
-                onOpen={() => router.push(`/wikis/${kb.slug}`)}
-                onMove={() => setMoveTarget(kb)}
-              />
-            ))}
+            {filteredWikis.map((kb) => {
+              const isSuperadmin = user?.role === "superadmin";
+              const isOwner = kb.user_id === user?.id;
+              return (
+                <WikiCard
+                  key={kb.id}
+                  kb={kb}
+                  isForeign={isSuperadmin && !isOwner}
+                  canMove={isOwner || isSuperadmin}
+                  onOpen={() => router.push(`/wikis/${kb.slug}`)}
+                  onMove={() => setMoveTarget(kb)}
+                />
+              );
+            })}
           </div>
         )}
       </div>
@@ -358,7 +428,9 @@ export default function WorkspaceDetailPage() {
         onClose={() => setMoveTarget(null)}
         kb={moveTarget}
         currentWorkspaceId={ws.id}
-        onMoved={(kbId) => setWikis((prev) => prev.filter((k) => k.id !== kbId))}
+        onMoved={(kbId) =>
+          setWikis((prev) => prev.filter((k) => k.id !== kbId))
+        }
       />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -369,7 +441,7 @@ export default function WorkspaceDetailPage() {
           <input
             value={newKBName}
             onChange={(e) => setNewKBName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleCreateKB()}
+            onKeyDown={(e) => e.key === "Enter" && handleCreateKB()}
             placeholder="Wiki name"
             autoFocus
             className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
@@ -380,31 +452,40 @@ export default function WorkspaceDetailPage() {
               disabled={creating || !newKBName.trim()}
               className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 cursor-pointer"
             >
-              {creating ? 'Creating…' : 'Create'}
+              {creating ? "Creating…" : "Create"}
             </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={editOpen} onOpenChange={(v) => { if (!saving) setEditOpen(v) }}>
+      <Dialog
+        open={editOpen}
+        onOpenChange={(v) => {
+          if (!saving) setEditOpen(v);
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Edit workspace</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <label className="text-sm font-medium text-foreground">Name</label>
+              <label className="text-sm font-medium text-foreground">
+                Name
+              </label>
               <input
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                onKeyDown={(e) => e.key === "Enter" && handleSave()}
                 placeholder="Workspace name"
                 autoFocus
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-foreground">Description</label>
+              <label className="text-sm font-medium text-foreground">
+                Description
+              </label>
               <textarea
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
@@ -427,11 +508,11 @@ export default function WorkspaceDetailPage() {
               disabled={saving || !editName.trim()}
               className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 cursor-pointer"
             >
-              {saving ? 'Saving…' : 'Save'}
+              {saving ? "Saving…" : "Save"}
             </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }
