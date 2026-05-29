@@ -825,17 +825,27 @@ class HostedWorkspaceService(WorkspaceService):
             self.user_id,
         )
         if is_member:
+            # Members only see KBs whose owner is also a workspace member.
+            # KBs created by non-members are private to their creator.
             rows = await self.pool.fetch(
-                _KB_SELECT + " WHERE kb.workspace_id = $1 ORDER BY kb.name",
+                _KB_SELECT
+                + " WHERE kb.workspace_id = $1"
+                + " AND EXISTS ("
+                + "   SELECT 1 FROM workspace_members wm"
+                + "   WHERE wm.workspace_id = $1 AND wm.user_id = kb.user_id"
+                + " ) ORDER BY kb.name",
                 workspace_id,
             )
             return [_kb_row_to_dict(r) for r in rows]
 
-        # Not a workspace member — return only KBs explicitly shared with this user
+        # Non-member: return KBs they own in this workspace, or explicitly shared with them.
         rows = await self.pool.fetch(
             _KB_SELECT
-            + " JOIN kb_shares ks ON ks.kb_id = kb.id"
-            + " WHERE kb.workspace_id = $1 AND ks.shared_with = $2::uuid ORDER BY kb.name",
+            + " WHERE kb.workspace_id = $1"
+            + " AND ("
+            + "   kb.user_id = $2"
+            + "   OR EXISTS (SELECT 1 FROM kb_shares ks WHERE ks.kb_id = kb.id AND ks.shared_with = $2::uuid)"
+            + " ) ORDER BY kb.name",
             workspace_id,
             self.user_id,
         )
@@ -847,12 +857,18 @@ class HostedWorkspaceService(WorkspaceService):
 
     async def move_wiki(self, kb_id: str, target_workspace_id: str) -> dict:
         if not self.is_superadmin:
-            is_target_member = await self.pool.fetchval(
-                "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+            has_access = await self.pool.fetchval(
+                "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2"
+                " UNION ALL"
+                " SELECT 1 FROM knowledge_bases kb"
+                "   LEFT JOIN kb_shares ks ON ks.kb_id = kb.id"
+                "   WHERE kb.workspace_id = $1"
+                "     AND (kb.user_id = $2 OR ks.shared_with = $2::uuid)"
+                " LIMIT 1",
                 target_workspace_id,
                 self.user_id,
             )
-            if not is_target_member:
+            if not has_access:
                 raise HTTPException(
                     status_code=403,
                     detail={"error": "Not a member of target workspace"},
