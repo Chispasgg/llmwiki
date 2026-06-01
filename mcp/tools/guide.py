@@ -168,6 +168,17 @@ Link between wiki pages using standard markdown links to other wiki paths.
 4. If the answer is valuable, file it as a new wiki page — explorations should compound
 5. Append a query entry to `/wiki/log.md`
 
+### Delete a Wiki Page
+Use `delete` to permanently remove a wiki page. **Never leave a page empty or replace it with a stub** — just delete it.
+
+```
+delete(knowledge_base="my-wiki", path="/wiki/concepts/old-page.md")
+```
+
+- Any wiki page can be deleted except `overview.md` and `log.md` (structural pages).
+- After deleting, update any pages that linked to it.
+- Glob patterns work: `delete(path="/wiki/drafts/*")` removes everything in a folder.
+
 ### Maintain the Wiki (Lint)
 Check for: contradictions, orphan pages, missing cross-references, stale claims, concepts mentioned but lacking their own page. Append a lint entry to `/wiki/log.md`.
 
@@ -189,7 +200,6 @@ Use the reference graph to maintain consistency. After editing a page, check the
 
 
 def register(mcp: FastMCP, get_user_id, fs_factory) -> None:
-
     @mcp.tool(
         name="guide",
         description="Get started with LLM Wiki. Call this to understand how the knowledge vault works and see your available knowledge bases.",
@@ -199,7 +209,12 @@ def register(mcp: FastMCP, get_user_id, fs_factory) -> None:
         fs = fs_factory(user_id)
         kbs = await fs.list_knowledge_bases()
         if not kbs:
-            return GUIDE_TEXT + "No knowledge bases yet. Create one at " + settings.APP_URL + "/wikis"
+            return (
+                GUIDE_TEXT
+                + "No knowledge bases yet. Create one at "
+                + settings.APP_URL
+                + "/wikis"
+            )
 
         lines = []
         for kb in kbs:
