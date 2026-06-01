@@ -64,6 +64,7 @@ RUN pip install --quiet --target=/tmp/ft fonttools \
     && mkdir -p /usr/share/fonts/opentype/source-sans-3 \
                 /usr/share/fonts/opentype/source-code-pro \
                 /usr/share/fonts/truetype/eb-garamond-gf \
+                /usr/share/fonts/truetype/poppins \
                 /tmp/ebg \
     # Download EB Garamond variable fonts via raw.githubusercontent.com
     && curl -fsSL "https://raw.githubusercontent.com/google/fonts/main/ofl/ebgaramond/EBGaramond%5Bwght%5D.ttf" \
@@ -80,6 +81,11 @@ RUN pip install --quiet --target=/tmp/ft fonttools \
     && curl -fsSL "https://github.com/adobe-fonts/source-code-pro/archive/refs/heads/release.tar.gz" \
        -o /tmp/scp.tar.gz \
     && python3 -c "import tarfile,glob,shutil; t=tarfile.open('/tmp/scp.tar.gz'); [t.extract(m,'/tmp/scp') for m in t.getmembers() if m.name.lower().endswith('.otf') and '/OTF/' in m.name]; [shutil.copy(p,'/usr/share/fonts/opentype/source-code-pro/') for p in glob.glob('/tmp/scp/**/*.otf',recursive=True)]" \
+    # Poppins (Google Fonts)
+    && for weight in Regular Bold Italic BoldItalic SemiBold SemiBoldItalic Light LightItalic; do \
+         curl -fsSL "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-${weight}.ttf" \
+              -o "/usr/share/fonts/truetype/poppins/Poppins-${weight}.ttf"; \
+       done \
     && fc-cache -fv \
     && rm -rf /tmp/ft /tmp/ebg /tmp/gen_eb_garamond.py /tmp/ss3.zip /tmp/ss3 /tmp/scp.tar.gz /tmp/scp
 
