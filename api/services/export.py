@@ -124,7 +124,15 @@ async def patch_mermaid_blocks(
         counter += 1
         mmd_file.write_text(diagram_src, encoding="utf-8")
         try:
-            cmd = ["mmdc", "-i", str(mmd_file), "-o", str(png_file)]
+            _mmdc_base = [
+                "--theme",
+                "neutral",
+                "--backgroundColor",
+                "white",
+                "--width",
+                "1400",
+            ]
+            cmd = ["mmdc", "-i", str(mmd_file), "-o", str(png_file)] + _mmdc_base
             if _PUPPETEER_CONFIG.exists():
                 cmd = [
                     "mmdc",
@@ -134,7 +142,7 @@ async def patch_mermaid_blocks(
                     str(mmd_file),
                     "-o",
                     str(png_file),
-                ]
+                ] + _mmdc_base
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
