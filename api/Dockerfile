@@ -31,6 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-lang-spanish \
     fonts-liberation \
     fonts-ebgaramond \
+    fonts-noto-color-emoji \
     chromium \
     libnss3 \
     libatk-bridge2.0-0 \
