@@ -85,24 +85,26 @@ function WikiCard({
           {kb.name}
         </button>
         <div className="flex items-center gap-1 shrink-0">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleFavorite();
-            }}
-            aria-label={
-              isFavorite ? "Quitar de favoritas" : "Marcar como favorita"
-            }
-            className="p-1 rounded hover:bg-accent transition-colors cursor-pointer"
-          >
-            <Star
-              className={`size-4 ${
-                isFavorite
-                  ? "fill-yellow-400 text-yellow-400"
-                  : "text-muted-foreground"
-              }`}
-            />
-          </button>
+          {!isForeign && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFavorite();
+              }}
+              aria-label={
+                isFavorite ? "Remove from favorites" : "Add to favorites"
+              }
+              className="p-1 rounded hover:bg-accent transition-colors cursor-pointer"
+            >
+              <Star
+                className={`size-4 ${
+                  isFavorite
+                    ? "fill-yellow-400 text-yellow-400"
+                    : "text-muted-foreground"
+                }`}
+              />
+            </button>
+          )}
           {isForeign && (
             <UserX className="size-3.5 text-amber-500/70 dark:text-amber-400/70" />
           )}
@@ -314,7 +316,7 @@ export default function WorkspaceDetailPage() {
             `/v1/workspaces/${found.id}/wikis`,
           );
           setWikis(kbs);
-          await fetchFavorites();
+          if (!useFavoritesStore.getState().loaded) await fetchFavorites();
         }
       } finally {
         setLoading(false);
@@ -441,7 +443,7 @@ export default function WorkspaceDetailPage() {
         {favoriteWikis.length > 0 && (
           <div className="mb-8">
             <h2 className="text-sm font-semibold text-muted-foreground mb-3">
-              Favoritas
+              Favorites
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {favoriteWikis.map((kb) => {

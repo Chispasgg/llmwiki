@@ -25,8 +25,12 @@ class FavoriteOut(BaseModel):
 @router.get("", response_model=list[FavoriteOut])
 async def list_favorites(db: Annotated[ScopedDB, Depends(get_scoped_db)]):
     rows = await db.fetch(
-        "SELECT kb_id, created_at FROM kb_favorites "
-        "WHERE user_id = $1 ORDER BY created_at DESC",
+        "SELECT f.kb_id, f.created_at FROM kb_favorites f "
+        "JOIN knowledge_bases kb ON kb.id = f.kb_id "
+        "LEFT JOIN kb_shares ks ON ks.kb_id = f.kb_id AND ks.shared_with = $1::uuid "
+        "WHERE f.user_id = $1 "
+        "AND (kb.user_id = $1 OR ks.shared_with IS NOT NULL) "
+        "ORDER BY f.created_at DESC",
         db.user_id,
     )
     return rows
@@ -51,7 +55,7 @@ async def add_favorite(
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     await pool.execute(
         "INSERT INTO kb_favorites (user_id, kb_id) VALUES ($1, $2) "
-        "ON CONFLICT DO NOTHING",
+        "ON CONFLICT (user_id, kb_id) DO NOTHING",
         user_id,
         kb_id,
     )

@@ -371,7 +371,7 @@ export function KBSidenav({
           <button
             onClick={() => router.push(`/workspaces/${workspaceSlug}`)}
             className="flex items-center gap-1 px-2 mb-0.5 max-w-full text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            aria-label={`Ir al workspace ${workspaceName}`}
+            aria-label={`Go to workspace ${workspaceName}`}
           >
             <ChevronLeft className="size-3 shrink-0" />
             <span className="truncate">{workspaceName}</span>
