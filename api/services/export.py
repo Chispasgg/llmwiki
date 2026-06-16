@@ -237,8 +237,19 @@ async def validate_latex_template(template_path: Path) -> None:
     tmp = tempfile.mkdtemp(prefix="wiki_tpl_check_")
     try:
         md = Path(tmp) / "probe.md"
+        # The probe must exercise every construct pandoc emits in a real export
+        # so a template missing a package (calc, ulem, …) is rejected here
+        # instead of failing at export time. The grid table forces pandoc to
+        # emit explicit column-width arithmetic (needs calc); ~~text~~ emits
+        # \sout (needs ulem).
         md.write_text(
-            "# Validation probe\n\nParagraph with **bold** and *italic*.\n\n"
+            "# Validation probe\n\n"
+            "Paragraph with **bold**, *italic* and ~~strikethrough~~.\n\n"
+            "+--------+--------------------+\n"
+            "| Col A  | Col B              |\n"
+            "+========+====================+\n"
+            "| cell 1 | cell 2 wider text  |\n"
+            "+--------+--------------------+\n\n"
             "```python\nx = 1\n```\n",
             encoding="utf-8",
         )
@@ -258,6 +269,10 @@ async def validate_latex_template(template_path: Path) -> None:
             "-o",
             str(out_pdf),
         ]
+        # Mirror the real export pipeline so the column-width filter's output
+        # is validated against the template too.
+        if _LUA_TABLE_WIDTHS.exists():
+            cmd.extend(["-L", str(_LUA_TABLE_WIDTHS)])
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
