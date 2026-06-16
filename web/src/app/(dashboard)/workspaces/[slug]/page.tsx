@@ -13,6 +13,7 @@ import {
   Loader2,
   Search,
   UserX,
+  Star,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -29,8 +30,15 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
-import { useWorkspaceStore, useKBStore, useUserStore } from "@/stores";
+import {
+  useWorkspaceStore,
+  useKBStore,
+  useUserStore,
+  useFavoritesStore,
+} from "@/stores";
 import type { KnowledgeBase, Workspace } from "@/lib/types";
+
+const MAX_FAVORITES_SHOWN = 5;
 
 function relativeTime(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -48,14 +56,18 @@ function WikiCard({
   kb,
   isForeign,
   canMove,
+  isFavorite,
   onOpen,
   onMove,
+  onToggleFavorite,
 }: {
   kb: KnowledgeBase;
   isForeign: boolean;
   canMove: boolean;
+  isFavorite: boolean;
   onOpen: () => void;
   onMove: () => void;
+  onToggleFavorite: () => void;
 }) {
   return (
     <div
@@ -73,6 +85,24 @@ function WikiCard({
           {kb.name}
         </button>
         <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite();
+            }}
+            aria-label={
+              isFavorite ? "Quitar de favoritas" : "Marcar como favorita"
+            }
+            className="p-1 rounded hover:bg-accent transition-colors cursor-pointer"
+          >
+            <Star
+              className={`size-4 ${
+                isFavorite
+                  ? "fill-yellow-400 text-yellow-400"
+                  : "text-muted-foreground"
+              }`}
+            />
+          </button>
           {isForeign && (
             <UserX className="size-3.5 text-amber-500/70 dark:text-amber-400/70" />
           )}
@@ -215,6 +245,10 @@ export default function WorkspaceDetailPage() {
   const router = useRouter();
   const { workspaces, fetchWorkspaces, updateWorkspace } = useWorkspaceStore();
   const createKB = useKBStore((s) => s.createKB);
+  const favorites = useFavoritesStore((s) => s.favorites);
+  const fetchFavorites = useFavoritesStore((s) => s.fetchFavorites);
+  const isFavorite = useFavoritesStore((s) => s.isFavorite);
+  const toggleFavorite = useFavoritesStore((s) => s.toggleFavorite);
   const user = useUserStore((s) => s.user);
   const [ws, setWs] = React.useState<Workspace | null>(null);
   const [wikis, setWikis] = React.useState<KnowledgeBase[]>([]);
@@ -280,6 +314,7 @@ export default function WorkspaceDetailPage() {
             `/v1/workspaces/${found.id}/wikis`,
           );
           setWikis(kbs);
+          await fetchFavorites();
         }
       } finally {
         setLoading(false);
@@ -287,6 +322,14 @@ export default function WorkspaceDetailPage() {
     };
     load();
   }, [params.slug]);
+
+  const favoriteWikis = React.useMemo(() => {
+    const order = new Map(favorites.map((f, i) => [f.kb_id, i]));
+    return wikis
+      .filter((kb) => order.has(kb.id))
+      .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+      .slice(0, MAX_FAVORITES_SHOWN);
+  }, [wikis, favorites]);
 
   const filteredWikis = React.useMemo(() => {
     const sorted = [...wikis].sort(
@@ -395,6 +438,32 @@ export default function WorkspaceDetailPage() {
           )}
         </div>
 
+        {favoriteWikis.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-sm font-semibold text-muted-foreground mb-3">
+              Favoritas
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {favoriteWikis.map((kb) => {
+                const isSuperadmin = user?.role === "superadmin";
+                const isOwner = kb.user_id === user?.id;
+                return (
+                  <WikiCard
+                    key={`fav-${kb.id}`}
+                    kb={kb}
+                    isForeign={isSuperadmin && !isOwner}
+                    canMove={isOwner || isSuperadmin}
+                    isFavorite={true}
+                    onOpen={() => router.push(`/wikis/${kb.slug}`)}
+                    onMove={() => setMoveTarget(kb)}
+                    onToggleFavorite={() => toggleFavorite(kb.id)}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {wikis.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
             <p>No wikis in this workspace yet.</p>
@@ -414,8 +483,10 @@ export default function WorkspaceDetailPage() {
                   kb={kb}
                   isForeign={isSuperadmin && !isOwner}
                   canMove={isOwner || isSuperadmin}
+                  isFavorite={isFavorite(kb.id)}
                   onOpen={() => router.push(`/wikis/${kb.slug}`)}
                   onMove={() => setMoveTarget(kb)}
+                  onToggleFavorite={() => toggleFavorite(kb.id)}
                 />
               );
             })}
