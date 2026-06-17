@@ -187,6 +187,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   const searchParams = useSearchParams()
   const userId = useUserStore((s) => s.user?.id)
   const workspaceSlug = useKBStore((s) => s.knowledgeBases.find((kb) => kb.id === kbId)?.workspace_slug ?? null)
+  const workspaceName = useKBStore((s) => s.knowledgeBases.find((kb) => kb.id === kbId)?.workspace_name ?? null)
   const { documents, setDocuments, loading } = useKBDocuments(kbId)
   const [sidenavOpen, setSidenavOpen] = React.useState(false)
   const [sidenavWidth, setSidenavWidth] = React.useState(SIDENAV_DEFAULT)
@@ -938,6 +939,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
             onMoveToSpace={handleMoveToSpace}
             onCopyToSpace={handleCopyToSpace}
             workspaceSlug={workspaceSlug}
+            workspaceName={workspaceName}
           />
         </div>
 

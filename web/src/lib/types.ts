@@ -11,8 +11,14 @@ export interface KnowledgeBase {
   owner_email: string | null;
   workspace_id: string | null;
   workspace_slug: string | null;
+  workspace_name: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface Favorite {
+  kb_id: string;
+  created_at: string;
 }
 
 export interface SpaceInfo {
