@@ -21,6 +21,7 @@ import {
   Users2,
   FileDown,
   MoreHorizontal,
+  User,
 } from "lucide-react";
 import {
   CommandDialog,
@@ -162,6 +163,7 @@ interface KBSidenavProps {
   onCopyToSpace?: (docId: string, targetSpaceId: string) => void;
   workspaceSlug?: string | null;
   workspaceName?: string | null;
+  ownerName?: string | null;
 }
 
 export function KBSidenav({
@@ -184,6 +186,7 @@ export function KBSidenav({
   onCopyToSpace,
   workspaceSlug,
   workspaceName,
+  ownerName,
 }: KBSidenavProps) {
   const router = useRouter();
   const [searchOpen, setSearchOpen] = React.useState(false);
@@ -378,6 +381,15 @@ export function KBSidenav({
           </button>
         )}
         <WikiSelector kbId={kbId} kbName={kbName} />
+        {ownerName && (
+          <div
+            className="flex items-center gap-1 px-2 mt-0.5 max-w-full text-xs text-muted-foreground"
+            title={`Owner: ${ownerName}`}
+          >
+            <User className="size-3 shrink-0" />
+            <span className="truncate">{ownerName}</span>
+          </div>
+        )}
       </div>
 
       {/* Search + Actions menu */}
