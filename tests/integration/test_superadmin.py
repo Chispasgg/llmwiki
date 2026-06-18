@@ -122,11 +122,11 @@ async def test_superadmin_can_delete_regular_user(client, superadmin_uid, pool):
 
 
 @pytest.mark.asyncio
-async def test_cannot_delete_patxigg(client, superadmin_uid, pool):
-    """patxigg@biklabs.ai must never be deletable."""
+async def test_cannot_delete_pgg(client, superadmin_uid, pool):
+    """pgg@pgg.pgg must never be deletable."""
     uid = await pool.fetchval(
         "INSERT INTO users (email,password_hash,display_name,role) "
-        "VALUES ('patxigg@biklabs.ai','x','Patxi','superadmin') "
+        "VALUES ('pgg@pgg.pgg','x','Patxi','superadmin') "
         "ON CONFLICT (lower(email)) DO UPDATE SET display_name=EXCLUDED.display_name "
         "RETURNING id::text"
     )
@@ -135,13 +135,13 @@ async def test_cannot_delete_patxigg(client, superadmin_uid, pool):
 
 
 @pytest.mark.asyncio
-async def test_cannot_demote_patxigg(client, superadmin_uid, pool):
-    """patxigg@biklabs.ai role must never change."""
+async def test_cannot_demote_pgg(client, superadmin_uid, pool):
+    """pgg@pgg.pgg role must never change."""
     uid = await pool.fetchval(
-        "SELECT id::text FROM users WHERE lower(email)='patxigg@biklabs.ai'"
+        "SELECT id::text FROM users WHERE lower(email)='pgg@pgg.pgg'"
     )
     if uid is None:
-        pytest.skip("patxigg not seeded")
+        pytest.skip("pgg not seeded")
     resp = await client.patch(f"/v1/admin/users/{uid}", headers=auth_headers(superadmin_uid), json={"role": "admin"})
     assert resp.status_code == 403
 
