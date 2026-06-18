@@ -63,7 +63,8 @@ _KB_LIST_QUERY = (
     "(SELECT w.name FROM workspaces w WHERE w.id = kb.workspace_id) AS workspace_name, "
     "(SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.path NOT LIKE '/wiki/%%' AND NOT d.archived) AS source_count, "
     "(SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.path LIKE '/wiki/%%' AND NOT d.archived) AS wiki_page_count, "
-    "(SELECT u.email FROM users u WHERE u.id = kb.user_id) AS owner_email "
+    "(SELECT u.email FROM users u WHERE u.id = kb.user_id) AS owner_email, "
+    "(SELECT u.display_name FROM users u WHERE u.id = kb.user_id) AS owner_name "
     "FROM knowledge_bases kb"
 )
 
@@ -810,7 +811,8 @@ class HostedWorkspaceService(WorkspaceService):
             "  (SELECT w.slug FROM workspaces w WHERE w.id = kb.workspace_id) AS workspace_slug,"
             "  (SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.path NOT LIKE '/wiki/%%' AND NOT d.archived) AS source_count,"
             "  (SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.path LIKE '/wiki/%%' AND NOT d.archived) AS wiki_page_count,"
-            "  (SELECT u.email FROM users u WHERE u.id = kb.user_id) AS owner_email"
+            "  (SELECT u.email FROM users u WHERE u.id = kb.user_id) AS owner_email,"
+            "  (SELECT u.display_name FROM users u WHERE u.id = kb.user_id) AS owner_name"
             " FROM knowledge_bases kb"
         )
         if self.is_superadmin:

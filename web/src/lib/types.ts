@@ -9,6 +9,7 @@ export interface KnowledgeBase {
   source_count: number;
   wiki_page_count: number;
   owner_email: string | null;
+  owner_name: string | null;
   workspace_id: string | null;
   workspace_slug: string | null;
   workspace_name: string | null;
