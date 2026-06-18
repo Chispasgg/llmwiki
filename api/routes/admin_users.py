@@ -11,7 +11,7 @@ from infra.auth.password import hash_password
 
 router = APIRouter(prefix="/v1/admin/users", tags=["admin-users"])
 
-PROTECTED_EMAIL = "patxigg@biklabs.ai"
+PROTECTED_EMAIL = "pgg@pgg.pgg"
 ALLOWED_ROLES = {"superadmin", "admin", "editor", "viewer"}
 PATCHABLE_COLUMNS = {"role", "is_active", "display_name"}
 

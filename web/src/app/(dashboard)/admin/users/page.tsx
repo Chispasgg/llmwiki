@@ -9,7 +9,7 @@ import {
 import { useUserStore } from '@/stores'
 
 const ROLES = ['superadmin', 'admin', 'editor', 'viewer'] as const
-const PROTECTED = 'patxigg@biklabs.ai'
+const PROTECTED = 'pgg@pgg.pgg'
 
 export default function AdminUsersPage() {
   const currentUser = useUserStore((s) => s.user)
