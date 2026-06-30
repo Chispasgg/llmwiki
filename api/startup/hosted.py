@@ -48,6 +48,20 @@ async def hosted_lifespan(app: FastAPI):
 
     cleanup_task = asyncio.create_task(cleanup_stale_uploads())
 
+    from services.digest import run_digest_once
+
+    async def _digest_loop():
+        await asyncio.sleep(5 * 60)  # gracia inicial para no disparar al arrancar
+        while True:
+            try:
+                interval = await run_digest_once(pool, settings.APP_URL)
+            except Exception:
+                logger.warning("digest cycle failed", exc_info=True)
+                interval = 60
+            await asyncio.sleep(max(int(interval), 5) * 60)
+
+    digest_task = asyncio.create_task(_digest_loop())
+
     from services.latex_templates import sync_latex_templates
 
     await sync_latex_templates(pool, settings.LATEX_TEMPLATES_DIR)
@@ -59,12 +73,17 @@ async def hosted_lifespan(app: FastAPI):
 
     cleanup_task.cancel()
     listener_task.cancel()
+    digest_task.cancel()
     try:
         await cleanup_task
     except asyncio.CancelledError:
         pass
     try:
         await listener_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await digest_task
     except asyncio.CancelledError:
         pass
     await pool.close()
