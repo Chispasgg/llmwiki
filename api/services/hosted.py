@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime
 
@@ -18,6 +19,8 @@ from .base import (
     ServiceFactory,
 )
 from .types import parse_frontmatter, title_from_filename, extract_tags
+
+logger = logging.getLogger(__name__)
 
 
 class HostedUserService(UserService):
@@ -473,11 +476,22 @@ class HostedDocumentService(DocumentService):
                     )
         finally:
             await self.pool.release(conn)
+        if path.startswith("/wiki/"):
+            try:
+                await self.pool.execute(
+                    "SELECT notify_wiki_activity($1::uuid, $2::uuid)",
+                    kb_id,
+                    self.user_id,
+                )
+            except Exception:
+                logger.warning(
+                    "notify_wiki_activity failed (create_note)", exc_info=True
+                )
         return dict(row)
 
     async def update_content(self, doc_id: str, content: str) -> dict | None:
         current = await self.pool.fetchrow(
-            "SELECT content, version, source_kind FROM documents WHERE id = $1 AND user_id = $2",
+            "SELECT content, version, path FROM documents WHERE id = $1 AND user_id = $2",
             doc_id,
             self.user_id,
         )
@@ -488,7 +502,7 @@ class HostedDocumentService(DocumentService):
         if (
             old_content.strip()
             and old_content.strip() != content.strip()
-            and current["source_kind"] == "wiki"
+            and (current["path"] or "").startswith("/wiki/")
         ):
             await self.pool.execute(
                 "INSERT INTO document_history (document_id, user_id, content, version) "
@@ -517,6 +531,22 @@ class HostedDocumentService(DocumentService):
         if kb_id:
             chunks = chunk_text(content) if content else []
             await store_chunks(self.pool, str(doc_id), self.user_id, kb_id, chunks)
+
+        if (
+            kb_id
+            and (current["path"] or "").startswith("/wiki/")
+            and old_content.strip() != content.strip()
+        ):
+            try:
+                await self.pool.execute(
+                    "SELECT notify_wiki_activity($1::uuid, $2::uuid)",
+                    kb_id,
+                    self.user_id,
+                )
+            except Exception:
+                logger.warning(
+                    "notify_wiki_activity failed (update_content)", exc_info=True
+                )
 
         return dict(row)
 

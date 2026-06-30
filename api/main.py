@@ -121,6 +121,7 @@ else:
     from routes.hosted_files import router as hosted_files_router
     from routes.workspaces import router as workspaces_router
     from routes.favorites import router as favorites_router
+    from routes.notifications import router as notifications_router
     from routes.users import router as users_router
 
     app.include_router(users_router)
@@ -135,4 +136,5 @@ else:
     app.include_router(ws_router)
     app.include_router(workspaces_router)
     app.include_router(favorites_router)
+    app.include_router(notifications_router)
     app.include_router(hosted_files_router)

@@ -162,6 +162,15 @@ class PostgresVaultFS(VaultFS):
                 doc = dict(row) if row else None
                 if doc and content.strip():
                     await self._store_chunks(doc["id"], kb_id, content, conn=conn)
+        if doc and (dir_path or "").startswith("/wiki/"):
+            try:
+                await pool.execute(
+                    "SELECT notify_wiki_activity($1::uuid, $2::uuid)",
+                    kb_id,
+                    self.user_id,
+                )
+            except Exception:
+                logger.warning("notify_wiki_activity failed (create)", exc_info=True)
         return doc
 
     async def update_document(
@@ -241,6 +250,15 @@ class PostgresVaultFS(VaultFS):
                         doc_id, str(current["knowledge_base_id"]), content, conn=conn
                     )
 
+        if is_wiki and old_content.strip() != content.strip():
+            try:
+                await pool.execute(
+                    "SELECT notify_wiki_activity($1::uuid, $2::uuid)",
+                    str(current["knowledge_base_id"]),
+                    self.user_id,
+                )
+            except Exception:
+                logger.warning("notify_wiki_activity failed (update)", exc_info=True)
         return result
 
     async def archive_documents(self, doc_ids: list[str]) -> int:

@@ -22,6 +22,15 @@ export interface Favorite {
   created_at: string;
 }
 
+export interface WikiNotification {
+  kb_id: string;
+  kb_name: string;
+  kb_slug: string;
+  unread_count: number;
+  last_actor_name: string | null;
+  last_activity_at: string;
+}
+
 export interface SpaceInfo {
   id: string;
   name: string;
@@ -60,12 +69,7 @@ export interface Document {
 export type DocumentListItem = Omit<Document, "content">;
 
 export type PropertyType =
-  | "text"
-  | "number"
-  | "date"
-  | "checkbox"
-  | "select"
-  | "url";
+  "text" | "number" | "date" | "checkbox" | "select" | "url";
 
 export interface TypedProperty {
   type: PropertyType;
