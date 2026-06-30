@@ -20,6 +20,7 @@ _PENDING_QUERY = (
 
 async def run_digest_once(pool, app_url: str) -> int:
     """Envía un digest por destinatario con actividad nueva. Devuelve el intervalo (min)."""
+    app_url = app_url.rstrip("/")
     cfg = await pool.fetchrow("SELECT * FROM smtp_settings WHERE id = 1")
     interval = cfg["digest_interval_minutes"] if cfg else 60
     if not cfg or not cfg["enabled"] or not cfg["host"] or not cfg["from_address"]:

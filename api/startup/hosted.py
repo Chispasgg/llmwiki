@@ -51,6 +51,7 @@ async def hosted_lifespan(app: FastAPI):
     from services.digest import run_digest_once
 
     async def _digest_loop():
+        await asyncio.sleep(5 * 60)  # gracia inicial para no disparar al arrancar
         while True:
             try:
                 interval = await run_digest_once(pool, settings.APP_URL)
