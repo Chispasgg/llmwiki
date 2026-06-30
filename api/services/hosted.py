@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime
 
@@ -18,6 +19,8 @@ from .base import (
     ServiceFactory,
 )
 from .types import parse_frontmatter, title_from_filename, extract_tags
+
+logger = logging.getLogger(__name__)
 
 
 class HostedUserService(UserService):
@@ -473,6 +476,17 @@ class HostedDocumentService(DocumentService):
                     )
         finally:
             await self.pool.release(conn)
+        if path.startswith("/wiki/"):
+            try:
+                await self.pool.execute(
+                    "SELECT notify_wiki_activity($1::uuid, $2::uuid)",
+                    kb_id,
+                    self.user_id,
+                )
+            except Exception:
+                logger.warning(
+                    "notify_wiki_activity failed (create_note)", exc_info=True
+                )
         return dict(row)
 
     async def update_content(self, doc_id: str, content: str) -> dict | None:
@@ -517,6 +531,18 @@ class HostedDocumentService(DocumentService):
         if kb_id:
             chunks = chunk_text(content) if content else []
             await store_chunks(self.pool, str(doc_id), self.user_id, kb_id, chunks)
+
+        if kb_id and current["source_kind"] == "wiki":
+            try:
+                await self.pool.execute(
+                    "SELECT notify_wiki_activity($1::uuid, $2::uuid)",
+                    kb_id,
+                    self.user_id,
+                )
+            except Exception:
+                logger.warning(
+                    "notify_wiki_activity failed (update_content)", exc_info=True
+                )
 
         return dict(row)
 
