@@ -491,7 +491,7 @@ class HostedDocumentService(DocumentService):
 
     async def update_content(self, doc_id: str, content: str) -> dict | None:
         current = await self.pool.fetchrow(
-            "SELECT content, version, source_kind FROM documents WHERE id = $1 AND user_id = $2",
+            "SELECT content, version, path FROM documents WHERE id = $1 AND user_id = $2",
             doc_id,
             self.user_id,
         )
@@ -502,7 +502,7 @@ class HostedDocumentService(DocumentService):
         if (
             old_content.strip()
             and old_content.strip() != content.strip()
-            and current["source_kind"] == "wiki"
+            and (current["path"] or "").startswith("/wiki/")
         ):
             await self.pool.execute(
                 "INSERT INTO document_history (document_id, user_id, content, version) "
@@ -532,7 +532,11 @@ class HostedDocumentService(DocumentService):
             chunks = chunk_text(content) if content else []
             await store_chunks(self.pool, str(doc_id), self.user_id, kb_id, chunks)
 
-        if kb_id and current["source_kind"] == "wiki":
+        if (
+            kb_id
+            and (current["path"] or "").startswith("/wiki/")
+            and old_content.strip() != content.strip()
+        ):
             try:
                 await self.pool.execute(
                     "SELECT notify_wiki_activity($1::uuid, $2::uuid)",
