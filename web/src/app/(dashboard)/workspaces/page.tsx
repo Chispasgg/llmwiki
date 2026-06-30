@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { useWorkspaceStore, useUserStore } from "@/stores";
 import type { Workspace } from "@/lib/types";
+import { NotificationBell } from "@/components/layout/NotificationBell";
 
 function relativeTime(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -145,13 +146,16 @@ export default function WorkspacesPage() {
               Select a workspace to view its wikis
             </p>
           </div>
-          <button
-            onClick={() => setCreateOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
-          >
-            <Plus className="size-4" />
-            New workspace
-          </button>
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <button
+              onClick={() => setCreateOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
+            >
+              <Plus className="size-4" />
+              New workspace
+            </button>
+          </div>
         </div>
 
         {loading ? (

@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload as UploadIcon, BookOpen, ArrowUpRight, Loader2, Menu } from 'lucide-react'
 import * as tus from 'tus-js-client'
-import { useUserStore, useKBStore } from '@/stores'
+import { useUserStore, useKBStore, useNotificationsStore } from '@/stores'
 import { useKBDocuments } from '@/hooks/useKBDocuments'
 import { apiFetch } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -189,6 +189,8 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   const workspaceSlug = useKBStore((s) => s.knowledgeBases.find((kb) => kb.id === kbId)?.workspace_slug ?? null)
   const workspaceName = useKBStore((s) => s.knowledgeBases.find((kb) => kb.id === kbId)?.workspace_name ?? null)
   const ownerName = useKBStore((s) => s.knowledgeBases.find((kb) => kb.id === kbId)?.owner_name ?? null)
+  const markNotificationRead = useNotificationsStore((s) => s.markRead)
+  React.useEffect(() => { markNotificationRead(kbId) }, [kbId, markNotificationRead])
   const { documents, setDocuments, loading } = useKBDocuments(kbId)
   const [sidenavOpen, setSidenavOpen] = React.useState(false)
   const [sidenavWidth, setSidenavWidth] = React.useState(SIDENAV_DEFAULT)
