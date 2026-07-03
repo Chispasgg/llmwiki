@@ -489,3 +489,84 @@ class PostgresVaultFS(VaultFS):
             kb_id,
             self.user_id,
         )
+
+    async def create_comment(
+        self, kb_id: str, document_id: str, body: str, target_text: str | None
+    ) -> dict:
+        pool = await get_pool()
+        row = await pool.fetchrow(
+            "INSERT INTO wiki_comments (document_id, kb_id, author_id, body, target_text) "
+            "VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5) RETURNING id::text",
+            document_id,
+            kb_id,
+            self.user_id,
+            body,
+            target_text,
+        )
+        await pool.execute(
+            "SELECT log_comment_history($1::uuid, 'created', $2::uuid)",
+            row["id"],
+            self.user_id,
+        )
+        return dict(row)
+
+    async def list_comments(self, document_id: str) -> list[dict]:
+        pool = await get_pool()
+        rows = await pool.fetch(
+            "SELECT id::text, body, target_text, status, created_at "
+            "FROM wiki_comments WHERE document_id = $1::uuid AND status = 'open' "
+            "ORDER BY created_at DESC",
+            document_id,
+        )
+        return [dict(r) for r in rows]
+
+    async def update_comment(self, comment_id: str, body: str, kb_id: str) -> bool:
+        pool = await get_pool()
+        result = await pool.execute(
+            "UPDATE wiki_comments SET body = $2, updated_at = now() "
+            "WHERE id = $1::uuid AND kb_id = $3::uuid",
+            comment_id,
+            body,
+            kb_id,
+        )
+        if result == "UPDATE 0":
+            return False
+        await pool.execute(
+            "SELECT log_comment_history($1::uuid, 'edited', $2::uuid)",
+            comment_id,
+            self.user_id,
+        )
+        return True
+
+    async def set_comment_status(
+        self, comment_id: str, status: str, kb_id: str
+    ) -> bool:
+        pool = await get_pool()
+        if status == "resolved":
+            result = await pool.execute(
+                "UPDATE wiki_comments SET status = 'resolved', resolved_at = now(), "
+                "resolved_by = $2::uuid, updated_at = now() "
+                "WHERE id = $1::uuid AND kb_id = $3::uuid",
+                comment_id,
+                self.user_id,
+                kb_id,
+            )
+            action = "resolved"
+        else:
+            result = await pool.execute(
+                "UPDATE wiki_comments SET status = 'open', resolved_at = NULL, "
+                "resolved_by = NULL, updated_at = now() "
+                "WHERE id = $1::uuid AND kb_id = $2::uuid",
+                comment_id,
+                kb_id,
+            )
+            action = "reopened"
+        if result == "UPDATE 0":
+            return False
+        await pool.execute(
+            "SELECT log_comment_history($1::uuid, $2, $3::uuid)",
+            comment_id,
+            action,
+            self.user_id,
+        )
+        return True
