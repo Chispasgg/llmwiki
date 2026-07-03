@@ -123,6 +123,7 @@ else:
     from routes.favorites import router as favorites_router
     from routes.notifications import router as notifications_router
     from routes.smtp_admin import router as smtp_admin_router
+    from routes.comments import router as comments_router
     from routes.users import router as users_router
 
     app.include_router(users_router)
@@ -139,4 +140,5 @@ else:
     app.include_router(favorites_router)
     app.include_router(notifications_router)
     app.include_router(smtp_admin_router)
+    app.include_router(comments_router)
     app.include_router(hosted_files_router)
