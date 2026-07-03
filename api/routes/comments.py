@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from deps import get_user_id
 
@@ -12,12 +12,12 @@ router = APIRouter(tags=["comments"])
 
 
 class CommentCreate(BaseModel):
-    body: str
+    body: str = Field(max_length=10_000)
     target_text: str | None = None
 
 
 class CommentEdit(BaseModel):
-    body: str
+    body: str = Field(max_length=10_000)
 
 
 async def _kb_for_accessible_doc(pool, doc_id, user_id) -> str | None:
@@ -172,8 +172,9 @@ async def delete_comment(
 @router.get("/v1/knowledge-bases/{kb_id}/comment-history")
 async def comment_history(
     kb_id: UUID,
-    user_id: Annotated[str, Depends(get_user_id)],
     request: Request,
+    user_id: Annotated[str, Depends(get_user_id)],
+    limit: int = 200,
 ):
     pool = request.app.state.pool
     accessible = await pool.fetchval(
@@ -187,7 +188,8 @@ async def comment_history(
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     rows = await pool.fetch(
         "SELECT action, body, target_text, doc_path, doc_title, actor_name, created_at "
-        "FROM wiki_comment_history WHERE kb_id = $1 ORDER BY created_at DESC",
+        "FROM wiki_comment_history WHERE kb_id = $1 ORDER BY created_at DESC LIMIT $2",
         kb_id,
+        min(max(limit, 1), 500),
     )
     return [dict(r) for r in rows]

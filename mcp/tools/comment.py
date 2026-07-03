@@ -68,15 +68,33 @@ def register(mcp: FastMCP, get_user_id, fs_factory) -> None:
 
         if not comment_id:
             return "Error: 'comment_id' is required for this command."
+        import uuid as _uuid
+
+        try:
+            _uuid.UUID(comment_id)
+        except ValueError:
+            return f"Error: '{comment_id}' is not a valid comment id."
         if command == "edit":
             if not body:
                 return "Error: 'body' is required to edit a comment."
-            await fs.update_comment(comment_id, body)
-            return f"Comment {comment_id} updated."
+            ok = await fs.update_comment(comment_id, body, kb_id)
+            return (
+                f"Comment {comment_id} updated."
+                if ok
+                else "Comment not found in this knowledge base."
+            )
         if command == "resolve":
-            await fs.set_comment_status(comment_id, "resolved")
-            return f"Comment {comment_id} resolved."
+            ok = await fs.set_comment_status(comment_id, "resolved", kb_id)
+            return (
+                f"Comment {comment_id} resolved."
+                if ok
+                else "Comment not found in this knowledge base."
+            )
         if command == "reopen":
-            await fs.set_comment_status(comment_id, "open")
-            return f"Comment {comment_id} reopened."
+            ok = await fs.set_comment_status(comment_id, "open", kb_id)
+            return (
+                f"Comment {comment_id} reopened."
+                if ok
+                else "Comment not found in this knowledge base."
+            )
         return f"Unknown command '{command}'."

@@ -520,39 +520,53 @@ class PostgresVaultFS(VaultFS):
         )
         return [dict(r) for r in rows]
 
-    async def update_comment(self, comment_id: str, body: str) -> None:
+    async def update_comment(self, comment_id: str, body: str, kb_id: str) -> bool:
         pool = await get_pool()
-        await pool.execute(
-            "UPDATE wiki_comments SET body = $2, updated_at = now() WHERE id = $1::uuid",
+        result = await pool.execute(
+            "UPDATE wiki_comments SET body = $2, updated_at = now() "
+            "WHERE id = $1::uuid AND kb_id = $3::uuid",
             comment_id,
             body,
+            kb_id,
         )
+        if result == "UPDATE 0":
+            return False
         await pool.execute(
             "SELECT log_comment_history($1::uuid, 'edited', $2::uuid)",
             comment_id,
             self.user_id,
         )
+        return True
 
-    async def set_comment_status(self, comment_id: str, status: str) -> None:
+    async def set_comment_status(
+        self, comment_id: str, status: str, kb_id: str
+    ) -> bool:
         pool = await get_pool()
         if status == "resolved":
-            await pool.execute(
+            result = await pool.execute(
                 "UPDATE wiki_comments SET status = 'resolved', resolved_at = now(), "
-                "resolved_by = $2::uuid, updated_at = now() WHERE id = $1::uuid",
+                "resolved_by = $2::uuid, updated_at = now() "
+                "WHERE id = $1::uuid AND kb_id = $3::uuid",
                 comment_id,
                 self.user_id,
+                kb_id,
             )
             action = "resolved"
         else:
-            await pool.execute(
+            result = await pool.execute(
                 "UPDATE wiki_comments SET status = 'open', resolved_at = NULL, "
-                "resolved_by = NULL, updated_at = now() WHERE id = $1::uuid",
+                "resolved_by = NULL, updated_at = now() "
+                "WHERE id = $1::uuid AND kb_id = $2::uuid",
                 comment_id,
+                kb_id,
             )
             action = "reopened"
+        if result == "UPDATE 0":
+            return False
         await pool.execute(
             "SELECT log_comment_history($1::uuid, $2, $3::uuid)",
             comment_id,
             action,
             self.user_id,
         )
+        return True
