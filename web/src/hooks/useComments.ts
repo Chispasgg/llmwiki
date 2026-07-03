@@ -7,32 +7,40 @@ export function useComments(docId: string | null) {
   const [loading, setLoading] = React.useState(false);
   const [showResolved, setShowResolved] = React.useState(false);
 
-  const reload = React.useCallback(async () => {
-    if (!docId) {
-      setComments([]);
-      return;
-    }
-    setLoading(true);
-    try {
-      const status = showResolved ? "all" : "open";
-      const data = await apiFetch<WikiComment[]>(
-        `/v1/documents/${docId}/comments?status=${status}`,
-      );
-      setComments(data);
-    } catch {
-      setComments([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [docId, showResolved]);
+  const reload = React.useCallback(
+    async (signal?: AbortSignal) => {
+      if (!docId) {
+        setComments([]);
+        return;
+      }
+      setLoading(true);
+      try {
+        const status = showResolved ? "all" : "open";
+        const data = await apiFetch<WikiComment[]>(
+          `/v1/documents/${docId}/comments?status=${status}`,
+          { signal },
+        );
+        setComments(data);
+      } catch (e) {
+        if (!(e instanceof DOMException && e.name === "AbortError")) {
+          setComments([]);
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [docId, showResolved],
+  );
 
   React.useEffect(() => {
-    reload();
+    const ctrl = new AbortController();
+    reload(ctrl.signal);
+    return () => ctrl.abort();
   }, [reload]);
 
   const create = React.useCallback(
     async (body: string, targetText: string | null) => {
-      if (!docId) return;
+      if (!docId) throw new Error("No hay documento activo");
       await apiFetch(`/v1/documents/${docId}/comments`, {
         method: "POST",
         body: JSON.stringify({ body, target_text: targetText }),

@@ -36,7 +36,7 @@ export function CommentsPanel({
     const onMouseUp = () => {
       const sel = window.getSelection();
       const text = sel ? sel.toString().trim() : "";
-      if (text && el.contains(sel!.anchorNode)) setSelection(text);
+      if (text && sel && el.contains(sel.anchorNode)) setSelection(text);
     };
     el.addEventListener("mouseup", onMouseUp);
     return () => el.removeEventListener("mouseup", onMouseUp);
