@@ -178,6 +178,16 @@ delete(knowledge_base="my-wiki", path="/wiki/deployment/old-page.md")
 - After deleting, update any pages that linked to it.
 - Glob patterns work: `delete(path="/wiki/drafts/*")` removes everything in a folder.
 
+## Comments
+
+Wiki pages can have **review comments** — meta notes to improve the wiki, managed with the `comment` tool. They live outside the wiki content.
+
+- Comments are NOT wiki content or concepts. **Do not turn a comment into a wiki page** unless the human explicitly asks.
+- Comments never appear in exports.
+- When working on a wiki, run `comment(knowledge_base=..., command="list", path=...)` to see OPEN comments and take them into account.
+- You can `create`, `edit`, `resolve` and `reopen` comments. Anchor a comment to a paragraph via `target_text` (the quoted text it refers to).
+- Every comment action is recorded in an immutable comment history (read-only, shown in the web).
+
 ### Maintain the Wiki (Lint)
 Check for: contradictions, orphan pages, missing cross-references, stale claims, topics mentioned but lacking their own page. Append a lint entry to `/wiki/log.md`.
 
