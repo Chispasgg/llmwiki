@@ -504,6 +504,7 @@ interface WikiContentProps {
   breadcrumbs?: BreadcrumbItem[];
   searchTerm?: string;
   docId?: string | null;
+  contentRef?: React.RefObject<HTMLElement | null>;
 }
 
 export function WikiContent({
@@ -516,6 +517,7 @@ export function WikiContent({
   breadcrumbs,
   searchTerm,
   docId,
+  contentRef,
 }: WikiContentProps) {
   const processedContent = React.useMemo(
     () => stripLeadingH1(content, title),
@@ -1050,7 +1052,7 @@ export function WikiContent({
             )}
             <div
               className="wiki-content text-[15px] leading-relaxed"
-              ref={wikiContentRef}
+              ref={(el) => { wikiContentRef.current = el; if (contentRef) contentRef.current = el; }}
             >
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}

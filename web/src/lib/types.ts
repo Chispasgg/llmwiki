@@ -31,6 +31,26 @@ export interface WikiNotification {
   last_activity_at: string;
 }
 
+export interface WikiComment {
+  id: string;
+  body: string;
+  target_text: string | null;
+  status: "open" | "resolved";
+  author_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CommentHistoryEntry {
+  action: "created" | "edited" | "resolved" | "reopened" | "deleted";
+  body: string;
+  target_text: string | null;
+  doc_path: string;
+  doc_title: string;
+  actor_name: string;
+  created_at: string;
+}
+
 export interface SpaceInfo {
   id: string;
   name: string;

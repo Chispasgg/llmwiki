@@ -15,6 +15,8 @@ import { FilesGrid } from '@/components/kb/FilesGrid'
 import { GraphViewer } from '@/components/kb/GraphViewer'
 import { SelectionActionBar } from '@/components/kb/SelectionActionBar'
 import { WikiContent } from '@/components/wiki/WikiContent'
+import { CommentsPanel } from '@/components/kb/CommentsPanel'
+import { CommentsHistoryView } from '@/components/kb/CommentsHistoryView'
 import type { BreadcrumbItem } from '@/components/wiki/WikiContent'
 import type { DocumentListItem, WikiNode } from '@/lib/types'
 import type { ViewMode } from '@/app/(dashboard)/wikis/[slug]/[[...path]]/page'
@@ -252,6 +254,8 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
       url += clean ? `/files/${encodeURI(clean)}` : '/files'
     } else if (view === 'graph') {
       url += '/graph'
+    } else if (view === 'comments') {
+      url += '/comments'
     }
     if (opts?.searchParams) {
       const sp = new URLSearchParams(opts.searchParams)
@@ -278,6 +282,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
 
   const filesViewActive = activeView === 'files' || activeView === 'doc'
   const graphViewActive = activeView === 'graph'
+  const commentsViewActive = activeView === 'comments'
 
   // ─── Wiki page selection (from ?p= search param) ─────────────
   const pParam = searchParams.get('p')
@@ -324,6 +329,10 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
 
   // ─── Graph state ─────────────────────────────────────────────
   const [graphFocusNodeId, setGraphFocusNodeId] = React.useState<string | null>(null)
+
+  // ─── Comments state ──────────────────────────────────────────
+  const [commentsPanelOpen, setCommentsPanelOpen] = React.useState(false)
+  const wikiContentRef = React.useRef<HTMLElement | null>(null)
 
   // ─── Wiki tree ───────────────────────────────────────────────
   const indexDoc = wikiDocs.find((d) => d.filename === 'index.json' && d.path === '/wiki/')
@@ -540,6 +549,9 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
       navigateToView('graph')
     }
   }, [graphViewActive, navigateToView])
+
+  const handleCommentsView = React.useCallback(() => navigateToView('comments'), [navigateToView])
+  const toggleCommentsPanel = React.useCallback(() => setCommentsPanelOpen((v) => !v), [])
 
   const handleGraphNodeClick = React.useCallback((docId: string, sourceKind: string) => {
     const doc = documents.find((d) => d.id === docId)
@@ -872,8 +884,8 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   // ─── Loading state ───────────────────────────────────────────
   const showMainLoading =
     loading ||
-    (!filesViewActive && !graphViewActive && hasNavigableWiki && !wikiActivePath) ||
-    (!filesViewActive && !graphViewActive && !!wikiActivePath && pageLoadedPath !== wikiActivePath)
+    (!filesViewActive && !graphViewActive && !commentsViewActive && hasNavigableWiki && !wikiActivePath) ||
+    (!filesViewActive && !graphViewActive && !commentsViewActive && !!wikiActivePath && pageLoadedPath !== wikiActivePath)
 
   // ─── Render ──────────────────────────────────────────────────
   return (
@@ -944,6 +956,10 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
             workspaceSlug={workspaceSlug}
             workspaceName={workspaceName}
             ownerName={ownerName}
+            commentsViewActive={commentsViewActive}
+            onCommentsHistory={handleCommentsView}
+            onCommentsPanelToggle={toggleCommentsPanel}
+            commentsPanelOpen={commentsPanelOpen}
           />
         </div>
 
@@ -1024,6 +1040,17 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
                   onDocClose={handleFilesDocClose}
                 />
               </motion.div>
+            ) : commentsViewActive ? (
+              <motion.div
+                key="comments-history"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
+                className="h-full"
+              >
+                <CommentsHistoryView kbId={kbId} />
+              </motion.div>
             ) : pageLoading ? (
               <motion.div
                 key="wiki-loading"
@@ -1044,17 +1071,29 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
                 transition={{ duration: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
                 className="h-full"
               >
-                <WikiContent
-                  content={pageContent}
-                  title={pageTitle}
-                  onNavigate={handleWikiNavigate}
-                  onSourceClick={handleCitationSourceClick}
-                  onGraphClick={handlePageGraphClick}
-                  documents={documents}
-                  breadcrumbs={wikiBreadcrumbs}
-                  searchTerm={wikiSearchTerm}
-                  docId={activeWikiDocId}
-                />
+                <div className="h-full flex">
+                  <div className="flex-1 min-w-0 overflow-y-auto">
+                    <WikiContent
+                      content={pageContent}
+                      title={pageTitle}
+                      onNavigate={handleWikiNavigate}
+                      onSourceClick={handleCitationSourceClick}
+                      onGraphClick={handlePageGraphClick}
+                      documents={documents}
+                      breadcrumbs={wikiBreadcrumbs}
+                      searchTerm={wikiSearchTerm}
+                      docId={activeWikiDocId}
+                      contentRef={wikiContentRef}
+                    />
+                  </div>
+                  {commentsPanelOpen && (
+                    <CommentsPanel
+                      docId={activeWikiDocId}
+                      wikiContentRef={wikiContentRef}
+                      onClose={() => setCommentsPanelOpen(false)}
+                    />
+                  )}
+                </div>
               </motion.div>
             ) : (
               <motion.div

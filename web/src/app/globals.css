@@ -436,3 +436,11 @@
   background: hsl(var(--border));
   border-radius: 2px;
 }
+
+.comment-flash {
+  animation: comment-flash-kf 1.5s ease-out;
+}
+@keyframes comment-flash-kf {
+  0% { background-color: rgba(250, 204, 21, 0.5); }
+  100% { background-color: transparent; }
+}

@@ -22,6 +22,7 @@ import {
   FileDown,
   MoreHorizontal,
   User,
+  MessageSquare,
 } from "lucide-react";
 import {
   CommandDialog,
@@ -164,6 +165,10 @@ interface KBSidenavProps {
   workspaceSlug?: string | null;
   workspaceName?: string | null;
   ownerName?: string | null;
+  commentsViewActive: boolean;
+  onCommentsHistory: () => void;
+  onCommentsPanelToggle: () => void;
+  commentsPanelOpen: boolean;
 }
 
 export function KBSidenav({
@@ -187,6 +192,10 @@ export function KBSidenav({
   workspaceSlug,
   workspaceName,
   ownerName,
+  commentsViewActive,
+  onCommentsHistory,
+  onCommentsPanelToggle,
+  commentsPanelOpen,
 }: KBSidenavProps) {
   const router = useRouter();
   const [searchOpen, setSearchOpen] = React.useState(false);
@@ -438,6 +447,21 @@ export function KBSidenav({
               </button>
               <button
                 onClick={() => {
+                  onCommentsHistory();
+                  setActionsOpen(false);
+                }}
+                className={cn(
+                  "flex items-center gap-2.5 w-full px-3 py-1.5 text-xs rounded-md transition-colors cursor-pointer",
+                  commentsViewActive
+                    ? "text-foreground bg-accent"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent",
+                )}
+              >
+                <MessageSquare className="size-3.5 shrink-0" />
+                Comentarios
+              </button>
+              <button
+                onClick={() => {
                   onUpload();
                   setActionsOpen(false);
                 }}
@@ -684,6 +708,20 @@ export function KBSidenav({
               {sourceCount}
             </span>
           )}
+        </button>
+        <button
+          onClick={onCommentsPanelToggle}
+          aria-pressed={commentsPanelOpen}
+          aria-label="Mostrar/ocultar panel de comentarios"
+          className={cn(
+            "flex items-center gap-2 w-full px-2.5 py-2 text-[13px] rounded-md transition-colors cursor-pointer",
+            commentsPanelOpen
+              ? "bg-accent text-foreground font-medium"
+              : "text-muted-foreground hover:text-foreground hover:bg-accent",
+          )}
+        >
+          <MessageSquare className="size-3.5" />
+          <span className="flex-1 text-left">Comentarios</span>
         </button>
       </div>
 
