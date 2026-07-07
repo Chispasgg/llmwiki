@@ -15,6 +15,7 @@ _ASSET_EXTENSIONS = {".svg", ".csv", ".json", ".xml", ".html"}
 _FILE_EXT_RE = re.compile(r"\.(md|txt|svg|csv|json|xml|html)$", re.IGNORECASE)
 _FRONTMATTER_RE = re.compile(r"\A---[ \t]*\n(.+?\n)---[ \t]*\n", re.DOTALL)
 _CONTEXT_LINES = 5
+_SHRINK_WARN_CHARS = 200  # avisar si un str_replace elimina >= estos chars netos
 
 
 def _parse_frontmatter(content: str) -> dict:
@@ -55,7 +56,15 @@ class WriteHandler:
         self.kb = kb
         self.kb_id = str(kb["id"])
 
-    async def create(self, path: str, title: str, content: str, tags: list[str], date_str: str, overwrite: bool) -> str:
+    async def create(
+        self,
+        path: str,
+        title: str,
+        content: str,
+        tags: list[str],
+        date_str: str,
+        overwrite: bool,
+    ) -> str:
         """Create a new document or overwrite an existing one."""
         if not title:
             return "Error: title is required when creating a note."
@@ -71,7 +80,7 @@ class WriteHandler:
         if existing and not overwrite:
             return (
                 f"Error: `{dir_path}{filename}` already exists. "
-                f"Use `command=\"str_replace\"` to edit it, or pass `overwrite=true` to replace it entirely."
+                f'Use `command="str_replace"` to edit it, or pass `overwrite=true` to replace it entirely.'
             )
 
         if not self.fs.write_to_disk(dir_path, filename, content):
@@ -82,18 +91,51 @@ class WriteHandler:
         fm_date, fm_metadata = _extract_metadata(meta)
 
         if existing:
-            await self.fs.update_document(str(existing["id"]), content, tags, title=title, date=fm_date, metadata=fm_metadata)
+            await self.fs.update_document(
+                str(existing["id"]),
+                content,
+                tags,
+                title=title,
+                date=fm_date,
+                metadata=fm_metadata,
+            )
             doc = existing
         else:
-            doc = await self.fs.create_document(self.kb_id, filename, title, dir_path, file_type, content, tags, date=fm_date, metadata=fm_metadata)
+            doc = await self.fs.create_document(
+                self.kb_id,
+                filename,
+                title,
+                dir_path,
+                file_type,
+                content,
+                tags,
+                date=fm_date,
+                metadata=fm_metadata,
+            )
 
         doc_id = str(doc["id"])
         await self._sync_references(doc_id, content, dir_path, file_type)
 
-        impact = await self._get_wiki_impact(doc_id, dir_path)
-        return self._format_create_response(title, tags, dir_path, filename, file_type, date_str) + impact
+        verify_error = await self._verify_persisted(filename, dir_path, content)
+        if verify_error:
+            return verify_error
 
-    async def edit(self, path: str, old_text: str, new_text: str, tags: list[str] | None) -> str:
+        impact = await self._get_wiki_impact(doc_id, dir_path)
+        return (
+            self._format_create_response(
+                title, tags, dir_path, filename, file_type, date_str
+            )
+            + impact
+        )
+
+    async def edit(
+        self,
+        path: str,
+        old_text: str,
+        new_text: str,
+        tags: list[str] | None,
+        allow_delete: bool = False,
+    ) -> str:
         """Replace exact text in an existing document."""
         if not old_text:
             return "Error: old_text is required for str_replace."
@@ -108,20 +150,43 @@ class WriteHandler:
         if error:
             return error
 
+        # Salvaguarda: un new_text vacío borraría el ancla sin insertar nada
+        # (así es como se pierde contenido en silencio). Falla fuerte salvo borrado explícito.
+        if not new_text.strip() and not allow_delete:
+            return (
+                "Error: `new_text` is empty — str_replace would DELETE the matched text and "
+                "insert nothing, so your content would NOT be saved. If you truly want to "
+                "delete this text, pass `allow_delete=true`. If you meant to replace it, "
+                "re-send `new_text` (long replacements can get truncated by the client) or "
+                'use `command="create"` with `overwrite=true` to rewrite the whole page.'
+            )
+
         replace_start = content.index(old_text)
         new_content = content.replace(old_text, new_text, 1)
 
         self.fs.write_to_disk(dir_path, filename, new_content)
         meta = _parse_frontmatter(new_content)
         fm_date, fm_metadata = _extract_metadata(meta)
-        await self.fs.update_document(str(doc["id"]), new_content, tags, date=fm_date, metadata=fm_metadata)
+        await self.fs.update_document(
+            str(doc["id"]), new_content, tags, date=fm_date, metadata=fm_metadata
+        )
+
+        # Verificación: releer lo guardado y confirmar que coincide con lo que se escribió.
+        verify_error = await self._verify_persisted(filename, dir_path, new_content)
+        if verify_error:
+            return verify_error
 
         doc_id = str(doc["id"])
         await self._sync_references(doc_id, new_content, dir_path)
 
         snippet = self._extract_context(new_content, replace_start, len(new_text))
         impact = await self._get_wiki_impact(doc_id, dir_path)
-        return self._format_edit_response(path, dir_path, filename, snippet) + impact
+        warning = self._shrink_warning(len(content), len(new_content))
+        return (
+            self._format_edit_response(path, dir_path, filename, snippet)
+            + warning
+            + impact
+        )
 
     async def append(self, path: str, content: str, tags: list[str] | None) -> str:
         """Append content to the end of an existing document."""
@@ -135,15 +200,23 @@ class WriteHandler:
         self.fs.write_to_disk(dir_path, filename, new_content)
         meta = _parse_frontmatter(new_content)
         fm_date, fm_metadata = _extract_metadata(meta)
-        await self.fs.update_document(str(doc["id"]), new_content, tags, date=fm_date, metadata=fm_metadata)
+        await self.fs.update_document(
+            str(doc["id"]), new_content, tags, date=fm_date, metadata=fm_metadata
+        )
 
         doc_id = str(doc["id"])
         await self._sync_references(doc_id, new_content, dir_path)
 
+        verify_error = await self._verify_persisted(filename, dir_path, new_content)
+        if verify_error:
+            return verify_error
+
         impact = await self._get_wiki_impact(doc_id, dir_path)
         return self._format_append_response(path, dir_path, filename) + impact
 
-    async def _sync_references(self, doc_id: str, content: str, dir_path: str, file_type: str = "md") -> None:
+    async def _sync_references(
+        self, doc_id: str, content: str, dir_path: str, file_type: str = "md"
+    ) -> None:
         """Update citation graph and propagate staleness for wiki pages."""
         if dir_path.startswith("/wiki/") and file_type == "md":
             await update_references(self.fs, self.kb_id, doc_id, content, dir_path)
@@ -156,7 +229,9 @@ class WriteHandler:
         rows = await self.fs.get_backlinks(doc_id)
         if not rows:
             return ""
-        lines = [f"\n**{len(rows)} page(s) reference this document** — consider updating:"]
+        lines = [
+            f"\n**{len(rows)} page(s) reference this document** — consider updating:"
+        ]
         for r in rows:
             path = f"{r['path']}{r['filename']}"
             title = r["title"] or r["filename"]
@@ -168,7 +243,7 @@ class WriteHandler:
         """Normalize a raw path into a directory path."""
         if _FILE_EXT_RE.search(path):
             last_slash = path.rfind("/")
-            return path[:last_slash + 1] if last_slash >= 0 else "/"
+            return path[: last_slash + 1] if last_slash >= 0 else "/"
         dir_path = path if path.endswith("/") else path + "/"
         if not dir_path.startswith("/"):
             dir_path = "/" + dir_path
@@ -206,7 +281,50 @@ class WriteHandler:
             return f"Error: found {count} matches for old_text. Provide more context to match exactly once."
         return None
 
-    def _format_create_response(self, title: str, tags: list[str], dir_path: str, filename: str, file_type: str, date_str: str) -> str:
+    async def _verify_persisted(
+        self, filename: str, dir_path: str, expected: str
+    ) -> str | None:
+        """Re-read the page and confirm the stored content equals what we wrote.
+
+        Returns an error string if the persisted content differs (so the writing
+        agent learns its content was NOT saved as written), else None.
+        """
+        fresh = await self.fs.get_document(self.kb_id, filename, dir_path)
+        stored = (fresh.get("content") if fresh else None) or ""
+        if stored != expected:
+            return (
+                "Error: the change was NOT saved as you wrote it — the stored page differs "
+                f"from your intended content (stored {len(stored)} chars, expected "
+                f"{len(expected)}). Do not assume it was applied; re-read the page and retry, "
+                'or use `command="create"` with `overwrite=true` to rewrite it in one go.'
+            )
+        return None
+
+    def _shrink_warning(self, old_len: int, new_len: int) -> str:
+        """Loud warning appended to the response when an edit shrinks the page a lot.
+
+        Even with a non-empty new_text, a large net removal usually means the
+        replacement text was truncated by the client and content was lost.
+        """
+        removed = old_len - new_len
+        if removed >= _SHRINK_WARN_CHARS:
+            return (
+                f"\n\n⚠️ WARNING: this edit REMOVED {removed} characters from the page "
+                f"({old_len} → {new_len}). If that was not intentional, your replacement "
+                "text was likely cut off and content was lost — re-read the page and fix it, "
+                'or rewrite it with `command="create"` + `overwrite=true`.'
+            )
+        return ""
+
+    def _format_create_response(
+        self,
+        title: str,
+        tags: list[str],
+        dir_path: str,
+        filename: str,
+        file_type: str,
+        date_str: str,
+    ) -> str:
         """Build the response message for a create operation."""
         link = deep_link(self.kb["slug"], dir_path, filename)
         note_date = date_str or date.today().isoformat()
@@ -217,7 +335,9 @@ class WriteHandler:
             f"[View]({link}){suffix}"
         )
 
-    def _format_edit_response(self, path: str, dir_path: str, filename: str, snippet: str) -> str:
+    def _format_edit_response(
+        self, path: str, dir_path: str, filename: str, snippet: str
+    ) -> str:
         """Build the response message for an edit operation."""
         link = deep_link(self.kb["slug"], dir_path, filename)
         return (
@@ -230,7 +350,9 @@ class WriteHandler:
         link = deep_link(self.kb["slug"], dir_path, filename)
         return f"Appended to `{path}`.\n[View]({link})"
 
-    def _embed_hint(self, title: str, filename: str, dir_path: str, file_type: str) -> str:
+    def _embed_hint(
+        self, title: str, filename: str, dir_path: str, file_type: str
+    ) -> str:
         """Return an embed or citation hint for the create response."""
         if file_type != "md":
             return f"\n\nEmbed in wiki pages with: `![{title}]({filename})`"
@@ -238,7 +360,9 @@ class WriteHandler:
             return "\n\nRemember to cite sources using footnotes: `[^1]: source-file.pdf, p.X`"
         return ""
 
-    def _extract_context(self, content: str, replace_start: int, new_text_len: int) -> str:
+    def _extract_context(
+        self, content: str, replace_start: int, new_text_len: int
+    ) -> str:
         """Return ~5 lines above and below the edited region."""
         lines = content.split("\n")
         start_line = self._char_offset_to_line(lines, replace_start)
@@ -260,7 +384,6 @@ class WriteHandler:
 
 
 def register(mcp: FastMCP, get_user_id, fs_factory) -> None:
-
     @mcp.tool(
         name="write",
         description=(
@@ -268,12 +391,14 @@ def register(mcp: FastMCP, get_user_id, fs_factory) -> None:
             "Wiki pages should be created under `/wiki/` and should cite their sources using "
             "markdown footnotes (e.g. `[^1]: paper.pdf, p.3`).\n\n"
             "You can also create SVG diagrams and CSV data files as wiki assets:\n"
-            "- `write(command=\"create\", path=\"/wiki/\", title=\"architecture-diagram.svg\", content=\"<svg>...</svg>\", tags=[\"diagram\"])`\n"
-            "- `write(command=\"create\", path=\"/wiki/\", title=\"data-table.csv\", content=\"col1,col2\\nval1,val2\", tags=[\"data\"])`\n"
+            '- `write(command="create", path="/wiki/", title="architecture-diagram.svg", content="<svg>...</svg>", tags=["diagram"])`\n'
+            '- `write(command="create", path="/wiki/", title="data-table.csv", content="col1,col2\\nval1,val2", tags=["data"])`\n'
             "SVGs and other assets can be embedded in wiki pages via `![Architecture](architecture-diagram.svg)`\n\n"
             "Commands:\n"
             "- create: create a new page (title and tags are REQUIRED). Rejects if page already exists — use overwrite=true to replace.\n"
-            "- str_replace: replace exact text in an existing page (read first)\n"
+            "- str_replace: replace exact text in an existing page (read first). For large or "
+            "structural rewrites prefer create+overwrite (one reliable operation). Empty new_text "
+            "is rejected unless allow_delete=true; big content shrink is flagged.\n"
             "- append: add content to the end of an existing page"
         ),
     )
@@ -289,6 +414,7 @@ def register(mcp: FastMCP, get_user_id, fs_factory) -> None:
         old_text: str = "",
         new_text: str = "",
         overwrite: bool = False,
+        allow_delete: bool = False,
     ) -> str:
         user_id = get_user_id(ctx)
         fs = fs_factory(user_id)
@@ -299,9 +425,11 @@ def register(mcp: FastMCP, get_user_id, fs_factory) -> None:
         handler = WriteHandler(fs, kb)
 
         if command == "create":
-            return await handler.create(path, title, content, tags or [], date_str, overwrite)
+            return await handler.create(
+                path, title, content, tags or [], date_str, overwrite
+            )
         elif command == "str_replace":
-            return await handler.edit(path, old_text, new_text, tags)
+            return await handler.edit(path, old_text, new_text, tags, allow_delete)
         elif command == "append":
             return await handler.append(path, content, tags)
 
