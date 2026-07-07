@@ -75,18 +75,22 @@ async def create_comment(
     kb_id = await _kb_for_accessible_doc(pool, doc_id, user_id)
     if not kb_id:
         raise HTTPException(status_code=404, detail="Document not found")
-    row = await pool.fetchrow(
-        "INSERT INTO wiki_comments (document_id, kb_id, author_id, body, target_text) "
-        "VALUES ($1, $2::uuid, $3::uuid, $4, $5) RETURNING id::text",
-        doc_id,
-        kb_id,
-        user_id,
-        body.body,
-        body.target_text,
-    )
-    await pool.execute(
-        "SELECT log_comment_history($1::uuid, 'created', $2::uuid)", row["id"], user_id
-    )
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                "INSERT INTO wiki_comments (document_id, kb_id, author_id, body, target_text) "
+                "VALUES ($1, $2::uuid, $3::uuid, $4, $5) RETURNING id::text",
+                doc_id,
+                kb_id,
+                user_id,
+                body.body,
+                body.target_text,
+            )
+            await conn.execute(
+                "SELECT log_comment_history($1::uuid, 'created', $2::uuid)",
+                row["id"],
+                user_id,
+            )
     return {"id": row["id"]}
 
 
@@ -100,14 +104,18 @@ async def edit_comment(
     pool = request.app.state.pool
     if not await _kb_for_accessible_comment(pool, comment_id, user_id):
         raise HTTPException(status_code=404, detail="Comment not found")
-    await pool.execute(
-        "UPDATE wiki_comments SET body = $2, updated_at = now() WHERE id = $1",
-        comment_id,
-        body.body,
-    )
-    await pool.execute(
-        "SELECT log_comment_history($1::uuid, 'edited', $2::uuid)", comment_id, user_id
-    )
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "UPDATE wiki_comments SET body = $2, updated_at = now() WHERE id = $1",
+                comment_id,
+                body.body,
+            )
+            await conn.execute(
+                "SELECT log_comment_history($1::uuid, 'edited', $2::uuid)",
+                comment_id,
+                user_id,
+            )
 
 
 @router.post("/v1/comments/{comment_id}/resolve", status_code=204)
@@ -119,17 +127,19 @@ async def resolve_comment(
     pool = request.app.state.pool
     if not await _kb_for_accessible_comment(pool, comment_id, user_id):
         raise HTTPException(status_code=404, detail="Comment not found")
-    await pool.execute(
-        "UPDATE wiki_comments SET status = 'resolved', resolved_at = now(), "
-        "resolved_by = $2::uuid, updated_at = now() WHERE id = $1",
-        comment_id,
-        user_id,
-    )
-    await pool.execute(
-        "SELECT log_comment_history($1::uuid, 'resolved', $2::uuid)",
-        comment_id,
-        user_id,
-    )
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "UPDATE wiki_comments SET status = 'resolved', resolved_at = now(), "
+                "resolved_by = $2::uuid, updated_at = now() WHERE id = $1",
+                comment_id,
+                user_id,
+            )
+            await conn.execute(
+                "SELECT log_comment_history($1::uuid, 'resolved', $2::uuid)",
+                comment_id,
+                user_id,
+            )
 
 
 @router.post("/v1/comments/{comment_id}/reopen", status_code=204)
@@ -141,16 +151,18 @@ async def reopen_comment(
     pool = request.app.state.pool
     if not await _kb_for_accessible_comment(pool, comment_id, user_id):
         raise HTTPException(status_code=404, detail="Comment not found")
-    await pool.execute(
-        "UPDATE wiki_comments SET status = 'open', resolved_at = NULL, "
-        "resolved_by = NULL, updated_at = now() WHERE id = $1",
-        comment_id,
-    )
-    await pool.execute(
-        "SELECT log_comment_history($1::uuid, 'reopened', $2::uuid)",
-        comment_id,
-        user_id,
-    )
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "UPDATE wiki_comments SET status = 'open', resolved_at = NULL, "
+                "resolved_by = NULL, updated_at = now() WHERE id = $1",
+                comment_id,
+            )
+            await conn.execute(
+                "SELECT log_comment_history($1::uuid, 'reopened', $2::uuid)",
+                comment_id,
+                user_id,
+            )
 
 
 @router.delete("/v1/comments/{comment_id}", status_code=204)
@@ -162,11 +174,15 @@ async def delete_comment(
     pool = request.app.state.pool
     if not await _kb_for_accessible_comment(pool, comment_id, user_id):
         raise HTTPException(status_code=404, detail="Comment not found")
-    # Historial ANTES de borrar (la función lee wiki_comments).
-    await pool.execute(
-        "SELECT log_comment_history($1::uuid, 'deleted', $2::uuid)", comment_id, user_id
-    )
-    await pool.execute("DELETE FROM wiki_comments WHERE id = $1", comment_id)
+    # Historial ANTES de borrar (la función lee wiki_comments), ambos en una transacción.
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "SELECT log_comment_history($1::uuid, 'deleted', $2::uuid)",
+                comment_id,
+                user_id,
+            )
+            await conn.execute("DELETE FROM wiki_comments WHERE id = $1", comment_id)
 
 
 @router.get("/v1/knowledge-bases/{kb_id}/comment-history")
