@@ -1,9 +1,11 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { listUsageLogs, type UsageLog } from '@/lib/admin'
+import { listUsageLogs, purgeUsageLogs, type UsageLog } from '@/lib/admin'
 
-const ACTION_FILTERS = ['', 'login', 'api_key.create', 'api_key.revoke']
+const ACTION_FILTERS = ['', 'login', 'api_key.create', 'api_key.revoke',
+  'wiki.create', 'wiki.update', 'wiki.page.write', 'wiki.delete',
+  'workspace.create', 'workspace.update', 'workspace.delete', 'logs.purge']
 
 export default function AdminLogsPage() {
   const [logs, setLogs] = useState<UsageLog[]>([])
@@ -12,6 +14,8 @@ export default function AdminLogsPage() {
   const [action, setAction] = useState('')
   const [offset, setOffset] = useState(0)
   const LIMIT = 50
+  const [purgeDays, setPurgeDays] = useState<7 | 14 | 30>(30)
+  const [purgeMsg, setPurgeMsg] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -47,7 +51,32 @@ export default function AdminLogsPage() {
         <button onClick={load} className="border rounded px-3 py-2 text-sm">
           Actualizar
         </button>
+        <select
+          value={purgeDays}
+          onChange={(e) => setPurgeDays(Number(e.target.value) as 7 | 14 | 30)}
+          className="border rounded px-3 py-2 text-sm"
+        >
+          <option value={7}>7 días</option>
+          <option value={14}>14 días</option>
+          <option value={30}>30 días</option>
+        </select>
+        <button
+          onClick={() => {
+            const ok = window.confirm(
+              `Se borrarán las entradas anteriores a hace ${purgeDays} días. Esta acción no se puede deshacer.`
+            )
+            if (!ok) return
+            purgeUsageLogs(purgeDays).then((r) => {
+              setPurgeMsg(`Eliminados ${r.deleted} registros.`)
+              load()
+            }).catch((err) => setPurgeMsg(`Error al limpiar: ${err.message}`))
+          }}
+          className="border rounded px-3 py-2 text-sm bg-destructive/10 text-destructive"
+        >
+          Limpiar
+        </button>
       </div>
+      {purgeMsg && <p className="text-sm text-muted-foreground mb-2">{purgeMsg}</p>}
 
       {loading ? (
         <p className="text-muted-foreground">Cargando...</p>

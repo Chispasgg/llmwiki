@@ -20,6 +20,7 @@ from .base import (
     ServiceFactory,
 )
 from .types import parse_frontmatter, title_from_filename, extract_tags
+from services.log import log_action_bg
 
 logger = logging.getLogger(__name__)
 
@@ -235,6 +236,15 @@ class HostedKBService(KBService):
         await self._check_capacity()
         row = await self._insert_kb(name, description)
         await self._scaffold_wiki(row["id"], row["name"])
+        log_action_bg(
+            self.pool,
+            user_id=self.user_id,
+            action="wiki.create",
+            resource_type="wiki",
+            resource_id=str(row["id"]),
+            kb_id=str(row["id"]),
+            metadata={"name": row["name"]},
+        )
         return dict(row)
 
     async def update(
@@ -266,6 +276,16 @@ class HostedKBService(KBService):
                 description,
                 kb_id,
                 self.user_id,
+            )
+        if row:
+            log_action_bg(
+                self.pool,
+                user_id=self.user_id,
+                action="wiki.update",
+                resource_type="wiki",
+                resource_id=str(kb_id),
+                kb_id=str(kb_id),
+                metadata={"name": row["name"]},
             )
         return dict(row) if row else None
 
@@ -319,12 +339,28 @@ class HostedKBService(KBService):
         )
 
     async def delete(self, kb_id: str) -> bool:
+        name = await self.pool.fetchval(
+            "SELECT name FROM knowledge_bases WHERE id = $1 AND user_id = $2",
+            kb_id,
+            self.user_id,
+        )
         result = await self.pool.execute(
             "DELETE FROM knowledge_bases WHERE id = $1 AND user_id = $2",
             kb_id,
             self.user_id,
         )
-        return result != "DELETE 0"
+        deleted = result != "DELETE 0"
+        if deleted:
+            log_action_bg(
+                self.pool,
+                user_id=self.user_id,
+                action="wiki.delete",
+                resource_type="wiki",
+                resource_id=str(kb_id),
+                kb_id=str(kb_id),
+                metadata={"name": name},
+            )
+        return deleted
 
 
 _DOC_COLUMNS = (
@@ -578,15 +614,26 @@ class HostedDocumentService(DocumentService):
                 logger.warning(
                     "notify_wiki_activity failed (update_content)", exc_info=True
                 )
+            log_action_bg(
+                self.pool,
+                user_id=self.user_id,
+                action="wiki.page.write",
+                resource_type="wiki_page",
+                resource_id=str(doc_id),
+                kb_id=str(kb_id),
+                metadata={"path": current["path"]},
+            )
 
         return dict(row)
 
     async def list_history(self, doc_id: str) -> list[dict]:
         rows = await self.pool.fetch(
-            "SELECT id::text, document_id::text, user_id::text, version, "
-            "length(content) AS content_length, created_at "
-            "FROM document_history WHERE document_id = $1 "
-            "ORDER BY created_at DESC LIMIT 50",
+            "SELECT dh.id::text, dh.document_id::text, dh.user_id::text, dh.version, "
+            "length(dh.content) AS content_length, dh.created_at, "
+            "(SELECT display_name FROM users u WHERE u.id = dh.user_id) AS user_name, "
+            "(SELECT email FROM users u WHERE u.id = dh.user_id) AS user_email "
+            "FROM document_history dh WHERE dh.document_id = $1 "
+            "ORDER BY dh.created_at DESC LIMIT 50",
             doc_id,
         )
         return [dict(r) for r in rows]
@@ -811,6 +858,14 @@ class HostedWorkspaceService(WorkspaceService):
             description,
             self.user_id,
         )
+        log_action_bg(
+            self.pool,
+            user_id=self.user_id,
+            action="workspace.create",
+            resource_type="workspace",
+            resource_id=str(row["id"]),
+            metadata={"name": row["name"]},
+        )
         return self._row_to_dict(row)
 
     async def update(
@@ -850,6 +905,14 @@ class HostedWorkspaceService(WorkspaceService):
             " FROM workspace_members WHERE workspace_id = $1",
             workspace_id,
         )
+        log_action_bg(
+            self.pool,
+            user_id=self.user_id,
+            action="workspace.update",
+            resource_type="workspace",
+            resource_id=str(workspace_id),
+            metadata={"name": row["name"]},
+        )
         return self._row_to_dict({**dict(row), **dict(count_row)})
 
     async def delete(self, workspace_id: str) -> bool:
@@ -860,10 +923,23 @@ class HostedWorkspaceService(WorkspaceService):
         )
         if not is_admin:
             return False
+        name = await self.pool.fetchval(
+            "SELECT name FROM workspaces WHERE id = $1", workspace_id
+        )
         result = await self.pool.execute(
             "DELETE FROM workspaces WHERE id = $1", workspace_id
         )
-        return result == "DELETE 1"
+        deleted = result == "DELETE 1"
+        if deleted:
+            log_action_bg(
+                self.pool,
+                user_id=self.user_id,
+                action="workspace.delete",
+                resource_type="workspace",
+                resource_id=str(workspace_id),
+                metadata={"name": name},
+            )
+        return deleted
 
     async def list_wikis(self, workspace_id: str) -> list[dict]:
         _KB_SELECT = (

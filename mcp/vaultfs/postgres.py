@@ -259,6 +259,17 @@ class PostgresVaultFS(VaultFS):
                 )
             except Exception:
                 logger.warning("notify_wiki_activity failed (update)", exc_info=True)
+        if is_wiki and old_content.strip() != content.strip():
+            try:
+                await pool.execute(
+                    "SELECT log_usage_event($1::uuid, 'wiki.page.write', 'wiki_page', $2, $3::uuid, $4::jsonb)",
+                    self.user_id,
+                    str(doc_id),
+                    str(current["knowledge_base_id"]),
+                    _json.dumps({"path": current["path"], "title": title}),
+                )
+            except Exception:
+                logger.warning("log_usage_event failed (update)", exc_info=True)
         return result
 
     async def archive_documents(self, doc_ids: list[str]) -> int:

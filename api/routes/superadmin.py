@@ -6,7 +6,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from deps import require_superadmin
+from deps import require_superadmin, get_user_id
+from services.log import log_action_bg
 
 router = APIRouter(prefix="/v1/superadmin", tags=["superadmin"])
 
@@ -206,3 +207,28 @@ async def list_usage_logs(
         *params,
     )
     return [dict(r) for r in rows]
+
+
+@router.post("/logs/purge")
+async def purge_logs(
+    _sa: Annotated[str, Depends(require_superadmin)],
+    request: Request,
+    user_id: Annotated[str, Depends(get_user_id)],
+    days: int = Query(...),
+):
+    if days not in (7, 14, 30):
+        raise HTTPException(status_code=400, detail="days debe ser 7, 14 o 30")
+    pool = request.app.state.pool
+    result = await pool.execute(
+        "DELETE FROM usage_logs WHERE created_at < now() - make_interval(days => $1)",
+        days,
+    )
+    deleted = int(result.split()[-1]) if result.startswith("DELETE") else 0
+    log_action_bg(
+        pool,
+        user_id=user_id,
+        action="logs.purge",
+        resource_type="usage_logs",
+        metadata={"days": days, "deleted": deleted},
+    )
+    return {"deleted": deleted}

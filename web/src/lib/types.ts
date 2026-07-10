@@ -126,6 +126,8 @@ export interface HistoryVersion {
   version: number;
   content_length: number;
   created_at: string;
+  user_name: string | null;
+  user_email: string | null;
 }
 
 export interface LatexTemplate {

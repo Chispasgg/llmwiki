@@ -170,3 +170,8 @@ export const listUsageLogs = (params?: {
   if (params?.action) qs.set("action", params.action);
   return apiFetch<UsageLog[]>(`/v1/superadmin/logs?${qs}`);
 };
+
+export const purgeUsageLogs = (days: 7 | 14 | 30) =>
+  apiFetch<{ deleted: number }>(`/v1/superadmin/logs/purge?days=${days}`, {
+    method: 'POST',
+  });

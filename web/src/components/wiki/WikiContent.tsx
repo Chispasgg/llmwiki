@@ -458,11 +458,7 @@ function HistoryPanel({ docId }: { docId: string }) {
                   </div>
                   <div className="text-xs mt-0.5 flex items-center justify-between">
                     <span className="text-muted-foreground/70">
-                      {v.user_id
-                        ? v.user_id.includes("@")
-                          ? v.user_id
-                          : v.user_id.slice(0, 8)
-                        : "desconocido"}
+                      {v.user_name ?? v.user_email ?? 'desconocido'}
                     </span>
                     <span>{(v.content_length / 1024).toFixed(1)} KB</span>
                   </div>
