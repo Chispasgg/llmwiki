@@ -4,6 +4,7 @@ import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { useKBStore } from '@/stores'
 import { Loader2 } from 'lucide-react'
+import { useNameAvailability } from '@/hooks/useNameAvailability'
 
 export default function NewKnowledgeBasePage() {
   const [name, setName] = React.useState('')
@@ -12,6 +13,7 @@ export default function NewKnowledgeBasePage() {
   const [error, setError] = React.useState('')
   const router = useRouter()
   const createKB = useKBStore((s) => s.createKB)
+  const { state: availability } = useNameAvailability(name)
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -52,6 +54,27 @@ export default function NewKnowledgeBasePage() {
             required
           />
         </div>
+        {availability && name.trim() && (
+          <div className="mt-1.5 text-xs">
+            {availability.normalized !== name.trim() && (
+              <p className="text-muted-foreground">
+                Se guardará como <span className="font-medium">{availability.normalized}</span>
+              </p>
+            )}
+            {!availability.available && (
+              <p className="text-amber-600 dark:text-amber-500">
+                Ya existe una wiki con ese nombre.{' '}
+                <button
+                  type="button"
+                  onClick={() => setName(availability.suggestion)}
+                  className="underline underline-offset-2 hover:no-underline cursor-pointer"
+                >
+                  Usar {availability.suggestion}
+                </button>
+              </p>
+            )}
+          </div>
+        )}
 
         <div>
           <label htmlFor="kb-description" className="block text-sm font-medium mb-1.5">

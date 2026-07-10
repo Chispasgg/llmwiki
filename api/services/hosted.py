@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from datetime import datetime
 
 import asyncpg
@@ -134,11 +135,55 @@ Chronological record of ingests, queries, and maintenance passes.
 """
 
 
+def _sanitize_name(name: str) -> str:
+    """Transliterate accents to ASCII and drop non-ASCII; keep case, spaces, ASCII punctuation."""
+    decomposed = unicodedata.normalize("NFKD", name)
+    without_marks = "".join(c for c in decomposed if not unicodedata.combining(c))
+    ascii_only = without_marks.encode("ascii", "ignore").decode("ascii")
+    collapsed = re.sub(r"\s+", " ", ascii_only).strip()
+    if not collapsed:
+        raise HTTPException(
+            status_code=400,
+            detail="Wiki name must contain at least one ASCII letter or number",
+        )
+    return collapsed
+
+
 def _slugify(name: str) -> str:
-    slug = name.lower().strip()
+    decomposed = unicodedata.normalize("NFKD", name)
+    ascii_name = "".join(c for c in decomposed if not unicodedata.combining(c))
+    slug = ascii_name.lower().strip()
     slug = re.sub(r"[^a-z0-9\s-]", "", slug)
     slug = re.sub(r"[\s-]+", "-", slug).strip("-")
     return slug or "kb"
+
+
+async def _slug_exists(pool, slug: str, exclude_kb_id: str | None = None) -> bool:
+    if exclude_kb_id:
+        return bool(
+            await pool.fetchval(
+                "SELECT 1 FROM knowledge_bases WHERE slug = $1 AND id <> $2",
+                slug,
+                exclude_kb_id,
+            )
+        )
+    return bool(
+        await pool.fetchval("SELECT 1 FROM knowledge_bases WHERE slug = $1", slug)
+    )
+
+
+async def _resolve_name_slug(
+    pool, name: str, exclude_kb_id: str | None = None
+) -> tuple[str, str]:
+    """Sanea el nombre y devuelve (nombre, slug) libres, con sufijo -N global si hace falta."""
+    base_name = _sanitize_name(name)
+    base_slug = _slugify(base_name)
+    cand_name, cand_slug, n = base_name, base_slug, 0
+    while await _slug_exists(pool, cand_slug, exclude_kb_id):
+        n += 1
+        cand_name = f"{base_name}-{n}"
+        cand_slug = f"{base_slug}-{n}"
+    return cand_name, cand_slug
 
 
 class HostedKBService(KBService):
@@ -188,26 +233,31 @@ class HostedKBService(KBService):
 
     async def create(self, name: str, description: str | None) -> dict:
         await self._check_capacity()
-        slug = await self._unique_slug(name)
-        row = await self._insert_kb(name, slug, description)
-        await self._scaffold_wiki(row["id"], name)
+        row = await self._insert_kb(name, description)
+        await self._scaffold_wiki(row["id"], row["name"])
         return dict(row)
 
     async def update(
         self, kb_id: str, name: str | None, description: str | None
     ) -> dict | None:
         if name is not None:
-            slug = await self._unique_slug(name)
-            row = await self.pool.fetchrow(
-                "UPDATE knowledge_bases SET name = $1, slug = $2, description = COALESCE($3, description), updated_at = now() "
-                "WHERE id = $4 AND user_id = $5 "
-                "RETURNING id, user_id, name, slug, description, created_at, updated_at",
-                name,
-                slug,
-                description,
-                kb_id,
-                self.user_id,
-            )
+            sanitized = _sanitize_name(name)
+            slug = _slugify(sanitized)
+            try:
+                row = await self.pool.fetchrow(
+                    "UPDATE knowledge_bases SET name = $1, slug = $2, description = COALESCE($3, description), updated_at = now() "
+                    "WHERE id = $4 AND user_id = $5 "
+                    "RETURNING id, user_id, name, slug, description, created_at, updated_at",
+                    sanitized,
+                    slug,
+                    description,
+                    kb_id,
+                    self.user_id,
+                )
+            except asyncpg.UniqueViolationError:
+                raise HTTPException(
+                    status_code=409, detail="Ya existe una wiki con ese nombre"
+                )
         else:
             row = await self.pool.fetchrow(
                 "UPDATE knowledge_bases SET description = $1, updated_at = now() "
@@ -227,28 +277,22 @@ class HostedKBService(KBService):
                 detail="We've reached our user capacity for now. Please try again later.",
             )
 
-    async def _insert_kb(self, name: str, slug: str, description: str | None) -> dict:
-        conn = await self.pool.acquire()
-        try:
-            async with conn.transaction():
-                current_name = name
-                for attempt in range(10):
-                    try:
-                        row = await conn.fetchrow(
-                            "INSERT INTO knowledge_bases (user_id, name, slug, description) "
-                            "VALUES ($1, $2, $3, $4) "
-                            "RETURNING id, user_id, name, slug, description, created_at, updated_at",
-                            self.user_id,
-                            current_name,
-                            slug,
-                            description,
-                        )
-                        return dict(row)
-                    except asyncpg.UniqueViolationError:
-                        current_name = f"{name} ({attempt + 2})"
-                        slug = await self._unique_slug(current_name)
-        finally:
-            await self.pool.release(conn)
+    async def _insert_kb(self, name: str, description: str | None) -> dict:
+        for _ in range(10):
+            res_name, slug = await _resolve_name_slug(self.pool, name)
+            try:
+                row = await self.pool.fetchrow(
+                    "INSERT INTO knowledge_bases (user_id, name, slug, description) "
+                    "VALUES ($1, $2, $3, $4) "
+                    "RETURNING id, user_id, name, slug, description, created_at, updated_at",
+                    self.user_id,
+                    res_name,
+                    slug,
+                    description,
+                )
+                return dict(row)
+            except asyncpg.UniqueViolationError:
+                continue  # carrera: otro alta tomó el slug; reintentar con el siguiente -N
         raise HTTPException(
             status_code=409, detail="Could not create wiki — too many duplicates."
         )
@@ -281,19 +325,6 @@ class HostedKBService(KBService):
             self.user_id,
         )
         return result != "DELETE 0"
-
-    async def _unique_slug(self, name: str) -> str:
-        base = _slugify(name)
-        slug = base
-        counter = 2
-        while await self.pool.fetchval(
-            "SELECT 1 FROM knowledge_bases WHERE slug = $1 AND user_id = $2",
-            slug,
-            self.user_id,
-        ):
-            slug = f"{base}-{counter}"
-            counter += 1
-        return slug
 
 
 _DOC_COLUMNS = (

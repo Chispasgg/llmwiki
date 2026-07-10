@@ -125,6 +125,7 @@ else:
     from routes.smtp_admin import router as smtp_admin_router
     from routes.comments import router as comments_router
     from routes.users import router as users_router
+    from routes.kb_naming import router as kb_naming_router
 
     app.include_router(users_router)
     app.include_router(api_keys_router)
@@ -138,6 +139,7 @@ else:
     app.include_router(ws_router)
     app.include_router(workspaces_router)
     app.include_router(favorites_router)
+    app.include_router(kb_naming_router)
     app.include_router(notifications_router)
     app.include_router(smtp_admin_router)
     app.include_router(comments_router)

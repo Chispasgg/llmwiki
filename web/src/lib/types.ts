@@ -22,6 +22,13 @@ export interface Favorite {
   created_at: string;
 }
 
+export interface NameAvailability {
+  normalized: string;
+  slug: string;
+  available: boolean;
+  suggestion: string;
+}
+
 export interface WikiNotification {
   kb_id: string;
   kb_name: string;

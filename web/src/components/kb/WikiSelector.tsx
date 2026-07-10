@@ -7,6 +7,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandItem, CommandEmpty, CommandGroup, CommandSeparator } from '@/components/ui/command'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { useKBStore } from '@/stores'
+import { useNameAvailability } from '@/hooks/useNameAvailability'
 
 export function WikiSelector({ kbName, kbId }: { kbName: string; kbId: string }) {
   const router = useRouter()
@@ -24,6 +25,8 @@ export function WikiSelector({ kbName, kbId }: { kbName: string; kbId: string })
   const [creating, setCreating] = React.useState(false)
   const [renaming, setRenaming] = React.useState(false)
   const [deleting, setDeleting] = React.useState(false)
+  const { state: createAvail } = useNameAvailability(newName)
+  const { state: renameAvail } = useNameAvailability(renameName, kbId)
 
   const handleCreate = async () => {
     if (!newName.trim()) return
@@ -156,6 +159,27 @@ export function WikiSelector({ kbName, kbId }: { kbName: string; kbId: string })
             className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
             autoFocus
           />
+          {createAvail && newName.trim() && (
+            <div className="mt-1.5 text-xs">
+              {createAvail.normalized !== newName.trim() && (
+                <p className="text-muted-foreground">
+                  Se guardará como <span className="font-medium">{createAvail.normalized}</span>
+                </p>
+              )}
+              {!createAvail.available && (
+                <p className="text-amber-600 dark:text-amber-500">
+                  Ya existe una wiki con ese nombre.{' '}
+                  <button
+                    type="button"
+                    onClick={() => setNewName(createAvail.suggestion)}
+                    className="underline underline-offset-2 hover:no-underline cursor-pointer"
+                  >
+                    Usar {createAvail.suggestion}
+                  </button>
+                </p>
+              )}
+            </div>
+          )}
           <DialogFooter>
             <button
               onClick={handleCreate}
@@ -180,6 +204,27 @@ export function WikiSelector({ kbName, kbId }: { kbName: string; kbId: string })
             className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
             autoFocus
           />
+          {renameAvail && renameName.trim() && (
+            <div className="mt-1.5 text-xs">
+              {renameAvail.normalized !== renameName.trim() && (
+                <p className="text-muted-foreground">
+                  Se guardará como <span className="font-medium">{renameAvail.normalized}</span>
+                </p>
+              )}
+              {!renameAvail.available && (
+                <p className="text-amber-600 dark:text-amber-500">
+                  Ya existe una wiki con ese nombre.{' '}
+                  <button
+                    type="button"
+                    onClick={() => setRenameName(renameAvail.suggestion)}
+                    className="underline underline-offset-2 hover:no-underline cursor-pointer"
+                  >
+                    Usar {renameAvail.suggestion}
+                  </button>
+                </p>
+              )}
+            </div>
+          )}
           <DialogFooter>
             <button
               onClick={handleRename}
