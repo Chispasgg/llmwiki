@@ -6,6 +6,7 @@ type NotificationsState = {
   notifications: WikiNotification[];
   fetchNotifications: () => Promise<void>;
   markRead: (kbId: string) => Promise<void>;
+  markAllRead: () => Promise<void>;
   unreadTotal: () => number;
 };
 
@@ -27,6 +28,17 @@ export const useNotificationsStore = create<NotificationsState>((set, get) => ({
     set({ notifications: prev.filter((n) => n.kb_id !== kbId) }); // optimista
     try {
       await apiFetch(`/v1/notifications/${kbId}/read`, { method: "POST" });
+    } catch {
+      set({ notifications: prev }); // rollback
+    }
+  },
+
+  markAllRead: async () => {
+    const prev = get().notifications;
+    if (prev.length === 0) return;
+    set({ notifications: [] }); // optimista
+    try {
+      await apiFetch(`/v1/notifications/read-all`, { method: "POST" });
     } catch {
       set({ notifications: prev }); // rollback
     }

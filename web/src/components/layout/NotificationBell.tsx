@@ -15,6 +15,7 @@ export function NotificationBell() {
   const notifications = useNotificationsStore((s) => s.notifications);
   const fetchNotifications = useNotificationsStore((s) => s.fetchNotifications);
   const markRead = useNotificationsStore((s) => s.markRead);
+  const markAllRead = useNotificationsStore((s) => s.markAllRead);
   const [open, setOpen] = React.useState(false);
 
   React.useEffect(() => {
@@ -39,8 +40,16 @@ export function NotificationBell() {
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0">
-        <div className="px-3 py-2 border-b text-sm font-semibold">
-          Novedades
+        <div className="px-3 py-2 border-b flex items-center justify-between gap-2">
+          <span className="text-sm font-semibold">Novedades</span>
+          {count > 0 && (
+            <button
+              onClick={() => markAllRead()}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            >
+              Leer todas
+            </button>
+          )}
         </div>
         {count === 0 ? (
           <p className="px-3 py-6 text-sm text-muted-foreground text-center">
