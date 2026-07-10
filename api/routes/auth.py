@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from deps import get_user_id
+from infra.client_ip import get_client_ip
 from infra.auth.password import hash_password, needs_rehash, verify_password
 from infra.auth.server import COOKIE_NAME, generate_session_token, hash_session_token
 
@@ -60,7 +61,7 @@ class MeResponse(BaseModel):
 
 @router.post("/login")
 async def login(body: LoginRequest, request: Request, response: Response):
-    ip = request.client.host if request.client else "unknown"
+    ip = get_client_ip(request) or "unknown"
     _check_rate_limit(ip)
 
     pool = request.app.state.pool
@@ -88,7 +89,7 @@ async def login(body: LoginRequest, request: Request, response: Response):
         user["id"],
         token_hash,
         expires_at,
-        request.client.host if request.client else None,
+        ip if ip != "unknown" else None,
         request.headers.get("user-agent", ""),
     )
 
@@ -111,7 +112,7 @@ async def login(body: LoginRequest, request: Request, response: Response):
         pool,
         user_id=user["id"],
         action="login",
-        ip_address=request.client.host if request.client else None,
+        ip_address=ip if ip != "unknown" else None,
     )
 
     response.set_cookie(

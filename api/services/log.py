@@ -49,6 +49,10 @@ async def log_action(
     ip_address: str | None = None,
 ) -> None:
     """Write a usage event to DB and optionally to the audit file."""
+    if ip_address is None:
+        from infra.client_ip import current_client_ip
+
+        ip_address = current_client_ip()
     entry = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "user_id": user_id,

@@ -81,6 +81,10 @@ app.add_middleware(
     ],
 )
 
+from infra.client_ip import ClientIPMiddleware
+
+app.add_middleware(ClientIPMiddleware)
+
 if settings.LOGFIRE_TOKEN:
     import logfire
 
