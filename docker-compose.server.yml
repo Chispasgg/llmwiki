@@ -68,19 +68,6 @@ services:
     networks:
       - internal
 
-  nginx:
-    build:
-      context: ./nginx
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    ports:
-      - "80:80"
-    depends_on:
-      - api
-      - web
-    networks:
-      - internal
-
 networks:
   internal:
     driver: bridge
