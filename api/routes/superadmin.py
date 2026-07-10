@@ -1,5 +1,6 @@
 """Superadmin-only management endpoints."""
 
+import json
 from typing import Annotated
 from uuid import UUID
 
@@ -206,7 +207,15 @@ async def list_usage_logs(
         f"LIMIT ${len(params) - 1} OFFSET ${len(params)}",
         *params,
     )
-    return [dict(r) for r in rows]
+    # asyncpg devuelve JSONB como texto (no hay codec jsonb en el pool); UsageLogOut
+    # espera dict, así que parseamos metadata aquí.
+    result = []
+    for r in rows:
+        d = dict(r)
+        if isinstance(d.get("metadata"), str):
+            d["metadata"] = json.loads(d["metadata"]) if d["metadata"] else None
+        result.append(d)
+    return result
 
 
 @router.post("/logs/purge")
