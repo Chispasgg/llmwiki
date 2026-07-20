@@ -14,6 +14,7 @@ import {
   Search,
   UserX,
   Star,
+  Share2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -37,6 +38,7 @@ import {
   useFavoritesStore,
 } from "@/stores";
 import type { KnowledgeBase, Workspace } from "@/lib/types";
+import { ShareWikiDialog } from "@/components/kb/ShareWikiDialog";
 
 const MAX_FAVORITES_SHOWN = 5;
 
@@ -56,17 +58,21 @@ function WikiCard({
   kb,
   isForeign,
   canMove,
+  canShare,
   isFavorite,
   onOpen,
   onMove,
+  onShare,
   onToggleFavorite,
 }: {
   kb: KnowledgeBase;
   isForeign: boolean;
   canMove: boolean;
+  canShare: boolean;
   isFavorite: boolean;
   onOpen: () => void;
   onMove: () => void;
+  onShare: () => void;
   onToggleFavorite: () => void;
 }) {
   return (
@@ -120,6 +126,12 @@ function WikiCard({
                   <MoveRight className="size-3.5 mr-2" />
                   Move to workspace…
                 </DropdownMenuItem>
+                {canShare && (
+                  <DropdownMenuItem onClick={onShare}>
+                    <Share2 className="size-3.5 mr-2" />
+                    Compartir…
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -266,6 +278,7 @@ export default function WorkspaceDetailPage() {
   const [editName, setEditName] = React.useState("");
   const [editDescription, setEditDescription] = React.useState("");
   const [saving, setSaving] = React.useState(false);
+  const [shareKb, setShareKb] = React.useState<KnowledgeBase | null>(null);
 
   const canEdit =
     ws !== null &&
@@ -453,11 +466,13 @@ export default function WorkspaceDetailPage() {
                   <WikiCard
                     key={`fav-${kb.id}`}
                     kb={kb}
-                    isForeign={isSuperadmin && !isOwner}
+                    isForeign={isSuperadmin && kb.shared_with_me === false}
                     canMove={isOwner || isSuperadmin}
+                    canShare={isOwner}
                     isFavorite={true}
                     onOpen={() => router.push(`/wikis/${kb.slug}`)}
                     onMove={() => setMoveTarget(kb)}
+                    onShare={() => setShareKb(kb)}
                     onToggleFavorite={() => toggleFavorite(kb.id)}
                   />
                 );
@@ -483,11 +498,13 @@ export default function WorkspaceDetailPage() {
                 <WikiCard
                   key={kb.id}
                   kb={kb}
-                  isForeign={isSuperadmin && !isOwner}
+                  isForeign={isSuperadmin && kb.shared_with_me === false}
                   canMove={isOwner || isSuperadmin}
+                  canShare={isOwner}
                   isFavorite={isFavorite(kb.id)}
                   onOpen={() => router.push(`/wikis/${kb.slug}`)}
                   onMove={() => setMoveTarget(kb)}
+                  onShare={() => setShareKb(kb)}
                   onToggleFavorite={() => toggleFavorite(kb.id)}
                 />
               );
@@ -504,6 +521,12 @@ export default function WorkspaceDetailPage() {
         onMoved={(kbId) =>
           setWikis((prev) => prev.filter((k) => k.id !== kbId))
         }
+      />
+
+      <ShareWikiDialog
+        kb={shareKb}
+        open={!!shareKb}
+        onOpenChange={(open) => !open && setShareKb(null)}
       />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

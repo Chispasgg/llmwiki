@@ -113,6 +113,7 @@ def _kb_row_to_dict(row) -> dict:
             d[k] = d[k].isoformat()
     d["source_count"] = int(d.get("source_count", 0))
     d["wiki_page_count"] = int(d.get("wiki_page_count", 0))
+    d["shared_with_me"] = d.get("shared_with_me") is not False
     return d
 
 
@@ -949,13 +950,15 @@ class HostedWorkspaceService(WorkspaceService):
             "  (SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.path NOT LIKE '/wiki/%%' AND NOT d.archived) AS source_count,"
             "  (SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.path LIKE '/wiki/%%' AND NOT d.archived) AS wiki_page_count,"
             "  (SELECT u.email FROM users u WHERE u.id = kb.user_id) AS owner_email,"
-            "  (SELECT u.display_name FROM users u WHERE u.id = kb.user_id) AS owner_name"
+            "  (SELECT u.display_name FROM users u WHERE u.id = kb.user_id) AS owner_name,"
+            "  (kb.user_id = $2 OR EXISTS (SELECT 1 FROM kb_shares ks2 WHERE ks2.kb_id = kb.id AND ks2.shared_with = $2::uuid)) AS shared_with_me"
             " FROM knowledge_bases kb"
         )
         if self.is_superadmin:
             rows = await self.pool.fetch(
                 _KB_SELECT + " WHERE kb.workspace_id = $1 ORDER BY kb.name",
                 workspace_id,
+                self.user_id,
             )
             return [_kb_row_to_dict(r) for r in rows]
 
@@ -964,21 +967,9 @@ class HostedWorkspaceService(WorkspaceService):
             workspace_id,
             self.user_id,
         )
-        if is_member:
-            # Members only see KBs whose owner is also a workspace member.
-            # KBs created by non-members are private to their creator.
-            rows = await self.pool.fetch(
-                _KB_SELECT
-                + " WHERE kb.workspace_id = $1"
-                + " AND EXISTS ("
-                + "   SELECT 1 FROM workspace_members wm"
-                + "   WHERE wm.workspace_id = $1 AND wm.user_id = kb.user_id"
-                + " ) ORDER BY kb.name",
-                workspace_id,
-            )
-            return [_kb_row_to_dict(r) for r in rows]
-
-        # Non-member: return KBs they own in this workspace, or explicitly shared with them.
+        # Miembros y no miembros ven exactamente lo mismo: lo realmente accesible
+        # (propias o compartidas explícitamente). La única diferencia es que a un
+        # NO miembro sin nada accesible se le responde 403 en vez de una lista vacía.
         rows = await self.pool.fetch(
             _KB_SELECT
             + " WHERE kb.workspace_id = $1"
@@ -989,7 +980,7 @@ class HostedWorkspaceService(WorkspaceService):
             workspace_id,
             self.user_id,
         )
-        if not rows:
+        if not rows and not is_member:
             raise HTTPException(
                 status_code=403, detail={"error": "Not a member of this workspace"}
             )
@@ -1068,6 +1059,90 @@ class HostedWorkspaceService(WorkspaceService):
             "user_id": str(target["id"]),
             "email": target["email"],
             "role": role,
+        }
+
+    async def share(
+        self,
+        workspace_id: str,
+        email: str,
+        role: str,
+        access_level: str,
+        kb_ids: list[str],
+    ) -> dict:
+        """Añade (o actualiza) un miembro y comparte con él las wikis propias indicadas."""
+        if access_level not in ("viewer", "editor"):
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "access_level must be 'viewer' or 'editor'"},
+            )
+        if role not in ("admin", "member"):
+            raise HTTPException(
+                status_code=400, detail={"error": "role must be 'admin' or 'member'"}
+            )
+        kb_ids = list(dict.fromkeys(kb_ids))
+        is_admin = await self.pool.fetchval(
+            "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND role = 'admin'",
+            workspace_id,
+            self.user_id,
+        )
+        if not is_admin:
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "Only admins can share this workspace"},
+            )
+        target = await self.pool.fetchrow(
+            "SELECT id, email FROM users WHERE email = $1", email
+        )
+        if not target:
+            raise HTTPException(status_code=404, detail={"error": "User not found"})
+        target_id = str(target["id"])
+        if target_id == self.user_id:
+            raise HTTPException(
+                status_code=400, detail={"error": "Cannot share with yourself"}
+            )
+        if kb_ids:
+            owned = await self.pool.fetch(
+                "SELECT id::text AS id FROM knowledge_bases "
+                "WHERE id = ANY($1::uuid[]) AND user_id = $2 AND workspace_id = $3",
+                kb_ids,
+                self.user_id,
+                workspace_id,
+            )
+            if len(owned) != len(set(kb_ids)):
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "Some wikis are not yours or not in this workspace"
+                    },
+                )
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, $3)"
+                    " ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = $3",
+                    workspace_id,
+                    target_id,
+                    role,
+                )
+                for kb_id in kb_ids:
+                    await conn.execute(
+                        "INSERT INTO kb_shares (kb_id, shared_with, access_level) VALUES ($1, $2, $3)"
+                        " ON CONFLICT (kb_id, shared_with) DO UPDATE SET access_level = EXCLUDED.access_level",
+                        kb_id,
+                        target_id,
+                        access_level,
+                    )
+                    # Mismo mantenimiento del flag que hace POST /knowledge-bases/{id}/shares
+                    await conn.execute(
+                        "UPDATE knowledge_bases SET is_shared = true WHERE id = $1",
+                        kb_id,
+                    )
+        return {
+            "workspace_id": workspace_id,
+            "user_id": target_id,
+            "email": target["email"],
+            "role": role,
+            "shared_kb_ids": list(kb_ids),
         }
 
 

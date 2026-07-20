@@ -13,7 +13,6 @@ from fastapi import HTTPException
 
 
 class UserService(ABC):
-
     @abstractmethod
     async def get_profile(self) -> dict:
         """Return the current user's profile.
@@ -35,7 +34,6 @@ class UserService(ABC):
 
 
 class KBService(ABC):
-
     @abstractmethod
     async def list(self) -> list[dict]:
         """Return all knowledge bases owned by the current user."""
@@ -53,7 +51,9 @@ class KBService(ABC):
         """
 
     @abstractmethod
-    async def update(self, kb_id: str, name: str | None, description: str | None) -> dict | None:
+    async def update(
+        self, kb_id: str, name: str | None, description: str | None
+    ) -> dict | None:
         """Update a knowledge base. Returns None if not found or not owned."""
 
     @abstractmethod
@@ -65,7 +65,6 @@ class KBService(ABC):
 
 
 class DocumentService(ABC):
-
     @abstractmethod
     async def list(self, kb_id: str, path: str | None = None) -> list[dict]:
         """List documents in a knowledge base, optionally filtered by path."""
@@ -87,7 +86,9 @@ class DocumentService(ABC):
         """
 
     @abstractmethod
-    async def create_note(self, kb_id: str, filename: str, path: str, content: str) -> dict:
+    async def create_note(
+        self, kb_id: str, filename: str, path: str, content: str
+    ) -> dict:
         """Create a new markdown note document.
 
         Raises HTTPException(404) if the knowledge base does not exist.
@@ -150,7 +151,9 @@ class ServiceFactory(ABC):
         """Return a KBService scoped to user_id."""
 
     @abstractmethod
-    def document_service(self, user_id: str, *, is_superadmin: bool = False) -> DocumentService:
+    def document_service(
+        self, user_id: str, *, is_superadmin: bool = False
+    ) -> DocumentService:
         """Return a DocumentService scoped to user_id."""
 
     @abstractmethod
@@ -159,7 +162,6 @@ class ServiceFactory(ABC):
 
 
 class WorkspaceService(ABC):
-
     @abstractmethod
     async def list(self) -> list[dict]:
         """Return all workspaces the current user is a member of."""
@@ -173,7 +175,9 @@ class WorkspaceService(ABC):
         """Create a workspace. Current user becomes admin member."""
 
     @abstractmethod
-    async def update(self, workspace_id: str, name: str | None, description: str | None) -> dict | None:
+    async def update(
+        self, workspace_id: str, name: str | None, description: str | None
+    ) -> dict | None:
         """Update workspace name/description. Returns None if not found or not admin."""
 
     @abstractmethod
@@ -191,3 +195,14 @@ class WorkspaceService(ABC):
     @abstractmethod
     async def add_member(self, workspace_id: str, user_email: str, role: str) -> dict:
         """Add a user to the workspace by email. Returns member dict."""
+
+    @abstractmethod
+    async def share(
+        self,
+        workspace_id: str,
+        email: str,
+        role: str,
+        access_level: str,
+        kb_ids: list[str],
+    ) -> dict:
+        """Add/update a member and share the caller's selected wikis with them."""

@@ -13,6 +13,8 @@ export interface KnowledgeBase {
   workspace_id: string | null;
   workspace_slug: string | null;
   workspace_name: string | null;
+  /** Solo lo devuelve GET /v1/workspaces/{id}/wikis: soy dueño o está compartida conmigo. */
+  shared_with_me?: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Users, BookOpen, Loader2, Trash2, UserX } from "lucide-react";
+import { Plus, Users, BookOpen, Loader2, Trash2, UserX, Share2 } from "lucide-react";
+import { ShareWorkspaceDialog } from "@/components/workspace/ShareWorkspaceDialog";
 import {
   Dialog,
   DialogContent,
@@ -31,11 +32,13 @@ function WorkspaceCard({
   isForeign,
   onClick,
   onDelete,
+  onShare,
 }: {
   ws: Workspace;
   isForeign: boolean;
   onClick: () => void;
   onDelete: (e: React.MouseEvent) => void;
+  onShare: (e: React.MouseEvent) => void;
 }) {
   return (
     <div
@@ -57,6 +60,13 @@ function WorkspaceCard({
           <span className="text-[10px] text-muted-foreground/50">
             {relativeTime(ws.updated_at)}
           </span>
+          <button
+            onClick={onShare}
+            aria-label="Compartir workspace"
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-accent text-muted-foreground cursor-pointer"
+          >
+            <Share2 className="size-3.5" />
+          </button>
           <button
             onClick={onDelete}
             className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/10 hover:text-destructive text-muted-foreground cursor-pointer"
@@ -103,6 +113,7 @@ export default function WorkspacesPage() {
     null,
   );
   const [deleting, setDeleting] = React.useState(false);
+  const [shareTarget, setShareTarget] = React.useState<Workspace | null>(null);
 
   React.useEffect(() => {
     fetchWorkspaces();
@@ -174,6 +185,10 @@ export default function WorkspacesPage() {
                 ws={ws}
                 isForeign={isSuperadmin && !ws.is_member}
                 onClick={() => router.push(`/workspaces/${ws.slug}`)}
+                onShare={(e) => {
+                  e.stopPropagation();
+                  setShareTarget(ws);
+                }}
                 onDelete={(e) => {
                   e.stopPropagation();
                   setDeleteTarget(ws);
@@ -183,6 +198,12 @@ export default function WorkspacesPage() {
           </div>
         )}
       </div>
+
+      <ShareWorkspaceDialog
+        workspace={shareTarget}
+        open={!!shareTarget}
+        onOpenChange={(open) => !open && setShareTarget(null)}
+      />
 
       <Dialog
         open={!!deleteTarget}
