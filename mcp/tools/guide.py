@@ -115,9 +115,12 @@ When updating a page, update `date` if the revision is substantial. Always prese
 - Quadrant charts for comparisons, trade-off analyses
 - Relationship diagrams for people, organizations, components
 
+**Always lay diagrams out VERTICALLY** (`graph TD` / `flowchart TB`) and keep them narrow —
+never `LR` or `RL`, which run off the page when printed (see "Printable Format" below).
+
 ````
 ```mermaid
-graph LR
+graph TD
     A[Input] --> B[Process] --> C[Output]
 ```
 ````
@@ -125,10 +128,30 @@ graph LR
 **Tables** — use for ANY structured comparison:
 - Feature matrices, pros/cons, timelines, metrics
 - If you're listing 3+ items with attributes, it should be a table
+- Keep them narrow: few columns and concise cells. If a table would be wide, split it
+  or turn it into a list so it fits the page width.
 
 **SVG assets** — for custom visuals Mermaid can't express:
 - Create: `write(command="create", path="/wiki/", title="diagram.svg", content="<svg>...</svg>", tags=["diagram"])`
 - Embed in wiki pages: `![Description](diagram.svg)`
+
+### Printable Format (A4/PDF) — REQUIRED
+
+Wiki pages are exported and printed on A4/PDF. Everything you write must fit the width of
+a sheet of paper. When composing a page:
+
+1. **Mermaid diagrams vertical and narrow** — `flowchart TB` or `graph TD`, never `LR`/`RL`.
+2. **Narrow tables** — few columns, concise cells. If a table gets wide, split it or turn
+   it into a list.
+3. **Professional document prose** — clear writing and hierarchical headings; no
+   conversational language ("here you go", "as we saw", direct address to the reader).
+4. **No wide lines or code blocks** that get cut off when printed. Prefer prose, lists or a
+   short snippet over a long, wide block.
+
+**Exception — never reformat content you were asked to reproduce.** When copying, moving,
+renaming or restoring an existing page, reproduce the content **byte for byte**: do not
+summarise, rewrite or "improve" it to fit this format. These rules apply to content you are
+composing, never to content you are transcribing.
 
 ### Citations — REQUIRED
 

@@ -394,6 +394,12 @@ def register(mcp: FastMCP, get_user_id, fs_factory) -> None:
             '- `write(command="create", path="/wiki/", title="architecture-diagram.svg", content="<svg>...</svg>", tags=["diagram"])`\n'
             '- `write(command="create", path="/wiki/", title="data-table.csv", content="col1,col2\\nval1,val2", tags=["data"])`\n'
             "SVGs and other assets can be embedded in wiki pages via `![Architecture](architecture-diagram.svg)`\n\n"
+            "PRINTABLE FORMAT (A4/PDF) — pages are printed, so everything must fit a page width:\n"
+            "1) Mermaid diagrams VERTICAL and narrow (`flowchart TB` / `graph TD`, never LR/RL).\n"
+            "2) Narrow tables: few columns, concise cells; split or listify wide tables.\n"
+            "3) Professional document prose: clear writing, hierarchical headings, no conversational language.\n"
+            "4) No wide lines or code blocks that get cut off when printed.\n"
+            "Exception: when copying, moving or restoring existing content, reproduce it BYTE FOR BYTE — never summarise or reformat it.\n\n"
             "Commands:\n"
             "- create: create a new page (title and tags are REQUIRED). Rejects if page already exists — use overwrite=true to replace.\n"
             "- str_replace: replace exact text in an existing page (read first). For large or "
