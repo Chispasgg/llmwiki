@@ -13,16 +13,37 @@ class VaultFS(ABC):
     async def list_knowledge_bases(self) -> list[dict]: ...
 
     @abstractmethod
-    async def get_document(self, kb_id: str, filename: str, dir_path: str) -> dict | None: ...
+    async def get_document(
+        self, kb_id: str, filename: str, dir_path: str
+    ) -> dict | None: ...
 
     @abstractmethod
     async def find_document_by_name(self, kb_id: str, name: str) -> dict | None: ...
 
     @abstractmethod
-    async def create_document(self, kb_id: str, filename: str, title: str, dir_path: str, file_type: str, content: str, tags: list[str], date: str | None = None, metadata: dict | None = None) -> dict: ...
+    async def create_document(
+        self,
+        kb_id: str,
+        filename: str,
+        title: str,
+        dir_path: str,
+        file_type: str,
+        content: str,
+        tags: list[str],
+        date: str | None = None,
+        metadata: dict | None = None,
+    ) -> dict: ...
 
     @abstractmethod
-    async def update_document(self, doc_id: str, content: str, tags: list[str] | None = None, title: str | None = None, date: str | None = None, metadata: dict | None = None) -> dict | None: ...
+    async def update_document(
+        self,
+        doc_id: str,
+        content: str,
+        tags: list[str] | None = None,
+        title: str | None = None,
+        date: str | None = None,
+        metadata: dict | None = None,
+    ) -> dict | None: ...
 
     @abstractmethod
     async def archive_documents(self, doc_ids: list[str]) -> int: ...
@@ -40,7 +61,14 @@ class VaultFS(ABC):
     async def get_all_pages(self, doc_id: str) -> list[dict]: ...
 
     @abstractmethod
-    async def search_chunks(self, kb_id: str, query: str, limit: int, path_filter: str | None = None, tags: list[str] | None = None) -> list[dict]: ...
+    async def search_chunks(
+        self,
+        kb_id: str,
+        query: str,
+        limit: int,
+        path_filter: str | None = None,
+        tags: list[str] | None = None,
+    ) -> list[dict]: ...
 
     @abstractmethod
     async def load_source_bytes(self, doc: dict) -> bytes | None: ...
@@ -58,7 +86,14 @@ class VaultFS(ABC):
     async def delete_references(self, source_doc_id: str) -> None: ...
 
     @abstractmethod
-    async def upsert_reference(self, source_id: str, target_id: str, kb_id: str, ref_type: str, page: int | None) -> None: ...
+    async def upsert_reference(
+        self,
+        source_id: str,
+        target_id: str,
+        kb_id: str,
+        ref_type: str,
+        page: int | None,
+    ) -> None: ...
 
     @abstractmethod
     async def propagate_staleness(self, doc_id: str) -> None: ...
@@ -74,3 +109,19 @@ class VaultFS(ABC):
 
     @abstractmethod
     async def find_stale_pages(self, kb_id: str) -> list[dict]: ...
+
+    @abstractmethod
+    async def apply_str_replace(
+        self,
+        doc_id: str,
+        old_text: str,
+        new_text: str,
+        tags: list[str] | None = None,
+    ) -> dict:
+        """Atomically re-match old_text against the CURRENT content and replace it.
+
+        Returns {"ok": True, ...} on success or {"ok": False, "reason": ...} on
+        not_found / conflict, without writing anything on failure. Derives date/metadata
+        from the resulting content's frontmatter.
+        """
+        ...

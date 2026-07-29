@@ -13,6 +13,9 @@ from db import (
     service_execute,
     get_pool,
 )
+from frontmatter import extract_metadata, parse_frontmatter
+from textmatch import validate_single_match
+
 from .base import VaultFS
 
 logger = logging.getLogger(__name__)
@@ -188,7 +191,7 @@ class PostgresVaultFS(VaultFS):
         async with pool.acquire() as conn:
             async with conn.transaction():
                 current = await conn.fetchrow(
-                    "SELECT content, version, path, knowledge_base_id FROM documents WHERE id = $1",
+                    "SELECT content, version, path, knowledge_base_id FROM documents WHERE id = $1 FOR UPDATE",
                     doc_id,
                 )
                 if not current:
@@ -271,6 +274,115 @@ class PostgresVaultFS(VaultFS):
             except Exception:
                 logger.warning("log_usage_event failed (update)", exc_info=True)
         return result
+
+    async def apply_str_replace(
+        self,
+        doc_id: str,
+        old_text: str,
+        new_text: str,
+        tags: list[str] | None = None,
+    ) -> dict:
+        """Atomic read-modify-write: lock the row, re-match old_text against the
+        LOCKED content, apply, snapshot history and update — all in one transaction."""
+        import json as _json
+
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                current = await conn.fetchrow(
+                    "SELECT content, version, path, knowledge_base_id "
+                    "FROM documents WHERE id = $1 FOR UPDATE",
+                    doc_id,
+                )
+                if not current:
+                    return {"ok": False, "reason": "not_found"}
+
+                content = current["content"] or ""
+                match_error = validate_single_match(content, old_text)
+                if match_error:
+                    return {"ok": False, "reason": "conflict", "message": match_error}
+
+                replace_start = content.index(old_text)
+                new_content = content.replace(old_text, new_text, 1)
+                is_wiki = (current["path"] or "").startswith("/wiki/")
+                fm_date, fm_metadata = extract_metadata(parse_frontmatter(new_content))
+
+                if (
+                    is_wiki
+                    and content.strip()
+                    and content.strip() != new_content.strip()
+                ):
+                    await conn.execute(
+                        "INSERT INTO document_history (document_id, user_id, content, version) "
+                        "VALUES ($1, $2, $3, $4)",
+                        doc_id,
+                        self.user_id,
+                        content,
+                        current["version"],
+                    )
+
+                sets = [
+                    "content = $1",
+                    "version = version + 1",
+                    "updated_at = now()",
+                    "stale_since = NULL",
+                ]
+                args: list = [new_content, doc_id]
+                idx = 3
+                if tags is not None:
+                    sets.append(f"tags = ${idx}")
+                    args.append(tags)
+                    idx += 1
+                if fm_date is not None:
+                    sets.append(f"date = ${idx}")
+                    args.append(fm_date)
+                    idx += 1
+                if fm_metadata is not None:
+                    sets.append(f"metadata = ${idx}::jsonb")
+                    args.append(_json.dumps(fm_metadata))
+                    idx += 1
+                await conn.execute(
+                    f"UPDATE documents SET {', '.join(sets)} WHERE id = $2", *args
+                )
+
+        # Outside the lock: derived data and notifications (best-effort).
+        kb_id = str(current["knowledge_base_id"])
+        if new_content.strip():
+            try:
+                await self._store_chunks(doc_id, kb_id, new_content)
+            except Exception:
+                logger.warning("_store_chunks failed (str_replace)", exc_info=True)
+        if is_wiki and content.strip() != new_content.strip():
+            try:
+                await pool.execute(
+                    "SELECT notify_wiki_activity($1::uuid, $2::uuid)",
+                    kb_id,
+                    self.user_id,
+                )
+            except Exception:
+                logger.warning(
+                    "notify_wiki_activity failed (str_replace)", exc_info=True
+                )
+            try:
+                await pool.execute(
+                    "SELECT log_usage_event($1::uuid, 'wiki.page.write', 'wiki_page', $2, $3::uuid, $4::jsonb)",
+                    self.user_id,
+                    str(doc_id),
+                    kb_id,
+                    _json.dumps({"path": current["path"]}),
+                )
+            except Exception:
+                logger.warning("log_usage_event failed (str_replace)", exc_info=True)
+
+        return {
+            "ok": True,
+            "new_content": new_content,
+            "replace_start": replace_start,
+            "old_len": len(content),
+            "new_len": len(new_content),
+            "kb_id": kb_id,
+            "path": current["path"],
+        }
 
     async def archive_documents(self, doc_ids: list[str]) -> int:
         import uuid as _uuid

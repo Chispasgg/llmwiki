@@ -1,7 +1,6 @@
 """Write tool — create, edit, and append wiki pages and notes."""
 
 import re
-import yaml
 from datetime import date
 from typing import Literal
 
@@ -10,42 +9,16 @@ from mcp.server.fastmcp import FastMCP, Context
 from vaultfs import VaultFS
 from .helpers import deep_link, resolve_path
 from .references import update_references
+from textmatch import validate_single_match
+from frontmatter import (
+    parse_frontmatter as _parse_frontmatter,
+    extract_metadata as _extract_metadata,
+)
 
 _ASSET_EXTENSIONS = {".svg", ".csv", ".json", ".xml", ".html"}
 _FILE_EXT_RE = re.compile(r"\.(md|txt|svg|csv|json|xml|html)$", re.IGNORECASE)
-_FRONTMATTER_RE = re.compile(r"\A---[ \t]*\n(.+?\n)---[ \t]*\n", re.DOTALL)
 _CONTEXT_LINES = 5
 _SHRINK_WARN_CHARS = 200  # avisar si un str_replace elimina >= estos chars netos
-
-
-def _parse_frontmatter(content: str) -> dict:
-    """Extract YAML frontmatter metadata from content. Returns empty dict if none."""
-    m = _FRONTMATTER_RE.match(content)
-    if not m:
-        return {}
-    try:
-        meta = yaml.safe_load(m.group(1))
-        return meta if isinstance(meta, dict) else {}
-    except yaml.YAMLError:
-        return {}
-
-
-def _extract_metadata(meta: dict) -> tuple[str | None, dict]:
-    """Extract date and metadata dict from parsed frontmatter.
-
-    Returns (date_str, metadata_dict). Always returns a dict (possibly empty)
-    so that stale metadata is explicitly cleared when frontmatter changes.
-    """
-    date_str = None
-    if "date" in meta:
-        d = meta["date"]
-        date_str = d.isoformat() if hasattr(d, "isoformat") else str(d)
-
-    metadata: dict = {}
-    if isinstance(meta.get("description"), str) and meta["description"].strip():
-        metadata["description"] = meta["description"].strip()
-
-    return date_str, metadata
 
 
 class WriteHandler:
@@ -136,7 +109,7 @@ class WriteHandler:
         tags: list[str] | None,
         allow_delete: bool = False,
     ) -> str:
-        """Replace exact text in an existing document."""
+        """Replace exact text in an existing document (atomic, concurrency-safe)."""
         if not old_text:
             return "Error: old_text is required for str_replace."
 
@@ -145,13 +118,7 @@ class WriteHandler:
         if not doc:
             return f"Document '{path}' not found."
 
-        content = doc.get("content") or doc.get("content", "") or ""
-        error = self._validate_single_match(content, old_text)
-        if error:
-            return error
-
-        # Salvaguarda: un new_text vacío borraría el ancla sin insertar nada
-        # (así es como se pierde contenido en silencio). Falla fuerte salvo borrado explícito.
+        # Salvaguarda: un new_text vacío borraría el ancla sin insertar nada.
         if not new_text.strip() and not allow_delete:
             return (
                 "Error: `new_text` is empty — str_replace would DELETE the matched text and "
@@ -161,27 +128,29 @@ class WriteHandler:
                 'use `command="create"` with `overwrite=true` to rewrite the whole page.'
             )
 
-        replace_start = content.index(old_text)
-        new_content = content.replace(old_text, new_text, 1)
-
-        self.fs.write_to_disk(dir_path, filename, new_content)
-        meta = _parse_frontmatter(new_content)
-        fm_date, fm_metadata = _extract_metadata(meta)
-        await self.fs.update_document(
-            str(doc["id"]), new_content, tags, date=fm_date, metadata=fm_metadata
-        )
-
-        # Verificación: releer lo guardado y confirmar que coincide con lo que se escribió.
-        verify_error = await self._verify_persisted(filename, dir_path, new_content)
-        if verify_error:
-            return verify_error
-
         doc_id = str(doc["id"])
+        result = await self.fs.apply_str_replace(doc_id, old_text, new_text, tags)
+
+        if not result.get("ok"):
+            if result.get("reason") == "not_found":
+                return f"Document '{path}' not found."
+            # conflict (0 o >1 coincidencias tras un cambio concurrente)
+            return (
+                f"{result.get('message', 'Error: could not apply str_replace.')}\n\n"
+                "The page changed since you read it (another writer modified it). "
+                "NOTHING was written and your replacement was not lost — re-read the page "
+                'with `read` and re-apply your `str_replace`, or use `command="create"` '
+                "with `overwrite=true` to rewrite the whole page."
+            )
+
+        new_content = result["new_content"]
         await self._sync_references(doc_id, new_content, dir_path)
 
-        snippet = self._extract_context(new_content, replace_start, len(new_text))
+        snippet = self._extract_context(
+            new_content, result["replace_start"], len(new_text)
+        )
         impact = await self._get_wiki_impact(doc_id, dir_path)
-        warning = self._shrink_warning(len(content), len(new_content))
+        warning = self._shrink_warning(result["old_len"], result["new_len"])
         return (
             self._format_edit_response(path, dir_path, filename, snippet)
             + warning
@@ -274,12 +243,7 @@ class WriteHandler:
 
     def _validate_single_match(self, content: str, old_text: str) -> str | None:
         """Return an error string if old_text doesn't match exactly once, else None."""
-        count = content.count(old_text)
-        if count == 0:
-            return "Error: no match found for old_text."
-        if count > 1:
-            return f"Error: found {count} matches for old_text. Provide more context to match exactly once."
-        return None
+        return validate_single_match(content, old_text)
 
     async def _verify_persisted(
         self, filename: str, dir_path: str, expected: str
@@ -402,9 +366,11 @@ def register(mcp: FastMCP, get_user_id, fs_factory) -> None:
             "Exception: when copying, moving or restoring existing content, reproduce it BYTE FOR BYTE — never summarise or reformat it.\n\n"
             "Commands:\n"
             "- create: create a new page (title and tags are REQUIRED). Rejects if page already exists — use overwrite=true to replace.\n"
-            "- str_replace: replace exact text in an existing page (read first). For large or "
-            "structural rewrites prefer create+overwrite (one reliable operation). Empty new_text "
-            "is rejected unless allow_delete=true; big content shrink is flagged.\n"
+            "- str_replace: replace exact text in an existing page (read first). PREFERRED for edits: "
+            "it is applied atomically against the current page, so concurrent edits by other agents to "
+            "OTHER parts are preserved; if another writer changed the SAME text first, it fails loudly "
+            "(nothing is written) and you re-read and retry. For large or structural rewrites prefer "
+            "create+overwrite. Empty new_text is rejected unless allow_delete=true; big content shrink is flagged.\n"
             "- append: add content to the end of an existing page"
         ),
     )

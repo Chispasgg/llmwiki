@@ -8,6 +8,9 @@ from pathlib import Path
 
 import aiosqlite
 
+from frontmatter import extract_metadata, parse_frontmatter
+from textmatch import validate_single_match
+
 from .base import VaultFS
 
 logger = logging.getLogger(__name__)
@@ -501,3 +504,42 @@ class SqliteVaultFS(VaultFS):
         )
         await db.commit()
         return ws_id
+
+    async def apply_str_replace(
+        self,
+        doc_id: str,
+        old_text: str,
+        new_text: str,
+        tags: list[str] | None = None,
+    ) -> dict:
+        db = self._db_or_raise()
+        cursor = await db.execute(
+            "SELECT content, path, filename FROM documents WHERE id = ?", (doc_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return {"ok": False, "reason": "not_found"}
+        cols = [d[0] for d in cursor.description]
+        current = dict(zip(cols, row))
+        content = current.get("content") or ""
+        match_error = validate_single_match(content, old_text)
+        if match_error:
+            return {"ok": False, "reason": "conflict", "message": match_error}
+        replace_start = content.index(old_text)
+        new_content = content.replace(old_text, new_text, 1)
+        fm_date, fm_metadata = extract_metadata(parse_frontmatter(new_content))
+        self.write_to_disk(
+            current.get("path") or "", current.get("filename") or "", new_content
+        )
+        await self.update_document(
+            doc_id, new_content, tags, date=fm_date, metadata=fm_metadata
+        )
+        return {
+            "ok": True,
+            "new_content": new_content,
+            "replace_start": replace_start,
+            "old_len": len(content),
+            "new_len": len(new_content),
+            "kb_id": None,
+            "path": current.get("path"),
+        }
