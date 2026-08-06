@@ -500,6 +500,8 @@ interface WikiContentProps {
   breadcrumbs?: BreadcrumbItem[];
   searchTerm?: string;
   docId?: string | null;
+  authorName?: string | null;
+  lastEditorName?: string | null;
   contentRef?: React.RefObject<HTMLElement | null>;
 }
 
@@ -513,6 +515,8 @@ export function WikiContent({
   breadcrumbs,
   searchTerm,
   docId,
+  authorName,
+  lastEditorName,
   contentRef,
 }: WikiContentProps) {
   const processedContent = React.useMemo(
@@ -1045,6 +1049,14 @@ export function WikiContent({
                   {docId && <HistoryPanel docId={docId} />}
                 </div>
               </div>
+            )}
+            {authorName && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Creada por {authorName}
+                {lastEditorName && lastEditorName !== authorName
+                  ? ` · última edición por ${lastEditorName}`
+                  : ""}
+              </p>
             )}
             <div
               className="wiki-content text-[15px] leading-relaxed"

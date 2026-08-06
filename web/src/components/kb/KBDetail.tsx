@@ -398,6 +398,8 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   // ─── Wiki content loading ────────────────────────────────────
   const [pageContent, setPageContent] = React.useState('')
   const [pageTitle, setPageTitle] = React.useState('')
+  const [pageAuthor, setPageAuthor] = React.useState<string | null>(null)
+  const [pageLastEditor, setPageLastEditor] = React.useState<string | null>(null)
   const [pageLoading, setPageLoading] = React.useState(false)
   const [pageLoadedPath, setPageLoadedPath] = React.useState<string | null>(null)
 
@@ -426,6 +428,8 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
     if (!activeWikiDoc) {
       setPageContent(`Page not found: ${wikiActivePath}`)
       setPageTitle('')
+      setPageAuthor(null)
+      setPageLastEditor(null)
       setPageLoadedPath(wikiActivePath)
       return
     }
@@ -434,11 +438,17 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
     if (!isLiveUpdate) {
       setPageLoading(true)
       setPageLoadedPath(null)
+      setPageAuthor(null)
+      setPageLastEditor(null)
     }
     const controller = new AbortController()
-    apiFetch<{ content: string }>(`/v1/documents/${activeWikiDoc.id}/content`, { signal: controller.signal })
+    apiFetch<{ content: string; author_name?: string | null; last_editor_name?: string | null }>(`/v1/documents/${activeWikiDoc.id}/content`, { signal: controller.signal })
       .then((res) => {
-        if (!controller.signal.aborted) setPageContent(res.content || '')
+        if (!controller.signal.aborted) {
+          setPageContent(res.content || '')
+          setPageAuthor(res.author_name ?? null)
+          setPageLastEditor(res.last_editor_name ?? null)
+        }
       })
       .catch((err) => {
         if (!controller.signal.aborted) setPageContent('Failed to load page content.')
@@ -1093,6 +1103,8 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
                       breadcrumbs={wikiBreadcrumbs}
                       searchTerm={wikiSearchTerm}
                       docId={activeWikiDocId}
+                      authorName={pageAuthor}
+                      lastEditorName={pageLastEditor}
                       contentRef={wikiContentRef}
                     />
                   </div>

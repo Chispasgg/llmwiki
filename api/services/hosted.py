@@ -188,6 +188,12 @@ async def _resolve_name_slug(
     return cand_name, cand_slug
 
 
+def _fmt_author(raw: str | None, via: str | None) -> str | None:
+    if not raw:
+        return None
+    return f"MCP-{raw}" if via == "mcp" else raw
+
+
 class HostedKBService(KBService):
     def __init__(self, pool, user_id: str, is_superadmin: bool = False):
         self.pool = pool
@@ -437,21 +443,30 @@ class HostedDocumentService(DocumentService):
         return dict(row) if row else None
 
     async def get_content(self, doc_id: str) -> dict | None:
-        if self.is_superadmin:
-            row = await self.pool.fetchrow(
-                "SELECT id, content, version FROM documents d WHERE d.id = $1",
-                doc_id,
-            )
-            return dict(row) if row else None
-        row = await self.pool.fetchrow(
-            "SELECT id, content, version FROM documents d "
-            "WHERE d.id = $1 "
-            "AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
-            "WHERE kb.id = d.knowledge_base_id AND (kb.user_id = $2 OR ks.shared_with = $2::uuid))",
-            doc_id,
-            self.user_id,
+        cols = (
+            "SELECT d.id, d.content, d.version, d.created_via, d.last_edited_via, "
+            "(SELECT COALESCE(NULLIF(u.display_name, ''), u.email) FROM users u WHERE u.id = d.user_id) AS author_raw, "
+            "(SELECT COALESCE(NULLIF(u.display_name, ''), u.email) FROM users u WHERE u.id = d.last_edited_by) AS last_editor_raw "
+            "FROM documents d WHERE d.id = $1"
         )
-        return dict(row) if row else None
+        if self.is_superadmin:
+            row = await self.pool.fetchrow(cols, doc_id)
+        else:
+            row = await self.pool.fetchrow(
+                cols
+                + " AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
+                "WHERE kb.id = d.knowledge_base_id AND (kb.user_id = $2 OR ks.shared_with = $2::uuid))",
+                doc_id,
+                self.user_id,
+            )
+        if not row:
+            return None
+        d = dict(row)
+        d["author_name"] = _fmt_author(d.pop("author_raw"), d.pop("created_via"))
+        d["last_editor_name"] = _fmt_author(
+            d.pop("last_editor_raw"), d.pop("last_edited_via")
+        )
+        return d
 
     async def get_url(self, doc_id: str) -> dict | None:
         if self.is_superadmin:
@@ -526,8 +541,8 @@ class HostedDocumentService(DocumentService):
             async with conn.transaction():
                 row = await conn.fetchrow(
                     f"INSERT INTO documents (knowledge_base_id, user_id, filename, path, title, "
-                    f"file_type, status, content, tags) "
-                    f"VALUES ($1, $2, $3, $4, $5, 'md', 'ready', $6, $7) "
+                    f"file_type, status, content, tags, created_via, last_edited_by, last_edited_via) "
+                    f"VALUES ($1, $2, $3, $4, $5, 'md', 'ready', $6, $7, 'web', $2, 'web') "
                     f"RETURNING {_DOC_COLUMNS}",
                     kb_id,
                     self.user_id,
@@ -582,7 +597,8 @@ class HostedDocumentService(DocumentService):
             )
 
         row = await self.pool.fetchrow(
-            "UPDATE documents SET content = $1, version = version + 1, updated_at = now() "
+            "UPDATE documents SET content = $1, version = version + 1, updated_at = now(), "
+            "last_edited_by = $3, last_edited_via = 'web' "
             "WHERE id = $2 AND user_id = $3 RETURNING id, content, version",
             content,
             doc_id,

@@ -149,8 +149,10 @@ class PostgresVaultFS(VaultFS):
             async with conn.transaction():
                 row = await conn.fetchrow(
                     "INSERT INTO documents (knowledge_base_id, user_id, filename, title, path, "
-                    "file_type, status, content, tags, date, metadata, version) "
-                    "VALUES ($1, $2, $3, $4, $5, $6, 'ready', $7, $8, $9, $10::jsonb, 0) RETURNING id, filename, path",
+                    "file_type, status, content, tags, date, metadata, version, "
+                    "created_via, last_edited_by, last_edited_via) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, 'ready', $7, $8, $9, $10::jsonb, 0, "
+                    "'mcp', $2, 'mcp') RETURNING id, filename, path",
                     kb_id,
                     self.user_id,
                     filename,
@@ -238,6 +240,10 @@ class PostgresVaultFS(VaultFS):
                     sets.append(f"metadata = ${idx}::jsonb")
                     args.append(_json.dumps(metadata))
                     idx += 1
+                sets.append(f"last_edited_by = ${idx}")
+                args.append(self.user_id)
+                idx += 1
+                sets.append("last_edited_via = 'mcp'")
 
                 sql = f"UPDATE documents SET {', '.join(sets)} WHERE id = $2"
                 result = None
@@ -341,6 +347,10 @@ class PostgresVaultFS(VaultFS):
                     sets.append(f"metadata = ${idx}::jsonb")
                     args.append(_json.dumps(fm_metadata))
                     idx += 1
+                sets.append(f"last_edited_by = ${idx}")
+                args.append(self.user_id)
+                idx += 1
+                sets.append("last_edited_via = 'mcp'")
                 await conn.execute(
                     f"UPDATE documents SET {', '.join(sets)} WHERE id = $2", *args
                 )
