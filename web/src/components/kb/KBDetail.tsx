@@ -191,6 +191,15 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   const workspaceSlug = useKBStore((s) => s.knowledgeBases.find((kb) => kb.id === kbId)?.workspace_slug ?? null)
   const workspaceName = useKBStore((s) => s.knowledgeBases.find((kb) => kb.id === kbId)?.workspace_name ?? null)
   const ownerName = useKBStore((s) => s.knowledgeBases.find((kb) => kb.id === kbId)?.owner_name ?? null)
+  const [sharedNames, setSharedNames] = React.useState<string[]>([])
+  React.useEffect(() => {
+    setSharedNames([])
+    let cancelled = false
+    apiFetch<string[]>(`/v1/knowledge-bases/${kbId}/shared-names`)
+      .then((names) => { if (!cancelled) setSharedNames(names) })
+      .catch(() => { if (!cancelled) setSharedNames([]) })
+    return () => { cancelled = true }
+  }, [kbId])
   const markNotificationRead = useNotificationsStore((s) => s.markRead)
   React.useEffect(() => { markNotificationRead(kbId) }, [kbId, markNotificationRead])
   const { documents, setDocuments, loading } = useKBDocuments(kbId)
@@ -956,6 +965,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
             workspaceSlug={workspaceSlug}
             workspaceName={workspaceName}
             ownerName={ownerName}
+            sharedNames={sharedNames}
             commentsViewActive={commentsViewActive}
             onCommentsHistory={handleCommentsView}
             onCommentsPanelToggle={toggleCommentsPanel}

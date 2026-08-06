@@ -11,7 +11,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from deps import get_user_id
+from deps import _is_superadmin, get_user_id
 
 router = APIRouter(prefix="/v1/knowledge-bases", tags=["shares"])
 
@@ -41,6 +41,40 @@ async def _require_kb_owner(kb_id: uuid.UUID, user_id: str, pool) -> None:
         raise HTTPException(
             status_code=403, detail="Not the owner of this knowledge base"
         )
+
+
+async def _can_access_kb(pool, kb_id, user_id) -> bool:
+    """True si el usuario puede abrir la wiki: dueño, compartida con él, o superadmin."""
+    if await _is_superadmin(pool, user_id):
+        return True
+    return bool(
+        await pool.fetchval(
+            "SELECT 1 FROM knowledge_bases kb "
+            "LEFT JOIN kb_shares ks ON ks.kb_id = kb.id AND ks.shared_with = $2::uuid "
+            "WHERE kb.id = $1 AND (kb.user_id = $2 OR ks.shared_with IS NOT NULL) LIMIT 1",
+            kb_id,
+            user_id,
+        )
+    )
+
+
+@router.get("/{kb_id}/shared-names", response_model=list[str])
+async def list_shared_names(
+    kb_id: uuid.UUID,
+    user_id: Annotated[str, Depends(get_user_id)],
+    request: Request,
+):
+    """Nombres de las personas con quienes está compartida la wiki (solo nombres)."""
+    pool = request.app.state.pool
+    if not await _can_access_kb(pool, kb_id, user_id):
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+    rows = await pool.fetch(
+        "SELECT COALESCE(NULLIF(u.display_name, ''), u.email) AS name "
+        "FROM kb_shares s JOIN users u ON u.id = s.shared_with "
+        "WHERE s.kb_id = $1 ORDER BY name ASC",
+        kb_id,
+    )
+    return [r["name"] for r in rows]
 
 
 @router.get("/{kb_id}/shares", response_model=list[ShareOut])

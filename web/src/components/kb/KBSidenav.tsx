@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronLeft,
+  ChevronDown,
   ChevronRight,
   FileText,
   NotepadText,
@@ -165,6 +166,7 @@ interface KBSidenavProps {
   workspaceSlug?: string | null;
   workspaceName?: string | null;
   ownerName?: string | null;
+  sharedNames?: string[];
   commentsViewActive: boolean;
   onCommentsHistory: () => void;
   onCommentsPanelToggle: () => void;
@@ -192,6 +194,7 @@ export function KBSidenav({
   workspaceSlug,
   workspaceName,
   ownerName,
+  sharedNames,
   commentsViewActive,
   onCommentsHistory,
   onCommentsPanelToggle,
@@ -201,6 +204,7 @@ export function KBSidenav({
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [commandQuery, setCommandQuery] = React.useState("");
   const [shareOpen, setShareOpen] = React.useState(false);
+  const [sharedOpen, setSharedOpen] = React.useState(false);
   const [exportDialogOpen, setExportDialogOpen] = React.useState(false);
   const [exportLoading, setExportLoading] = React.useState(false);
   const [actionsOpen, setActionsOpen] = React.useState(false);
@@ -391,12 +395,40 @@ export function KBSidenav({
         )}
         <WikiSelector kbId={kbId} kbName={kbName} />
         {ownerName && (
-          <div
-            className="flex items-center gap-1 px-2 mt-0.5 max-w-full text-xs text-muted-foreground"
-            title={`Owner: ${ownerName}`}
-          >
-            <User className="size-3 shrink-0" />
-            <span className="truncate">{ownerName}</span>
+          <div className="px-2 mt-0.5 max-w-full text-xs text-muted-foreground">
+            {sharedNames && sharedNames.length > 0 ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSharedOpen((v) => !v)}
+                  className="flex items-center gap-1 max-w-full hover:text-foreground transition-colors cursor-pointer"
+                  title={`Owner: ${ownerName}`}
+                >
+                  <User className="size-3 shrink-0" />
+                  <span className="truncate">{ownerName}</span>
+                  <ChevronDown
+                    className={`size-3 shrink-0 transition-transform ${sharedOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {sharedOpen && (
+                  <ul className="mt-1 pl-4 space-y-0.5">
+                    {sharedNames.map((name) => (
+                      <li key={name} className="truncate">
+                        {name}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            ) : (
+              <div
+                className="flex items-center gap-1"
+                title={`Owner: ${ownerName}`}
+              >
+                <User className="size-3 shrink-0" />
+                <span className="truncate">{ownerName}</span>
+              </div>
+            )}
           </div>
         )}
       </div>
