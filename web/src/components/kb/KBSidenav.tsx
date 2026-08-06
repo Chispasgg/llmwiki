@@ -205,6 +205,8 @@ export function KBSidenav({
   const [commandQuery, setCommandQuery] = React.useState("");
   const [shareOpen, setShareOpen] = React.useState(false);
   const [sharedOpen, setSharedOpen] = React.useState(false);
+  // Al cambiar de wiki, colapsar el desplegable de compartidos (no arrastrar el estado abierto).
+  React.useEffect(() => setSharedOpen(false), [kbId]);
   const [exportDialogOpen, setExportDialogOpen] = React.useState(false);
   const [exportLoading, setExportLoading] = React.useState(false);
   const [actionsOpen, setActionsOpen] = React.useState(false);
