@@ -60,7 +60,7 @@ async def _reconcile_doc(
     Nunca borra; nunca toca documents. Devuelve (created, resolved)."""
     rows = await pool.fetch(
         "SELECT id::text, target_text FROM wiki_comments "
-        "WHERE document_id = $1 AND author_id IS NULL AND status = 'open' "
+        "WHERE document_id = $1::uuid AND author_id IS NULL AND status = 'open' "
         "AND target_text LIKE 'maint:%'",
         doc_id,
     )
@@ -74,7 +74,7 @@ async def _reconcile_doc(
             async with conn.transaction():
                 row = await conn.fetchrow(
                     "INSERT INTO wiki_comments (document_id, kb_id, author_id, body, target_text) "
-                    "VALUES ($1, $2::uuid, NULL, $3, $4) RETURNING id::text",
+                    "VALUES ($1::uuid, $2::uuid, NULL, $3, $4) RETURNING id::text",
                     doc_id,
                     kb_id,
                     body,
