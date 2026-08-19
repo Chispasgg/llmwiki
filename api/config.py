@@ -73,5 +73,7 @@ class Settings(BaseSettings):
     LATEX_TEMPLATE_PATH: str = "config/wiki-export.tex"
     LATEX_TEMPLATES_DIR: str = "/app/config/tex_templates"
 
+    MAINTENANCE_INTERVAL_MINUTES: int = 360  # linter offline de la wiki; 0 desactiva
+
 
 settings = Settings()

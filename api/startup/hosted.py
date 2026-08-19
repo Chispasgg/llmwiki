@@ -62,6 +62,22 @@ async def hosted_lifespan(app: FastAPI):
 
     digest_task = asyncio.create_task(_digest_loop())
 
+    maintenance_task = None
+    if settings.MAINTENANCE_INTERVAL_MINUTES > 0:
+        from services.maintenance import run_maintenance_once
+
+        async def _maintenance_loop():
+            await asyncio.sleep(5 * 60)  # gracia inicial
+            while True:
+                try:
+                    stats = await run_maintenance_once(pool)
+                    logger.info("maintenance cycle: %s", stats)
+                except Exception:
+                    logger.warning("maintenance cycle failed", exc_info=True)
+                await asyncio.sleep(settings.MAINTENANCE_INTERVAL_MINUTES * 60)
+
+        maintenance_task = asyncio.create_task(_maintenance_loop())
+
     from services.latex_templates import sync_latex_templates
 
     await sync_latex_templates(pool, settings.LATEX_TEMPLATES_DIR)
@@ -86,4 +102,10 @@ async def hosted_lifespan(app: FastAPI):
         await digest_task
     except asyncio.CancelledError:
         pass
+    if maintenance_task is not None:
+        maintenance_task.cancel()
+        try:
+            await maintenance_task
+        except asyncio.CancelledError:
+            pass
     await pool.close()
