@@ -29,6 +29,7 @@ Two structural pages ALWAYS exist — `overview.md` and `log.md` — plus the co
 ### Overview (`/wiki/overview.md`) — THE HUB PAGE
 Always exists. This is the front page of the wiki. It must contain:
 - A summary of what this wiki covers and its scope
+- **An index of the wiki's SECTIONS** — one line + link per domain section, NOT a flat list of every page. As the wiki grows, the overview lists sections; each section's own page lists its pages.
 - **Source count** and page count (update on every ingest)
 - **Key Findings** — the most important insights across all sources
 - **Recent Updates** — last 5-10 actions (ingests, new pages, revisions)
@@ -74,6 +75,11 @@ Wiki pages use a parent/child hierarchy via paths:
 - `/wiki/deployment/ci-pipeline.md` — child page
 
 Parent pages summarize; child pages go deep. The UI renders this as an expandable tree.
+
+**Keep index pages shallow and navigable** — a flat index that lists every page stops working past ~100-200 pages:
+- An index page (`overview.md` or any section parent) lists its children as one line + link each — a summary with pointers, never the children's full content.
+- No index page should have more than ~20 direct entries. If a section grows past that, split it into sub-sections (`/wiki/section/subsection.md` + children).
+- Every page should be reachable from `overview.md` in about 3 hops or fewer.
 
 ## Writing Standards
 

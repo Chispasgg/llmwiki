@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     TURBOPUFFER_API_KEY: str = ""
     EMBEDDING_MODEL: str = "voyage-4-lite"
     EMBEDDING_DIM: int = 512
+    # Presupuesto de contexto para el batch-read (aprox. en tokens; ~4 chars/token).
+    # 30000 tokens ≈ 120_000 chars = comportamiento previo.
+    READ_MAX_TOKENS: int = 30000
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "us-east-1"
