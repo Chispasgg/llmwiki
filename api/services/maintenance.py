@@ -92,7 +92,7 @@ async def _reconcile_doc(
             async with conn.transaction():
                 await conn.execute(
                     "UPDATE wiki_comments SET status = 'resolved', resolved_at = now(), "
-                    "updated_at = now() WHERE id = $1",
+                    "updated_at = now() WHERE id = $1::uuid",
                     cid,
                 )
                 await conn.execute(
