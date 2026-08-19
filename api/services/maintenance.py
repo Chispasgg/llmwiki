@@ -51,3 +51,120 @@ def uncited_source_keys(
         body = f"{MAINT_PREFIX}la fuente «{src['filename']}» no está citada por ninguna página de la wiki."
         out.setdefault(overview_id, {})[key] = body
     return out
+
+
+async def _reconcile_doc(
+    pool, doc_id: str, kb_id: str, current: dict[str, str]
+) -> tuple[int, int]:
+    """Crea comentarios para claves nuevas y resuelve los maint abiertos que ya no aplican.
+    Nunca borra; nunca toca documents. Devuelve (created, resolved)."""
+    rows = await pool.fetch(
+        "SELECT id::text, target_text FROM wiki_comments "
+        "WHERE document_id = $1 AND author_id IS NULL AND status = 'open' "
+        "AND target_text LIKE 'maint:%'",
+        doc_id,
+    )
+    existing = {r["target_text"]: r["id"] for r in rows}
+    created = resolved = 0
+
+    for key, body in current.items():
+        if key in existing:
+            continue
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    "INSERT INTO wiki_comments (document_id, kb_id, author_id, body, target_text) "
+                    "VALUES ($1, $2::uuid, NULL, $3, $4) RETURNING id::text",
+                    doc_id,
+                    kb_id,
+                    body,
+                    key,
+                )
+                await conn.execute(
+                    "SELECT log_comment_history($1::uuid, 'created', NULL)", row["id"]
+                )
+        created += 1
+
+    for key, cid in existing.items():
+        if key in current:
+            continue
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "UPDATE wiki_comments SET status = 'resolved', resolved_at = now(), "
+                    "updated_at = now() WHERE id = $1",
+                    cid,
+                )
+                await conn.execute(
+                    "SELECT log_comment_history($1::uuid, 'resolved', NULL)", cid
+                )
+        resolved += 1
+
+    return created, resolved
+
+
+async def run_maintenance_once(pool) -> dict:
+    kbs = await pool.fetch("SELECT id::text FROM knowledge_bases")
+    total_created = total_resolved = 0
+    for kb in kbs:
+        kb_id = kb["id"]
+        docs = [
+            dict(r)
+            for r in await pool.fetch(
+                "SELECT id::text, filename, title, path, file_type, content, stale_since "
+                "FROM documents WHERE knowledge_base_id = $1 AND NOT archived",
+                kb_id,
+            )
+        ]
+        maps = build_lookup_maps(docs)
+        wiki_pages = [
+            d
+            for d in docs
+            if (d["path"] or "").startswith("/wiki/") and d.get("file_type") == "md"
+        ]
+        overview = next(
+            (
+                d["id"]
+                for d in docs
+                if d["path"] == "/wiki/" and d["filename"] == "overview.md"
+            ),
+            None,
+        )
+        uncited = [
+            dict(r)
+            for r in await pool.fetch(
+                "SELECT d.id::text, d.filename FROM documents d "
+                "WHERE d.knowledge_base_id = $1 AND d.path NOT LIKE '/wiki/%%' AND NOT d.archived "
+                "AND NOT EXISTS (SELECT 1 FROM document_references r "
+                "  WHERE r.target_document_id = d.id AND r.reference_type = 'cites')",
+                kb_id,
+            )
+        ]
+
+        issues: dict[str, dict[str, str]] = {}
+        for src in (
+            broken_link_keys(wiki_pages, maps),
+            stale_keys(wiki_pages),
+            uncited_source_keys(uncited, overview),
+        ):
+            for doc_id, keys in src.items():
+                issues.setdefault(doc_id, {}).update(keys)
+
+        # documentos a reconciliar: los que tienen issues ahora + los que tienen maint abiertos
+        with_open = await pool.fetch(
+            "SELECT DISTINCT document_id::text AS id FROM wiki_comments "
+            "WHERE kb_id = $1 AND author_id IS NULL AND status = 'open' "
+            "AND target_text LIKE 'maint:%'",
+            kb_id,
+        )
+        doc_ids = set(issues) | {r["id"] for r in with_open}
+        for doc_id in doc_ids:
+            c, rr = await _reconcile_doc(pool, doc_id, kb_id, issues.get(doc_id, {}))
+            total_created += c
+            total_resolved += rr
+
+    return {
+        "created": total_created,
+        "resolved": total_resolved,
+        "checked_kbs": len(kbs),
+    }
