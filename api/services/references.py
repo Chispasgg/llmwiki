@@ -85,6 +85,42 @@ def build_lookup_maps(
     return filename_to_doc, base_to_doc, wiki_path_to_doc
 
 
+def find_unresolved_references(
+    content: str,
+    wiki_dir: str,
+    filename_to_doc: dict[str, dict],
+    base_to_doc: dict[str, dict],
+    wiki_path_to_doc: dict[str, dict],
+) -> list[str]:
+    """Return link/citation targets that do NOT resolve to any existing document."""
+    unresolved: list[str] = []
+    seen: set[str] = set()
+
+    for match in _CITATION_RE.finditer(content):
+        filename, _page = parse_citation_filename(match.group(1))
+        fn_lower = filename.lower()
+        target = filename_to_doc.get(fn_lower)
+        if not target:
+            base = re.sub(r"\.(pdf|docx?|pptx?|xlsx?|csv|html?|md|txt)$", "", fn_lower)
+            target = base_to_doc.get(base)
+        if not target and filename not in seen:
+            seen.add(filename)
+            unresolved.append(filename)
+
+    for link_path in parse_wiki_links(content, wiki_dir):
+        lp = link_path.lower()
+        target = (
+            wiki_path_to_doc.get(lp)
+            or wiki_path_to_doc.get(lp + ".md")
+            or wiki_path_to_doc.get(link_path.split("/")[-1].lower())
+        )
+        if not target and link_path not in seen:
+            seen.add(link_path)
+            unresolved.append(link_path)
+
+    return unresolved
+
+
 def extract_references(
     content: str,
     doc_id: str,
@@ -126,6 +162,8 @@ def extract_references(
             key = (target["id"], "links_to")
             if key not in seen:
                 seen.add(key)
-                edges.append({"target_id": target["id"], "type": "links_to", "page": None})
+                edges.append(
+                    {"target_id": target["id"], "type": "links_to", "page": None}
+                )
 
     return edges
