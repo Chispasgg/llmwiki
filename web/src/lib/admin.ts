@@ -175,3 +175,23 @@ export const purgeUsageLogs = (days: 7 | 14 | 30) =>
   apiFetch<{ deleted: number }>(`/v1/superadmin/logs/purge?days=${days}`, {
     method: 'POST',
   });
+
+// ── Embeddings ──────────────────────────────────────────────────
+
+export interface EmbeddingStats {
+  total: number
+  embedded: number
+  pending: number
+  percent: number
+  model: string
+  ollama_configured: boolean
+}
+
+export const getEmbeddingStats = () =>
+  apiFetch<EmbeddingStats>('/v1/superadmin/embeddings/stats')
+
+export const clearEmbeddings = (kbId?: string) =>
+  apiFetch<{ cleared: number }>('/v1/superadmin/embeddings/clear', {
+    method: 'POST',
+    body: JSON.stringify(kbId ? { kb_id: kbId } : {}),
+  })

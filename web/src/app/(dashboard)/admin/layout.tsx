@@ -16,6 +16,7 @@ const NAV_LINKS = [
   { href: "/admin/templates", label: "Templates PDF" },
   { href: "/admin/logs", label: "Logs" },
   { href: "/admin/email", label: "Email" },
+  { href: "/admin/embeddings", label: "Embeddings" },
 ];
 
 export default function AdminLayout({
