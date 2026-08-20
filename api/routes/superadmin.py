@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from config import settings
 from deps import require_superadmin, get_user_id
 from services.log import log_action_bg
 
@@ -241,3 +242,67 @@ async def purge_logs(
         metadata={"days": days, "deleted": deleted},
     )
     return {"deleted": deleted}
+
+
+# ── Embeddings ────────────────────────────────────────────────────
+
+
+def _embed_percent(embedded: int, total: int) -> int:
+    return round(embedded / total * 100) if total else 0
+
+
+class EmbeddingStatsOut(BaseModel):
+    total: int
+    embedded: int
+    pending: int
+    percent: int
+    model: str
+    ollama_configured: bool
+
+
+class ClearEmbeddingsIn(BaseModel):
+    kb_id: str | None = None
+
+
+@router.get("/embeddings/stats", response_model=EmbeddingStatsOut)
+async def embedding_stats(
+    _sa: Annotated[str, Depends(require_superadmin)],
+    request: Request,
+):
+    pool = request.app.state.pool
+    model = settings.EMBEDDING_MODEL
+    row = await pool.fetchrow(
+        "SELECT count(*) AS total, "
+        "count(*) FILTER (WHERE embedding IS NOT NULL AND embedding_model = $1) AS embedded "
+        "FROM document_chunks",
+        model,
+    )
+    total, embedded = row["total"], row["embedded"]
+    return EmbeddingStatsOut(
+        total=total,
+        embedded=embedded,
+        pending=total - embedded,
+        percent=_embed_percent(embedded, total),
+        model=model,
+        ollama_configured=bool(settings.OLLAMA_URL),
+    )
+
+
+@router.post("/embeddings/clear")
+async def clear_embeddings(
+    _sa: Annotated[str, Depends(require_superadmin)],
+    request: Request,
+    body: ClearEmbeddingsIn | None = None,
+):
+    pool = request.app.state.pool
+    if body and body.kb_id:
+        result = await pool.execute(
+            "UPDATE document_chunks SET embedding = NULL, embedding_model = NULL "
+            "WHERE knowledge_base_id = $1::uuid",
+            body.kb_id,
+        )
+    else:
+        result = await pool.execute(
+            "UPDATE document_chunks SET embedding = NULL, embedding_model = NULL"
+        )
+    return {"cleared": int(result.split()[-1])}
