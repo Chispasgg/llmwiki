@@ -508,6 +508,9 @@ class PostgresVaultFS(VaultFS):
         base_params: list = [kb_id, query, self.user_id]
         tags_clause = ""
         if tags:
+            # El offset +2 sobre len(base_params)=3 da $5 porque en la SELECT léxica
+            # el LIMIT ocupa $4 (se añade a params DESPUÉS de base_params); tags va a $5.
+            # En léxico-only y lex_params: [kb_id, query, user_id, limit, ?tags].
             tags_clause = f" AND d.tags @> ${len(base_params) + 2}::text[]"
 
         # Cláusula EXISTS de compartición (usada en ambas SELECT).
@@ -573,9 +576,16 @@ class PostgresVaultFS(VaultFS):
             ]
 
         # SELECT semántica: sin ORDER ni LIMIT, filtrando solo chunks con embedding.
+        # IMPORTANTE: base_params incluye query en $2, que NO se referencia en la SQL semántica.
+        # Es un placeholder intencional para mantener el alineamiento $1=kb_id / $3=user_id
+        # del WHERE compartido (share_exists). NO reordenar esta lista.
         sem_params: list = [*base_params, settings.EMBEDDING_MODEL]
+        # sem_params = [$1=kb_id, $2=query(placeholder), $3=user_id, $4=EMBEDDING_MODEL]
         sem_tags_clause = ""
         if tags:
+            # El offset +1 sobre len(sem_params)=4 da $5 porque sem_params ya incluye
+            # los 4 parámetros anteriores (a diferencia de tags_clause léxico, donde el
+            # LIMIT se añade después de base_params al construir params/lex_params).
             sem_tags_clause = f" AND d.tags @> ${len(sem_params) + 1}::text[]"
             sem_params.append(tags)
         semantic_rows = await scoped_query(
