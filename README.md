@@ -183,6 +183,7 @@ Por defecto, indexación, almacenamiento y escritura de archivos ocurren en tu m
 | `read` | Lee documentos — PDFs con rangos de página, lecturas batch por glob |
 | `write` | Crea páginas wiki, edita con `str_replace`, añade al final. Assets SVG/CSV |
 | `delete` | Elimina documentos por ruta o patrón glob |
+| `comment` | Crea/edita/resuelve comentarios de revisión anclados a páginas, con historial inmutable |
 
 Todas las escrituras van a disco primero, luego actualizan el índice de búsqueda.
 
@@ -218,6 +219,15 @@ Esta versión incorpora las siguientes mejoras sobre el proyecto original:
 - **🔒 Mejoras de seguridad** — validación de entradas, gestión segura de secretos y cabeceras HTTP endurecidas.
 - **🚀 `start-mcp.sh` mejorado** — script de arranque del servidor MCP con `uv sync` automático y logging estructurado.
 - **🎛️ Lanzador interactivo** — `launch_llmwiki.sh` con configuración en `config/` para entornos multi-workspace.
+
+### Capacidades del modo hosted
+
+En modo `hosted` (PostgreSQL, multi-usuario) el sistema añade, además de lo anterior:
+
+- **🔎 Búsqueda híbrida** — combina la búsqueda léxica (PostgreSQL FTS) con búsqueda semántica por embeddings **locales** (ollama, p. ej. `bge-m3`), fusionadas con Reciprocal Rank Fusion. Se activa configurando `OLLAMA_URL`; sin ella, la búsqueda sigue siendo léxica. Los embeddings se generan en segundo plano y se reindexan al cambiar de modelo.
+- **🧹 Mantenimiento offline** — un linter periódico detecta enlaces internos rotos, páginas desactualizadas (*stale*) y fuentes sin citar, y los propone como **comentarios de revisión sin editar el contenido**.
+- **💬 Comentarios de revisión** — notas ancladas a párrafos para mejorar la wiki, con historial inmutable (herramienta MCP `comment`).
+- **🛠️ Panel de superadmin** — gestión de usuarios, wikis, comparticiones, logs de uso y estado de embeddings (con % indexado y botón de reindexado).
 
 ---
 
@@ -278,7 +288,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=tu-anon-key
 - **Un workspace = un servidor MCP.** Si trabajas con varios proyectos de investigación, cada uno tiene su propia carpeta y su propia entrada MCP. Es intencional — mantiene el contexto y el acceso a archivos acotado.
 - **Extracción de tablas en PDF es aproximada.** opendataloader extrae prosa de forma fiable pero las tablas salen como texto desordenado. Para documentos financieros o PDFs con muchos datos, Mistral OCR es significativamente mejor.
 - **LibreOffice añade fricción de configuración.** La conversión de archivos Office requiere una instalación local de LibreOffice. Si trabajas principalmente con PDFs y markdown, puedes omitirlo.
-- **Sin búsqueda vectorial en modo local.** La búsqueda de texto completo usa SQLite FTS5 (porter stemming). Funciona bien para consultas por palabras clave pero no hace búsqueda semántica/embeddings.
+- **Búsqueda semántica solo en modo hosted.** En modo local la búsqueda usa SQLite FTS5 (por palabras clave), sin embeddings. El modo hosted añade búsqueda híbrida (léxica + semántica con embeddings locales) cuando se configura `OLLAMA_URL`.
 
 ---
 
