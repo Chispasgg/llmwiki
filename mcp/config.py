@@ -14,8 +14,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str = ""
     VOYAGE_API_KEY: str = ""
     TURBOPUFFER_API_KEY: str = ""
-    EMBEDDING_MODEL: str = "voyage-4-lite"
-    EMBEDDING_DIM: int = 512
+    EMBEDDING_MODEL: str = "bge-m3"
+    EMBEDDING_DIM: int = 1024
+    OLLAMA_URL: str = ""  # vacío => search_chunks solo léxico
     # Presupuesto de contexto para el batch-read (aprox. en tokens; ~4 chars/token).
     # 30000 tokens ≈ 120_000 chars = comportamiento previo.
     READ_MAX_TOKENS: int = 30000

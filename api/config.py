@@ -13,8 +13,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = ""
     VOYAGE_API_KEY: str = ""
     TURBOPUFFER_API_KEY: str = ""
-    EMBEDDING_MODEL: str = "voyage-4-lite"
-    EMBEDDING_DIM: int = 512
+    EMBEDDING_MODEL: str = "bge-m3"
+    EMBEDDING_DIM: int = 1024
+    OLLAMA_URL: str = ""  # vacío => búsqueda semántica desactivada (léxico puro)
+    EMBEDDING_JOB_INTERVAL_MINUTES: int = 2  # 0 desactiva el job de embeddings
     LOGFIRE_TOKEN: str = ""
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
