@@ -5,6 +5,7 @@ import logging
 import aioboto3
 
 from config import settings
+from embeddings import cosine, embed_query, rrf_fuse
 from db import (
     scoped_query,
     scoped_queryrow,
@@ -19,6 +20,35 @@ from textmatch import validate_single_match
 from .base import VaultFS
 
 logger = logging.getLogger(__name__)
+
+
+def _assemble_hybrid(lexical_rows, semantic_rows, query_vec, limit):
+    """Fusiona por RRF el ranking léxico (orden dado) y el semántico (por cosine)."""
+    by_id = {}
+    for r in lexical_rows:
+        by_id[r["id"]] = r
+    scored_sem = []
+    for r in semantic_rows:
+        emb = r.get("embedding")
+        score = cosine(query_vec, emb) if emb else 0.0
+        row = {k: v for k, v in r.items() if k != "embedding"}
+        by_id[r["id"]] = row  # mantiene la fila (sin embedding)
+        scored_sem.append((r["id"], score))
+    lexical_ids = [r["id"] for r in lexical_rows]
+    semantic_ids = [
+        cid for cid, _ in sorted(scored_sem, key=lambda t: t[1], reverse=True)
+    ]
+    fused = rrf_fuse(lexical_ids, semantic_ids)[:limit]
+    out = []
+    for rank, cid in enumerate(fused):
+        row = dict(by_id[cid])
+        row["score"] = 1.0 / (
+            60 + rank + 1
+        )  # score representativo del ranking fusionado
+        row.pop("embedding", None)
+        out.append(row)
+    return out
+
 
 _s3_session = None
 
@@ -466,25 +496,61 @@ class PostgresVaultFS(VaultFS):
         path_filter: str | None = None,
         tags: list[str] | None = None,
     ) -> list[dict]:
+        # Fragmento WHERE compartido entre búsqueda léxica y semántica.
+        # Los parámetros posicionales son: $1=kb_id, $2=query, $3=user_id; tags si aplica en $5+.
         path_clause = ""
         if path_filter == "wiki":
             path_clause = " AND d.path LIKE '/wiki/%%'"
         elif path_filter == "sources":
             path_clause = " AND d.path NOT LIKE '/wiki/%%'"
 
+        # Parámetros base; $4 se reserva para LIMIT en léxico-only y semántico no lo usa.
+        base_params: list = [kb_id, query, self.user_id]
         tags_clause = ""
-        params: list = [kb_id, query, self.user_id, limit]
         if tags:
-            tags_clause = f" AND d.tags @> ${len(params) + 1}::text[]"
-            params.append(tags)
+            tags_clause = f" AND d.tags @> ${len(base_params) + 2}::text[]"
+
+        # Cláusula EXISTS de compartición (usada en ambas SELECT).
+        share_exists = (
+            "EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
+            "WHERE kb.id = $1 AND (kb.user_id = $3 OR ks.shared_with = $3::uuid))"
+        )
 
         # Usa FTS nativo de PostgreSQL (tsvector/tsquery + ts_rank).
         # 'simple' dictionary: solo lowercase+split, funciona para ES+EN sin configuración extra.
         tsv = "to_tsvector('simple', dc.content)"
         tsq = "plainto_tsquery('simple', $2)"
-        return await scoped_query(
+
+        if not settings.OLLAMA_URL:
+            # Modo léxico puro (comportamiento original intacto).
+            params: list = [*base_params, limit]
+            if tags:
+                params.append(tags)
+            return await scoped_query(
+                self.user_id,
+                f"SELECT dc.content, dc.page, dc.header_breadcrumb, dc.chunk_index, "
+                f"  d.filename, d.title, d.path, d.file_type, d.tags, "
+                f"  ts_rank({tsv}, {tsq}) AS score "
+                f"FROM document_chunks dc "
+                f"JOIN documents d ON dc.document_id = d.id "
+                f"WHERE dc.knowledge_base_id = $1 "
+                f"  AND {tsv} @@ {tsq} "
+                f"  AND NOT d.archived "
+                f"  AND {share_exists}"
+                f"{path_clause}{tags_clause} "
+                f"ORDER BY score DESC, dc.chunk_index "
+                f"LIMIT $4",
+                *params,
+            )
+
+        # Modo híbrido: léxico como candidatos + semántico para re-ranking con RRF.
+        lex_limit = max(limit * 5, 50)
+        lex_params: list = [*base_params, lex_limit]
+        if tags:
+            lex_params.append(tags)
+        lexical_rows = await scoped_query(
             self.user_id,
-            f"SELECT dc.content, dc.page, dc.header_breadcrumb, dc.chunk_index, "
+            f"SELECT dc.id::text AS id, dc.content, dc.page, dc.header_breadcrumb, dc.chunk_index, "
             f"  d.filename, d.title, d.path, d.file_type, d.tags, "
             f"  ts_rank({tsv}, {tsq}) AS score "
             f"FROM document_chunks dc "
@@ -492,13 +558,43 @@ class PostgresVaultFS(VaultFS):
             f"WHERE dc.knowledge_base_id = $1 "
             f"  AND {tsv} @@ {tsq} "
             f"  AND NOT d.archived "
-            f"  AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
-            f"    WHERE kb.id = $1 AND (kb.user_id = $3 OR ks.shared_with = $3::uuid))"
+            f"  AND {share_exists}"
             f"{path_clause}{tags_clause} "
             f"ORDER BY score DESC, dc.chunk_index "
             f"LIMIT $4",
-            *params,
+            *lex_params,
         )
+
+        qv = await embed_query(query)
+        if qv is None:
+            # Degradación: ollama no responde, devolver candidatos léxicos recortados.
+            return [
+                {k: v for k, v in r.items() if k != "id"} for r in lexical_rows[:limit]
+            ]
+
+        # SELECT semántica: sin ORDER ni LIMIT, filtrando solo chunks con embedding.
+        sem_params: list = [*base_params, settings.EMBEDDING_MODEL]
+        sem_tags_clause = ""
+        if tags:
+            sem_tags_clause = f" AND d.tags @> ${len(sem_params) + 1}::text[]"
+            sem_params.append(tags)
+        semantic_rows = await scoped_query(
+            self.user_id,
+            f"SELECT dc.id::text AS id, dc.content, dc.page, dc.header_breadcrumb, dc.chunk_index, "
+            f"  d.filename, d.title, d.path, d.file_type, d.tags, dc.embedding "
+            f"FROM document_chunks dc "
+            f"JOIN documents d ON dc.document_id = d.id "
+            f"WHERE dc.knowledge_base_id = $1 "
+            f"  AND NOT d.archived "
+            f"  AND {share_exists}"
+            f"  AND dc.embedding IS NOT NULL AND dc.embedding_model = $4"
+            f"{path_clause}{sem_tags_clause}",
+            *sem_params,
+        )
+
+        fused = _assemble_hybrid(lexical_rows, semantic_rows, qv, limit)
+        # Eliminar 'id' interno de las filas devueltas para conservar el contrato de salida.
+        return [{k: v for k, v in r.items() if k != "id"} for r in fused]
 
     async def load_source_bytes(self, doc: dict) -> bytes | None:
         file_type = doc.get("file_type", "")
