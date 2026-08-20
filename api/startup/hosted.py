@@ -78,6 +78,26 @@ async def hosted_lifespan(app: FastAPI):
 
         maintenance_task = asyncio.create_task(_maintenance_loop())
 
+    embedding_task = None
+    if settings.OLLAMA_URL and settings.EMBEDDING_JOB_INTERVAL_MINUTES > 0:
+        from services.embeddings import run_embedding_batch
+
+        async def _embedding_loop():
+            await asyncio.sleep(60)  # gracia inicial
+            while True:
+                try:
+                    # drena los pendientes en este ciclo (backfill/regeneración rápidos)
+                    while True:
+                        stats = await run_embedding_batch(pool)
+                        if stats["embedded"] == 0:
+                            break
+                        logger.info("embedding batch: %s", stats)
+                except Exception:
+                    logger.warning("embedding cycle failed", exc_info=True)
+                await asyncio.sleep(settings.EMBEDDING_JOB_INTERVAL_MINUTES * 60)
+
+        embedding_task = asyncio.create_task(_embedding_loop())
+
     from services.latex_templates import sync_latex_templates
 
     await sync_latex_templates(pool, settings.LATEX_TEMPLATES_DIR)
@@ -106,6 +126,12 @@ async def hosted_lifespan(app: FastAPI):
         maintenance_task.cancel()
         try:
             await maintenance_task
+        except asyncio.CancelledError:
+            pass
+    if embedding_task is not None:
+        embedding_task.cancel()
+        try:
+            await embedding_task
         except asyncio.CancelledError:
             pass
     await pool.close()
