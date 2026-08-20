@@ -305,4 +305,4 @@ async def clear_embeddings(
         result = await pool.execute(
             "UPDATE document_chunks SET embedding = NULL, embedding_model = NULL"
         )
-    return {"cleared": int(result.split()[-1])}
+    return {"cleared": int(result.split()[-1]) if result.startswith("UPDATE") else 0}
