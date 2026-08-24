@@ -59,6 +59,16 @@ def test_footnotes_ok():
     assert check_footnotes(_doc(FM_OK + "claim[^1].\n\n[^1]: fuente.pdf")) == []
 
 
+def test_footnotes_consecutive_used():
+    # [^1][^2] ambas usadas y definidas -> sin findings
+    doc = {
+        "path": "/wiki/",
+        "filename": "p.md",
+        "content": FM_OK + "claim[^1][^2].\n\n[^1]: a.pdf\n[^2]: b.pdf",
+    }
+    assert check_footnotes(doc) == []
+
+
 def test_freshness_stale_frontmatter():
     # frontmatter date 2026-01-01, updated_at posterior
     f = check_freshness(_doc(FM_OK + "x", updated_at="2026-06-01T00:00:00"))

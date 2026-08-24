@@ -23,7 +23,7 @@ def _full_path(doc: dict) -> str:
 _TABLE_RE = re.compile(r"^\s*\|.+\|\s*$", re.MULTILINE)
 _MERMAID_RE = re.compile(r"```mermaid", re.IGNORECASE)
 _SVG_RE = re.compile(r"<svg|\]\([^)]+\.svg\)", re.IGNORECASE)
-_FN_USE_RE = re.compile(r"(?<!\])\[\^([^\]]+)\](?!:)")
+_FN_USE_RE = re.compile(r"\[\^([^\]]+)\](?!:)")
 _FN_DEF_RE = re.compile(r"^\[\^([^\]]+)\]:", re.MULTILINE)
 
 
