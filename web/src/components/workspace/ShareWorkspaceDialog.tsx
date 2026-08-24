@@ -9,6 +9,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { apiFetch } from "@/lib/api";
+import { searchUsers, type UserSuggestion } from "@/lib/shares";
 import { useUserStore } from "@/stores";
 import type { KnowledgeBase, Workspace } from "@/lib/types";
 
@@ -30,12 +31,23 @@ export function ShareWorkspaceDialog({
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
   const [done, setDone] = React.useState("");
+  const [suggestions, setSuggestions] = React.useState<UserSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = React.useState(false);
+  const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   React.useEffect(() => {
     if (!open || !workspace || !user) return;
     setEmail("");
     setError("");
     setDone("");
+    setSuggestions([]);
+    setShowSuggestions(false);
     setMyWikis([]);
     setSelected(new Set());
     setRole("member");
@@ -59,6 +71,29 @@ export function ShareWorkspaceDialog({
       else next.add(id);
       return next;
     });
+  };
+
+  const handleEmailChange = (val: string) => {
+    setEmail(val);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (val.length < 2) return;
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const results = await searchUsers(val);
+        setSuggestions(results);
+        setShowSuggestions(results.length > 0);
+      } catch {
+        // ignore search errors
+      }
+    }, 300);
+  };
+
+  const selectSuggestion = (u: UserSuggestion) => {
+    setEmail(u.email);
+    setSuggestions([]);
+    setShowSuggestions(false);
   };
 
   const handleShare = async () => {
@@ -93,13 +128,35 @@ export function ShareWorkspaceDialog({
         </DialogHeader>
 
         <div className="space-y-3">
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="email@dominio.com"
-            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-            autoFocus
-          />
+          <div className="relative">
+            <input
+              value={email}
+              onChange={(e) => handleEmailChange(e.target.value)}
+              onKeyDown={(e) => e.key === "Escape" && setShowSuggestions(false)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+              placeholder="Email o nombre del usuario"
+              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+              autoComplete="off"
+              autoFocus
+            />
+            {showSuggestions && (
+              <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-md border border-input bg-popover shadow-md overflow-hidden">
+                {suggestions.map((u) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onMouseDown={() => selectSuggestion(u)}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+                  >
+                    <span className="font-medium">{u.display_name}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {u.email}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="flex gap-2">
             <select
               value={role}
