@@ -88,6 +88,7 @@ def check_footnotes(doc: dict) -> list[Finding]:
                 "error",
                 f"nota al pie [^{u}] usada pero no definida",
                 f"Añade una línea '[^{u}]: fuente' o quita la referencia.",
+                key=f"maint:footnotes:{_full_path(doc)}::{u}",
             )
         )
     for d in sorted(defined - used):
@@ -98,6 +99,7 @@ def check_footnotes(doc: dict) -> list[Finding]:
                 "error",
                 f"nota al pie [^{d}] definida pero no usada",
                 f"Referencia [^{d}] en el texto o elimina su definición.",
+                key=f"maint:footnotes:{_full_path(doc)}::{d}",
             )
         )
     return out
@@ -179,6 +181,7 @@ def check_broken_links(docs: list[dict]) -> list[Finding]:
                     "error",
                     f"enlace interno a «{href}» que no resuelve a ninguna página",
                     "Corrige el enlace o crea la página destino.",
+                    key=f"maint:broken-link:{_full_path(d)}::{href}",
                 )
             )
     return out
@@ -282,6 +285,7 @@ def check_scope(doc: dict, policy: dict) -> list[Finding]:
     out = []
     for rule in policy.get("scope", []):
         if re.search(rule["pattern"], content, re.MULTILINE | re.DOTALL):
+            discriminator = rule.get("label", rule["pattern"])
             out.append(
                 Finding(
                     "scope",
@@ -289,6 +293,7 @@ def check_scope(doc: dict, policy: dict) -> list[Finding]:
                     rule.get("severity", "error"),
                     f"coincide patrón fuera de ámbito: {rule.get('label', rule['pattern'])}",
                     "Elimina el contenido fuera de política de esta wiki.",
+                    key=f"maint:scope:{_full_path(doc)}::{discriminator}",
                 )
             )
     return out
@@ -320,6 +325,7 @@ def check_counts(docs: list[dict], policy: dict) -> list[Finding]:
                     rule.get("severity", "error"),
                     f"{rule.get('label', 'recuento')}: declara {declared}, real {actual}",
                     "Actualiza el recuento en la página o revisa la fuente de verdad.",
+                    key=f"maint:count:{_full_path(page)}::{rule.get('label', 'recuento')}",
                 )
             )
     return out
