@@ -14,6 +14,7 @@ import {
 import { useWorkspaceStore, useUserStore } from "@/stores";
 import type { Workspace } from "@/lib/types";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import { GlobalWikiSearch } from "@/components/workspace/GlobalWikiSearch";
 
 function relativeTime(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -149,7 +150,7 @@ export default function WorkspacesPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-5xl mx-auto px-6 py-10">
+      <div className="max-w-7xl mx-auto px-6 py-10">
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Workspaces</h1>
@@ -169,34 +170,49 @@ export default function WorkspacesPage() {
           </div>
         </div>
 
-        {loading ? (
-          <div className="flex justify-center py-20">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        <div className="flex gap-6 items-start">
+          {/* Cuadrícula de workspaces */}
+          <div className="flex-1 min-w-0">
+            {loading ? (
+              <div className="flex justify-center py-20">
+                <Loader2 className="size-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : workspaces.length === 0 ? (
+              <div className="text-center py-20 text-muted-foreground">
+                <p>No workspaces yet. Create your first one.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {workspaces.map((ws) => (
+                  <WorkspaceCard
+                    key={ws.id}
+                    ws={ws}
+                    isForeign={isSuperadmin && !ws.is_member}
+                    onClick={() => router.push(`/workspaces/${ws.slug}`)}
+                    onShare={(e) => {
+                      e.stopPropagation();
+                      setShareTarget(ws);
+                    }}
+                    onDelete={(e) => {
+                      e.stopPropagation();
+                      setDeleteTarget(ws);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        ) : workspaces.length === 0 ? (
-          <div className="text-center py-20 text-muted-foreground">
-            <p>No workspaces yet. Create your first one.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {workspaces.map((ws) => (
-              <WorkspaceCard
-                key={ws.id}
-                ws={ws}
-                isForeign={isSuperadmin && !ws.is_member}
-                onClick={() => router.push(`/workspaces/${ws.slug}`)}
-                onShare={(e) => {
-                  e.stopPropagation();
-                  setShareTarget(ws);
-                }}
-                onDelete={(e) => {
-                  e.stopPropagation();
-                  setDeleteTarget(ws);
-                }}
-              />
-            ))}
-          </div>
-        )}
+
+          {/* Panel de búsqueda global — oculto en móvil */}
+          <aside className="hidden lg:block w-80 shrink-0">
+            <div className="sticky top-6 rounded-xl border border-border bg-card p-4">
+              <h2 className="text-sm font-semibold text-foreground mb-3">
+                Buscar en wikis
+              </h2>
+              <GlobalWikiSearch />
+            </div>
+          </aside>
+        </div>
       </div>
 
       <ShareWorkspaceDialog
