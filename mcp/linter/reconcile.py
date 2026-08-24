@@ -24,7 +24,9 @@ async def _doc_id_for(pool, kb_id: str, page_path: str) -> str | None:
 async def reconcile_comments(pool, kb_id: str, findings, comment_checks) -> dict:
     checkset = set(comment_checks)
     current = {
-        f"maint:{f.check}:{f.page_path}": f for f in findings if f.check in checkset
+        (f.key or f"maint:{f.check}:{f.page_path}"): f
+        for f in findings
+        if f.check in checkset
     }
 
     rows = await pool.fetch(

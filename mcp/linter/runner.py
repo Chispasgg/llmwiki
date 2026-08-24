@@ -40,6 +40,7 @@ async def run_lint(fs, kb_id: str, kb_slug: str, config_dir: str) -> list[Findin
                 "warning",
                 f"la fuente «{s.get('filename')}» no está citada por ninguna página",
                 "Cítala en la página relevante o retírala.",
+                key=f"maint:uncited-source:{s.get('filename')}",
             )
         )
     return findings

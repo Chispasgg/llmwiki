@@ -16,6 +16,9 @@ class Finding:
     severity: str  # "error" | "warning"
     reason: str
     fix_hint: str
+    key: str | None = (
+        None  # clave estable opcional para reconcile; si None se deriva de page_path
+    )
 
 
 def _full_path(doc: dict) -> str:

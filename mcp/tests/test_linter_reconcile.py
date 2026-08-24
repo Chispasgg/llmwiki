@@ -60,3 +60,34 @@ async def test_reconcile_does_not_resolve_out_of_scope_check():
     assert out["created"] == 0 and out["resolved"] == 0
     exec_sql = " ".join(c.args[0] for c in conn.execute.call_args_list)
     assert "status = 'resolved'" not in exec_sql
+
+
+async def test_reconcile_uncited_source_no_key_collision():
+    """Dos findings uncited-source con distinto filename pero mismo page_path
+    deben crear DOS comentarios distintos (no colapsar a uno)."""
+    conn, acq = _conn()
+    pool = MagicMock()
+    pool.acquire = MagicMock(return_value=acq)
+    pool.fetch = AsyncMock(return_value=[])  # sin comentarios existentes
+    pool.fetchval = AsyncMock(return_value="doverview")  # doc_id de overview.md
+    findings = [
+        Finding(
+            "uncited-source",
+            "/wiki/overview.md",
+            "warning",
+            "la fuente «a.pdf» no está citada",
+            "Cítala o retírala.",
+            key="maint:uncited-source:a.pdf",
+        ),
+        Finding(
+            "uncited-source",
+            "/wiki/overview.md",
+            "warning",
+            "la fuente «b.pdf» no está citada",
+            "Cítala o retírala.",
+            key="maint:uncited-source:b.pdf",
+        ),
+    ]
+    out = await reconcile_comments(pool, "kb1", findings, ["uncited-source"])
+    assert out["created"] == 2, f"esperado 2 creados, obtenido {out['created']}"
+    assert out["resolved"] == 0
