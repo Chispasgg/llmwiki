@@ -130,6 +130,7 @@ else:
     from routes.comments import router as comments_router
     from routes.users import router as users_router
     from routes.kb_naming import router as kb_naming_router
+    from routes.search import router as search_router
 
     app.include_router(users_router)
     app.include_router(api_keys_router)
@@ -147,4 +148,5 @@ else:
     app.include_router(notifications_router)
     app.include_router(smtp_admin_router)
     app.include_router(comments_router)
+    app.include_router(search_router)
     app.include_router(hosted_files_router)
