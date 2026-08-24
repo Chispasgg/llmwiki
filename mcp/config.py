@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     MCP_URL: str = "http://localhost:1501"
     SENTRY_DSN: str = ""
     SERVER_FILES_ROOT: str = "/home/ubuntu/wiki/files"
+    LINT_INTERVAL_MINUTES: int = 360  # bucle programado del linter; 0 desactiva
+    LINT_CONFIG_DIR: str = "config/lint"
 
 
 settings = Settings()
