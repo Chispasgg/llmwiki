@@ -38,8 +38,8 @@ def access_clause(is_sa: bool, idx: int) -> str:
     if is_sa:
         return "TRUE"
     return (
-        f"EXISTS (SELECT 1 FROM knowledge_bases kb "
-        f"LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
-        f"WHERE kb.id = dc.knowledge_base_id "
-        f"AND (kb.user_id = ${idx} OR ks.shared_with = ${idx}::uuid))"
+        f"EXISTS (SELECT 1 FROM knowledge_bases kb2 "
+        f"LEFT JOIN kb_shares ks ON ks.kb_id = kb2.id "
+        f"WHERE kb2.id = dc.knowledge_base_id "
+        f"AND (kb2.user_id = ${idx} OR ks.shared_with = ${idx}::uuid))"
     )
