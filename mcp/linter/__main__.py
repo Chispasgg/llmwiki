@@ -110,13 +110,13 @@ async def _main_async(kb_slug: str, workspace: str | None) -> None:
 
     kb_id: str = kb["id"]
 
-    # Directorio de configuración de políticas
-    config_dir = str(
-        Path(__file__).resolve().parent.parent.parent.parent / "config" / "lint"
-    )
+    # Directorio de configuración de políticas: settings manda; la ruta
+    # relativa al repo es solo el fallback para entornos de desarrollo.
+    config_dir = settings.LINT_CONFIG_DIR
     if not os.path.isdir(config_dir):
-        # Fallback: usar el valor de settings si existe
-        config_dir = settings.LINT_CONFIG_DIR
+        config_dir = str(
+            Path(__file__).resolve().parent.parent.parent.parent / "config" / "lint"
+        )
 
     findings = await run_lint(fs, kb_id, kb_slug, config_dir)
     policy = load_policy(kb_slug, config_dir)
