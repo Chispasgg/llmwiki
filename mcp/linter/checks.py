@@ -272,3 +272,51 @@ def check_freshness(doc: dict) -> list[Finding]:
             )
         ]
     return []
+
+
+def check_scope(doc: dict, policy: dict) -> list[Finding]:
+    content = doc.get("content") or ""
+    out = []
+    for rule in policy.get("scope", []):
+        if re.search(rule["pattern"], content, re.MULTILINE | re.DOTALL):
+            out.append(
+                Finding(
+                    "scope",
+                    _full_path(doc),
+                    rule.get("severity", "error"),
+                    f"coincide patrón fuera de ámbito: {rule.get('label', rule['pattern'])}",
+                    "Elimina el contenido fuera de política de esta wiki.",
+                )
+            )
+    return out
+
+
+def check_counts(docs: list[dict], policy: dict) -> list[Finding]:
+    rules = policy.get("counts", [])
+    if not rules:
+        return []
+    n_sources = sum(1 for d in docs if not (d.get("path") or "").startswith("/wiki/"))
+    n_pages = sum(1 for d in docs if (d.get("path") or "").startswith("/wiki/"))
+    by_name = {(d.get("filename") or "").lower(): d for d in docs}
+    out = []
+    for rule in rules:
+        page = by_name.get(rule["page"].lower())
+        if not page:
+            continue
+        m = re.search(rule["extract"], page.get("content") or "")
+        if not m:
+            continue
+        declared = int(m.group(1))
+        eq = rule["equals"]
+        actual = n_sources if eq == "sources" else n_pages if eq == "pages" else int(eq)
+        if declared != actual:
+            out.append(
+                Finding(
+                    "count",
+                    _full_path(page),
+                    rule.get("severity", "error"),
+                    f"{rule.get('label', 'recuento')}: declara {declared}, real {actual}",
+                    "Actualiza el recuento en la página o revisa la fuente de verdad.",
+                )
+            )
+    return out
