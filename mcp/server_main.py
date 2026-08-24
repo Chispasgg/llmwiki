@@ -3,6 +3,8 @@
 Usage:
     DATABASE_URL=postgresql://... uvicorn server_main:app --port 1501
 """
+
+import asyncio
 import contextlib
 import logging
 import os
@@ -18,6 +20,10 @@ from starlette.routing import Route
 
 from api_key_verifier import ApiKeyVerifier
 from config import settings
+from db import get_pool
+from linter.policy import load_policy
+from linter.reconcile import reconcile_comments
+from linter.runner import run_lint
 from tools import register
 from vaultfs import PostgresVaultFS
 
@@ -57,6 +63,7 @@ mcp = FastMCP(
 
 def _get_user_id(ctx):
     from mcp.server.auth.middleware.auth_context import get_access_token
+
     token = get_access_token()
     if not token or not token.client_id:
         raise RuntimeError("Not authenticated")
@@ -64,6 +71,35 @@ def _get_user_id(ctx):
 
 
 register(mcp, _get_user_id, lambda user_id: PostgresVaultFS(user_id))
+
+
+async def _lint_loop() -> None:
+    """Bucle programado de lint: recorre todas las KBs y reconcilia comentarios."""
+    await asyncio.sleep(60)  # gracia inicial para no disparar al arrancar
+    while True:
+        try:
+            pool = await get_pool()
+            kbs = await pool.fetch(
+                "SELECT id::text, slug, user_id::text FROM knowledge_bases"
+            )
+            for kb in kbs:
+                try:
+                    fs = PostgresVaultFS(kb["user_id"])
+                    policy = load_policy(kb["slug"], settings.LINT_CONFIG_DIR)
+                    findings = await run_lint(
+                        fs, kb["id"], kb["slug"], settings.LINT_CONFIG_DIR
+                    )
+                    stats = await reconcile_comments(
+                        pool, kb["id"], findings, policy["comment_checks"]
+                    )
+                    logger.info("lint cycle kb=%s: %s", kb["slug"], stats)
+                except Exception:
+                    logger.warning(
+                        "lint cycle failed for kb=%s", kb["slug"], exc_info=True
+                    )
+        except Exception:
+            logger.warning("lint cycle failed", exc_info=True)
+        await asyncio.sleep(settings.LINT_INTERVAL_MINUTES * 60)
 
 
 async def health(request):
@@ -84,10 +120,21 @@ async def _combined_lifespan(scope):
     _pool = await asyncpg.create_pool(settings.DATABASE_URL, min_size=1, max_size=5)
     _verifier._inner = ApiKeyVerifier(_pool)
     logger.info("MCP server_main started — auth: api-key, db: postgres")
+
+    lint_task = None
+    if settings.LINT_INTERVAL_MINUTES > 0:
+        lint_task = asyncio.create_task(_lint_loop())
+
     try:
         async with _sdk_lifespan(scope):
             yield
     finally:
+        if lint_task is not None:
+            lint_task.cancel()
+            try:
+                await lint_task
+            except asyncio.CancelledError:
+                pass
         await _pool.close()
         logger.info("MCP server_main stopped — db pool closed")
 
