@@ -5,6 +5,7 @@ def register(mcp, get_user_id, fs_factory) -> None:
     from .write import register as register_write
     from .delete import register as register_delete
     from .comment import register as register_comment
+    from .lint import register as register_lint
 
     register_guide(mcp, get_user_id, fs_factory)
     register_search(mcp, get_user_id, fs_factory)
@@ -12,3 +13,4 @@ def register(mcp, get_user_id, fs_factory) -> None:
     register_write(mcp, get_user_id, fs_factory)
     register_delete(mcp, get_user_id, fs_factory)
     register_comment(mcp, get_user_id, fs_factory)
+    register_lint(mcp, get_user_id, fs_factory)
