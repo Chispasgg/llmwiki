@@ -462,7 +462,7 @@ class PostgresVaultFS(VaultFS):
     async def list_documents_with_content(self, kb_id: str) -> list[dict]:
         return await scoped_query(
             self.user_id,
-            "SELECT id, filename, title, path, content, tags, file_type, page_count "
+            "SELECT id, filename, title, path, content, tags, file_type, page_count, updated_at "
             "FROM documents WHERE knowledge_base_id = $1 AND NOT archived "
             "AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
             "WHERE kb.id = $1 AND (kb.user_id = $2 OR ks.shared_with = $2::uuid)) "

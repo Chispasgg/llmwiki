@@ -295,7 +295,7 @@ class SqliteVaultFS(VaultFS):
     async def list_documents_with_content(self, kb_id: str) -> list[dict]:
         db = self._db_or_raise()
         cursor = await db.execute(
-            "SELECT id, filename, title, path, content, tags, file_type, page_count "
+            "SELECT id, filename, title, path, content, tags, file_type, page_count, updated_at "
             "FROM documents WHERE status != 'failed' ORDER BY path, filename",
         )
         return _rows_to_dicts(cursor, await cursor.fetchall())
