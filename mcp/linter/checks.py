@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 
+_LINK_RE = re.compile(r"(?<!!)\[(?:[^\]]*)\]\(([^)]+)\)")
+
 from frontmatter import parse_frontmatter
 
 
@@ -113,6 +115,144 @@ def _parse_dt(v) -> datetime | None:
         return datetime.fromisoformat(str(v).replace("Z", ""))
     except ValueError:
         return None
+
+
+def _wiki_key(doc: dict) -> str | None:
+    """Clave relativa a /wiki/ del documento, p. ej. 'seccion/hija.md'. None si no es página wiki."""
+    path = doc.get("path") or ""
+    if not path.startswith("/wiki/"):
+        return None
+    rel = (
+        (path.rstrip("/") + "/" + (doc.get("filename") or ""))
+        .replace("/wiki/", "", 1)
+        .lstrip("/")
+    )
+    return rel.lower()
+
+
+def _current_dir(doc: dict) -> str:
+    path = doc.get("path") or ""
+    return path.replace("/wiki/", "", 1) if path.startswith("/wiki/") else ""
+
+
+def _iter_links(content: str):
+    for m in _LINK_RE.finditer(content):
+        href = m.group(1)
+        if href.startswith(("http", "#", "mailto:", "data:")):
+            continue
+        if re.search(r"\.(png|jpe?g|gif|webp|svg)$", href, re.IGNORECASE):
+            continue
+        yield href
+
+
+def _resolve(href: str, current_dir: str) -> str:
+    if href.startswith("/wiki/"):
+        return href.replace("/wiki/", "", 1).lower()
+    if href.startswith("./"):
+        href = href[2:]
+    base = current_dir if href and "/" not in href else current_dir
+    return ((base + href) if base else href).lower()
+
+
+def check_broken_links(docs: list[dict]) -> list[Finding]:
+    keys = {k for d in docs if (k := _wiki_key(d))}
+    out = []
+    for d in docs:
+        if not (d.get("path") or "").startswith("/wiki/"):
+            continue
+        cur = _current_dir(d)
+        for href in _iter_links(d.get("content") or ""):
+            target = _resolve(href, cur)
+            if (
+                target in keys
+                or (target + ".md") in keys
+                or target.split("/")[-1] in keys
+            ):
+                continue
+            out.append(
+                Finding(
+                    "broken-link",
+                    _full_path(d),
+                    "error",
+                    f"enlace interno a «{href}» que no resuelve a ninguna página",
+                    "Corrige el enlace o crea la página destino.",
+                )
+            )
+    return out
+
+
+def _is_index(doc: dict, docs: list[dict]) -> bool:
+    fn = (doc.get("filename") or "").lower()
+    if fn == "overview.md":
+        return True
+    # página padre de una sección: /wiki/X.md con hijas en /wiki/X/
+    stem = fn[:-3] if fn.endswith(".md") else fn
+    section_prefix = (doc.get("path") or "") + stem + "/"
+    return any((o.get("path") or "").startswith(section_prefix) for o in docs)
+
+
+def check_index_size(docs: list[dict], max_entries: int = 20) -> list[Finding]:
+    out = []
+    for d in docs:
+        if not (d.get("path") or "").startswith("/wiki/") or not _is_index(d, docs):
+            continue
+        n = sum(1 for _ in _iter_links(d.get("content") or ""))
+        if n > max_entries:
+            out.append(
+                Finding(
+                    "index-size",
+                    _full_path(d),
+                    "warning",
+                    f"página índice con {n} entradas (máx {max_entries})",
+                    "Divide la sección en subsecciones; el índice debe listar secciones, no todas las páginas.",
+                )
+            )
+    return out
+
+
+def check_reachability(docs: list[dict], max_hops: int = 3) -> list[Finding]:
+    key_of = {}
+    for d in docs:
+        k = _wiki_key(d)
+        if k:
+            key_of[k] = d
+    # grafo de adyacencia por claves
+    adj = {k: set() for k in key_of}
+    for k, d in key_of.items():
+        cur = _current_dir(d)
+        for href in _iter_links(d.get("content") or ""):
+            t = _resolve(href, cur)
+            for cand in (t, t + ".md"):
+                if cand in key_of:
+                    adj[k].add(cand)
+                    break
+    start = next((k for k in key_of if k.endswith("overview.md")), None)
+    if not start:
+        return []
+    seen = {start}
+    frontier = {start}
+    for _ in range(max_hops):
+        nxt = set()
+        for k in frontier:
+            nxt |= adj.get(k, set()) - seen
+        seen |= nxt
+        frontier = nxt
+    out = []
+    for k, d in key_of.items():
+        fn = (d.get("filename") or "").lower()
+        if fn in ("overview.md", "log.md"):
+            continue
+        if k not in seen:
+            out.append(
+                Finding(
+                    "reachability",
+                    _full_path(d),
+                    "warning",
+                    f"página no alcanzable desde overview.md en {max_hops} saltos",
+                    "Enlázala desde su página de sección o desde overview.md.",
+                )
+            )
+    return out
 
 
 def check_freshness(doc: dict) -> list[Finding]:

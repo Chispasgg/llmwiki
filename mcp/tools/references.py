@@ -59,9 +59,13 @@ def _parse_wiki_links(content: str, current_dir: str) -> list[str]:
     return paths
 
 
-async def update_references(fs: VaultFS, kb_id: str, document_id: str, content: str, doc_path: str) -> None:
+async def update_references(
+    fs: VaultFS, kb_id: str, document_id: str, content: str, doc_path: str
+) -> None:
     """Parse content for citations and links, rebuild reference edges for this document."""
-    wiki_relative_dir = doc_path.replace("/wiki/", "", 1) if doc_path.startswith("/wiki/") else ""
+    wiki_relative_dir = (
+        doc_path.replace("/wiki/", "", 1) if doc_path.startswith("/wiki/") else ""
+    )
 
     all_docs = await fs.list_documents(kb_id)
 
@@ -77,7 +81,9 @@ async def update_references(fs: VaultFS, kb_id: str, document_id: str, content: 
                 filename_to_doc[title_lower] = doc
 
         if doc["path"].startswith("/wiki/"):
-            relative = (doc["path"] + doc["filename"]).replace("/wiki/", "", 1)
+            relative = (doc["path"].rstrip("/") + "/" + doc["filename"]).replace(
+                "/wiki/", "", 1
+            )
             wiki_path_to_doc[relative.lower()] = doc
 
     edges: list[tuple[str, str, int | None]] = []
@@ -89,7 +95,11 @@ async def update_references(fs: VaultFS, kb_id: str, document_id: str, content: 
         if not target:
             base = re.sub(r"\.(pdf|docx?|pptx?|xlsx?|csv|html?|md|txt)$", "", fn_lower)
             for doc in all_docs:
-                doc_base = re.sub(r"\.(pdf|docx?|pptx?|xlsx?|csv|html?|md|txt)$", "", doc["filename"].lower())
+                doc_base = re.sub(
+                    r"\.(pdf|docx?|pptx?|xlsx?|csv|html?|md|txt)$",
+                    "",
+                    doc["filename"].lower(),
+                )
                 if doc_base == base:
                     target = doc
                     break

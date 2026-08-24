@@ -79,7 +79,9 @@ def build_lookup_maps(
         if base not in base_to_doc:
             base_to_doc[base] = doc
         if doc["path"].startswith("/wiki/"):
-            relative = (doc["path"] + doc["filename"]).replace("/wiki/", "", 1)
+            relative = (doc["path"].rstrip("/") + "/" + doc["filename"]).replace(
+                "/wiki/", "", 1
+            )
             wiki_path_to_doc[relative.lower()] = doc
 
     return filename_to_doc, base_to_doc, wiki_path_to_doc
