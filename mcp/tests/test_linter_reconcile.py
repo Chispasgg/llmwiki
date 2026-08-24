@@ -36,3 +36,27 @@ async def test_reconcile_creates_and_resolves():
     assert "INSERT INTO wiki_comments" in row_sql
     assert "status = 'resolved'" in exec_sql
     assert "UPDATE documents" not in (exec_sql + row_sql)
+
+
+async def test_reconcile_does_not_resolve_out_of_scope_check():
+    """Comentarios de checks fuera de comment_checks no deben resolverse."""
+    conn, acq = _conn()
+    pool = MagicMock()
+    pool.acquire = MagicMock(return_value=acq)
+    # Solo existe un comentario de check 'frontmatter', fuera del scope de la llamada
+    pool.fetch = AsyncMock(
+        return_value=[
+            {
+                "id": "cold",
+                "target_text": "maint:frontmatter:/wiki/x.md",
+                "document_id": "d1",
+            }
+        ]
+    )
+    pool.fetchval = AsyncMock(return_value="d1")
+    findings = []
+    # comment_checks no incluye 'frontmatter' → el comentario existente no se toca
+    out = await reconcile_comments(pool, "kb1", findings, ["broken-link"])
+    assert out["created"] == 0 and out["resolved"] == 0
+    exec_sql = " ".join(c.args[0] for c in conn.execute.call_args_list)
+    assert "status = 'resolved'" not in exec_sql

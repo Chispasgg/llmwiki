@@ -62,6 +62,9 @@ async def reconcile_comments(pool, kb_id: str, findings, comment_checks) -> dict
         created += 1
 
     for key, cid in existing.items():
+        parts = key.split(":", 2)  # ["maint", "<check>", "<page_path>"]
+        if len(parts) < 3 or parts[1] not in checkset:
+            continue  # fuera del scope de esta llamada; no tocar
         if key in current:
             continue
         async with pool.acquire() as conn:
