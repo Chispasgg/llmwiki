@@ -143,7 +143,7 @@ def _current_dir(doc: dict) -> str:
 def _iter_links(content: str):
     for m in _LINK_RE.finditer(content):
         href = m.group(1)
-        if href.startswith(("http", "#", "mailto:", "data:")):
+        if href.startswith(("http", "#", "mailto:", "data:", "file:")):
             continue
         if re.search(r"\.(png|jpe?g|gif|webp|svg)$", href, re.IGNORECASE):
             continue

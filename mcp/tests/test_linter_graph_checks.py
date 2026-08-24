@@ -24,6 +24,16 @@ def test_broken_link_detected():
     assert "falta.md" in reasons and "hija.md" not in reasons  # hija resuelve, falta no
 
 
+def test_broken_link_ignores_external_schemes():
+    # http/#/mailto/data/file y las imágenes no son enlaces internos → no se marcan rotos
+    content = (
+        "[a](http://x.com) [b](#anchor) [c](mailto:x@y.z) "
+        "[d](file:///home/user/desktop/doc.pdf) [e](img.png)"
+    )
+    docs = [_doc("/wiki/", "overview.md", content)]
+    assert check_broken_links(docs) == []
+
+
 def test_index_size_over_limit():
     links = "\n".join(f"[p{i}](p{i}.md)" for i in range(25))
     docs = [_doc("/wiki/", "overview.md", links)] + [
