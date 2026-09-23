@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { OpenReplayTracker } from "@/components/OpenReplay";
+import { fetchBrandingServer } from "@/lib/branding-server";
+import { orgTitle } from "@/lib/branding";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,25 +17,39 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "LLM Wiki",
-  description: "Free, open-source implementation of Karpathy's LLM Wiki. Upload documents and build a compounding wiki directly via Claude.",
-  metadataBase: new URL("https://llmwiki.app"),
-  openGraph: {
-    title: "LLM Wiki",
-    description: "Free, open-source implementation of Karpathy's LLM Wiki. Upload documents and build a compounding wiki directly via Claude.",
-    url: "https://llmwiki.app",
-    siteName: "LLM Wiki",
-    type: "website",
-    images: [{ url: "/og.png", width: 1200, height: 630, alt: "LLM Wiki" }],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "LLM Wiki",
-    description: "Free, open-source implementation of Karpathy's LLM Wiki. Upload documents and build a compounding wiki directly via Claude.",
-    images: ["/og.png"],
-  },
-};
+const DESCRIPTION =
+  "Free, open-source implementation of Karpathy's LLM Wiki. Upload documents and build a compounding wiki directly via Claude.";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { org_name, logo } = await fetchBrandingServer();
+  const title = orgTitle(org_name);
+
+  return {
+    title: {
+      default: title,
+      template: `%s · ${title}`,
+    },
+    description: DESCRIPTION,
+    metadataBase: new URL("https://llmwiki.app"),
+    // Only override icons when a custom logo is configured; otherwise Next.js
+    // falls back to app/icon.svg automatically.
+    ...(logo != null ? { icons: { icon: logo } } : {}),
+    openGraph: {
+      title,
+      description: DESCRIPTION,
+      url: "https://llmwiki.app",
+      siteName: title,
+      type: "website",
+      images: [{ url: "/og.png", width: 1200, height: 630, alt: title }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description: DESCRIPTION,
+      images: ["/og.png"],
+    },
+  };
+}
 
 // Script to prevent theme flash - runs before React hydrates
 // Must match the storageKey used by ThemeProvider (default is 'theme')

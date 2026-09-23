@@ -51,6 +51,8 @@ import { apiFetch, API_URL, API_CREDENTIALS } from "@/lib/api";
 import { listLatexTemplates } from "@/lib/admin";
 import { useKBStore, useUserStore } from "@/stores";
 import type { DocumentListItem, WikiNode, LatexTemplate } from "@/lib/types";
+import { BrandLogo } from "@/components/brand/BrandLogo";
+import { useBranding } from "@/hooks/useBranding";
 
 interface Usage {
   total_pages: number;
@@ -201,6 +203,7 @@ export function KBSidenav({
   commentsPanelOpen,
 }: KBSidenavProps) {
   const router = useRouter();
+  const { branding } = useBranding();
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [commandQuery, setCommandQuery] = React.useState("");
   const [shareOpen, setShareOpen] = React.useState(false);
@@ -383,6 +386,10 @@ export function KBSidenav({
 
   return (
     <div className="h-full flex flex-col border-r border-border">
+      {/* Brand strip */}
+      <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-border/50">
+        <BrandLogo logo={branding?.logo} size={24} rounded />
+      </div>
       {/* Wiki selector */}
       <div className="shrink-0 px-2 pt-2 pb-1">
         {workspaceSlug && workspaceName && (
