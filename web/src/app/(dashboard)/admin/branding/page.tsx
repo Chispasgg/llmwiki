@@ -9,6 +9,7 @@ import {
   type BrandingAdmin,
 } from "@/lib/admin";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { invalidateBrandingCache } from "@/hooks/useBranding";
 
 const ALLOWED_MIME = new Set([
   "image/svg+xml",
@@ -95,6 +96,7 @@ export default function AdminBrandingPage() {
       setOrgName(updated.org_name ?? "");
       setPreviewUri(null);
       setPreviewMime(null);
+      invalidateBrandingCache();
       toast.success("Configuración de marca guardada");
     } catch (err) {
       const msg =
@@ -118,6 +120,7 @@ export default function AdminBrandingPage() {
       setOrgName("");
       setPreviewUri(null);
       setPreviewMime(null);
+      invalidateBrandingCache();
       toast.success("Marca restaurada a los valores por defecto");
     } catch (err) {
       const msg =

@@ -20,6 +20,16 @@ function getOrFetch(): Promise<Branding> {
   return _promise;
 }
 
+/**
+ * Invalidates the module-level branding cache so the next useBranding() mount
+ * (or the next component that re-runs its effect) will re-fetch from the API.
+ * Safe to call at any time, including while a fetch is in flight.
+ */
+export function invalidateBrandingCache(): void {
+  _cache = null;
+  _promise = null;
+}
+
 export interface UseBrandingResult {
   branding: Branding | null;
   loading: boolean;
