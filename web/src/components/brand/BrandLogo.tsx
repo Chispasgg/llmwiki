@@ -51,7 +51,7 @@ export function BrandLogo({
       <polyline
         points="11,8 21,16 11,24"
         fill="none"
-        stroke="var(--background, white)"
+        stroke="hsl(var(--background))"
         strokeWidth="3"
         strokeLinecap="round"
         strokeLinejoin="round"
