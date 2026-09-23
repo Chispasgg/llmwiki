@@ -176,6 +176,32 @@ export const purgeUsageLogs = (days: 7 | 14 | 30) =>
     method: 'POST',
   });
 
+// ── Branding ────────────────────────────────────────────────────
+
+export interface BrandingAdmin {
+  org_name: string | null;
+  logo: string | null;
+  logo_mime: string | null;
+  updated_at: string | null;
+  updated_by_email: string | null;
+}
+
+export const getBranding = () =>
+  apiFetch<BrandingAdmin>('/v1/superadmin/branding');
+
+export const putBranding = (body: {
+  org_name: string | null;
+  logo_data_uri: string | null;
+  logo_mime: string | null;
+}) =>
+  apiFetch<BrandingAdmin>('/v1/superadmin/branding', {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+
+export const resetBranding = () =>
+  apiFetch<BrandingAdmin>('/v1/superadmin/branding', { method: 'DELETE' });
+
 // ── Embeddings ──────────────────────────────────────────────────
 
 export interface EmbeddingStats {
