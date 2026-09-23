@@ -8,7 +8,10 @@ export function middleware(request: NextRequest) {
 
   if (isLocal) {
     if (pathname === '/') {
-      return NextResponse.redirect(new URL('/workspaces', request.url))
+      const url = request.nextUrl.clone()
+      url.search = ''
+      url.pathname = '/workspaces'
+      return NextResponse.redirect(url)
     }
     return NextResponse.next()
   }
@@ -21,7 +24,9 @@ export function middleware(request: NextRequest) {
   // Verificar que la cookie de sesión existe
   const sessionCookie = request.cookies.get('wiki_session')
   if (!sessionCookie) {
-    const loginUrl = new URL('/login', request.url)
+    const loginUrl = request.nextUrl.clone()
+    loginUrl.search = ''
+    loginUrl.pathname = '/login'
     loginUrl.searchParams.set('next', pathname)
     return NextResponse.redirect(loginUrl)
   }
