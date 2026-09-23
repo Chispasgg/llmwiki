@@ -384,3 +384,14 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER document_change_trigger
   AFTER INSERT OR UPDATE OR DELETE ON documents
   FOR EACH ROW EXECUTE FUNCTION notify_document_change();
+
+-- Branding settings (mirrors migration 020_branding_settings.sql)
+CREATE TABLE IF NOT EXISTS branding_settings (
+  id            boolean PRIMARY KEY DEFAULT true CHECK (id),
+  org_name      text,
+  logo_data_uri text,
+  logo_mime     text,
+  updated_at    timestamptz NOT NULL DEFAULT now(),
+  updated_by    uuid REFERENCES users(id) ON DELETE SET NULL
+);
+INSERT INTO branding_settings (id) VALUES (true) ON CONFLICT (id) DO NOTHING;

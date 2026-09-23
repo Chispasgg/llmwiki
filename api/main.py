@@ -108,8 +108,10 @@ if settings.MODE == "local":
     set_workspace_root(settings.WORKSPACE_PATH)
 else:
     from routes.auth import router as auth_router
+    from routes.branding import router as branding_router
 
     app.include_router(auth_router)
+    app.include_router(branding_router)
     from routes.shares import router as shares_router
 
     app.include_router(shares_router)

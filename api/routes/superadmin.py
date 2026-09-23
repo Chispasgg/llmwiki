@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from config import settings
 from deps import require_superadmin, get_user_id
+from routes._branding_helpers import validate_branding_input
 from services.log import log_action_bg
 
 router = APIRouter(prefix="/v1/superadmin", tags=["superadmin"])
@@ -306,3 +307,120 @@ async def clear_embeddings(
             "UPDATE document_chunks SET embedding = NULL, embedding_model = NULL"
         )
     return {"cleared": int(result.split()[-1]) if result.startswith("UPDATE") else 0}
+
+
+# ── Branding ──────────────────────────────────────────────────────
+# validate_branding_input is imported from routes._branding_helpers (pure
+# function, no service imports) so unit tests can import it without triggering
+# the services.log module-level settings access.
+
+
+class BrandingAdminOut(BaseModel):
+    org_name: str | None
+    logo: str | None
+    logo_mime: str | None
+    updated_at: str | None
+    updated_by_email: str | None
+
+
+class BrandingPutIn(BaseModel):
+    org_name: str | None = None
+    logo_data_uri: str | None = None
+    logo_mime: str | None = None
+
+
+async def _fetch_branding_row(pool) -> BrandingAdminOut:
+    """Read the single branding row and join updated_by email."""
+    row = await pool.fetchrow(
+        "SELECT b.org_name, b.logo_data_uri, b.logo_mime, "
+        "       b.updated_at::text AS updated_at, "
+        "       u.email AS updated_by_email "
+        "FROM branding_settings b "
+        "LEFT JOIN users u ON u.id = b.updated_by "
+        "WHERE b.id = true"
+    )
+    if row is None:
+        return BrandingAdminOut(
+            org_name=None,
+            logo=None,
+            logo_mime=None,
+            updated_at=None,
+            updated_by_email=None,
+        )
+    return BrandingAdminOut(
+        org_name=row["org_name"],
+        logo=row["logo_data_uri"],
+        logo_mime=row["logo_mime"],
+        updated_at=row["updated_at"],
+        updated_by_email=row["updated_by_email"],
+    )
+
+
+@router.get("/branding", response_model=BrandingAdminOut)
+async def get_branding_admin(
+    _sa: Annotated[str, Depends(require_superadmin)],
+    request: Request,
+) -> BrandingAdminOut:
+    """Read current branding settings (superadmin only)."""
+    return await _fetch_branding_row(request.app.state.pool)
+
+
+@router.put("/branding", response_model=BrandingAdminOut)
+async def put_branding_admin(
+    user_id: Annotated[str, Depends(require_superadmin)],
+    request: Request,
+    body: BrandingPutIn,
+) -> BrandingAdminOut:
+    """Replace branding settings (superadmin only).
+
+    Validates mime allowlist, base64 integrity and decoded size before persisting.
+    """
+    org_name, logo_data_uri, logo_mime = validate_branding_input(
+        body.org_name, body.logo_data_uri, body.logo_mime
+    )
+    pool = request.app.state.pool
+    await pool.execute(
+        "UPDATE branding_settings "
+        "SET org_name=$1, logo_data_uri=$2, logo_mime=$3, "
+        "    updated_at=now(), updated_by=$4::uuid "
+        "WHERE id = true",
+        org_name,
+        logo_data_uri,
+        logo_mime,
+        user_id,
+    )
+    log_action_bg(
+        pool,
+        user_id=user_id,
+        action="branding.update",
+        resource_type="branding_settings",
+        metadata={"org_name": org_name, "has_logo": logo_data_uri is not None},
+    )
+    return await _fetch_branding_row(pool)
+
+
+@router.delete("/branding", response_model=BrandingAdminOut)
+async def delete_branding_admin(
+    user_id: Annotated[str, Depends(require_superadmin)],
+    request: Request,
+) -> BrandingAdminOut:
+    """Reset branding to defaults (superadmin only).
+
+    Sets org_name, logo_data_uri and logo_mime to NULL.
+    """
+    pool = request.app.state.pool
+    await pool.execute(
+        "UPDATE branding_settings "
+        "SET org_name=NULL, logo_data_uri=NULL, logo_mime=NULL, "
+        "    updated_at=now(), updated_by=$1::uuid "
+        "WHERE id = true",
+        user_id,
+    )
+    log_action_bg(
+        pool,
+        user_id=user_id,
+        action="branding.reset",
+        resource_type="branding_settings",
+        metadata={},
+    )
+    return await _fetch_branding_row(pool)
