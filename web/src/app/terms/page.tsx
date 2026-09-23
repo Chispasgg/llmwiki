@@ -3,7 +3,7 @@ import { terms } from '@/content/terms'
 import { PolicyPage } from '@/components/PolicyPage'
 
 export const metadata: Metadata = {
-  title: 'Terms of Service | LLM Wiki',
+  title: 'Terms of Service',
   description: 'Terms of Service for LLM Wiki.',
 }
 
