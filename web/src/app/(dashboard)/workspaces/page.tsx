@@ -15,6 +15,7 @@ import { useWorkspaceStore, useUserStore } from "@/stores";
 import type { Workspace } from "@/lib/types";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { GlobalWikiSearch } from "@/components/workspace/GlobalWikiSearch";
+import { UserMenu } from "@/components/layout/UserMenu";
 
 function relativeTime(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -167,6 +168,7 @@ export default function WorkspacesPage() {
               <Plus className="size-4" />
               New workspace
             </button>
+            <UserMenu />
           </div>
         </div>
 

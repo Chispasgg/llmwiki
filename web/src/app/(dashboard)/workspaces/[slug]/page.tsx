@@ -39,6 +39,7 @@ import {
 } from "@/stores";
 import type { KnowledgeBase, Workspace } from "@/lib/types";
 import { ShareWikiDialog } from "@/components/kb/ShareWikiDialog";
+import { UserMenu } from "@/components/layout/UserMenu";
 
 const MAX_FAVORITES_SHOWN = 5;
 
@@ -430,13 +431,16 @@ export default function WorkspaceDetailPage() {
                 </DropdownMenu>
               )}
             </div>
-            <button
-              onClick={() => setCreateOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity cursor-pointer shrink-0"
-            >
-              <Plus className="size-4" />
-              New wiki
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setCreateOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
+              >
+                <Plus className="size-4" />
+                New wiki
+              </button>
+              <UserMenu />
+            </div>
           </div>
 
           {wikis.length > 0 && (
