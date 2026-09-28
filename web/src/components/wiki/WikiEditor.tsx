@@ -144,6 +144,13 @@ export function WikiEditor({
             .run(),
       },
       {
+        id: 'excalidraw',
+        title: 'Diagram',
+        description: 'Insert an Excalidraw diagram',
+        execute: (editor, range) =>
+          editor.chain().focus().deleteRange(range).insertExcalidraw().run(),
+      },
+      {
         id: 'divider',
         title: 'Divider',
         description: 'Horizontal rule separator',
