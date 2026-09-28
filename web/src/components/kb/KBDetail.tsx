@@ -1184,7 +1184,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
                       activeWikiDoc.verified_at ? (
                         <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                           <ShieldAlert className="size-3" />
-                          Desactualizada — verificada por {activeWikiDoc.verified_by_name} el {new Date(activeWikiDoc.verified_at).toLocaleDateString()}
+                          Desactualizada — verificada por {activeWikiDoc.verified_by_name ?? '—'} el {new Date(activeWikiDoc.verified_at).toLocaleDateString()}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
@@ -1195,7 +1195,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
                     ) : activeWikiDoc.verified_at ? (
                       <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
                         <ShieldCheck className="size-3" />
-                        Verified by {activeWikiDoc.verified_by_name} · {new Date(activeWikiDoc.verified_at).toLocaleDateString()}
+                        Verificada por {activeWikiDoc.verified_by_name ?? '—'} · {new Date(activeWikiDoc.verified_at).toLocaleDateString()}
                       </span>
                     ) : null
                   )}
@@ -1225,7 +1225,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
                               className="inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               <ShieldCheck className="size-3" />
-                              {verifying ? 'Verifying...' : 'Mark as verified'}
+                              {verifying ? 'Verificando...' : 'Marcar como verificada'}
                             </button>
                           )}
                           <button
