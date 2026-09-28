@@ -16,6 +16,7 @@ import { FileText, Copy, Download, Check, Network, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
 import { MermaidBlock } from "./MermaidBlock";
+import { ExcalidrawBlock } from "./ExcalidrawBlock";
 import { ExpandableMedia } from "./DiagramViewer";
 import type { DocumentListItem, HistoryVersion } from "@/lib/types";
 import {
@@ -682,14 +683,19 @@ export function WikiContent({
           typeof child.props === "object" &&
           child.props !== null &&
           "className" in child.props &&
-          typeof child.props.className === "string" &&
-          child.props.className.includes("language-mermaid")
+          typeof child.props.className === "string"
         ) {
+          const className = child.props.className;
           const text =
             "children" in child.props
               ? String(child.props.children).replace(/\n$/, "")
               : "";
-          return <MermaidBlock chart={text} />;
+          if (className.includes("language-excalidraw")) {
+            return <ExcalidrawBlock source={text} />;
+          }
+          if (className.includes("language-mermaid")) {
+            return <MermaidBlock chart={text} />;
+          }
         }
         return (
           <pre
