@@ -194,6 +194,22 @@ def _fmt_author(raw: str | None, via: str | None) -> str | None:
     return f"MCP-{raw}" if via == "mcp" else raw
 
 
+_MENTION_RE = re.compile(
+    r"\[(?:[^\]]*)\]\(mention:"
+    r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)",
+    re.IGNORECASE,
+)
+
+
+def extract_mention_ids(content: str) -> set[str]:
+    """Return the set of user UUIDs referenced via [@Name](mention:<uuid>) syntax.
+
+    Pure helper — no I/O, safe to unit-test without a database.
+    UUIDs are returned normalised to lower-case.
+    """
+    return {m.lower() for m in _MENTION_RE.findall(content)}
+
+
 class HostedKBService(KBService):
     def __init__(self, pool, user_id: str, is_superadmin: bool = False):
         self.pool = pool
@@ -643,6 +659,17 @@ class HostedDocumentService(DocumentService):
                 logger.warning(
                     "notify_wiki_activity failed (update_content)", exc_info=True
                 )
+            # Notify only users who were newly mentioned in this save
+            try:
+                new_ids = extract_mention_ids(content) - extract_mention_ids(
+                    old_content
+                )
+                if new_ids:
+                    await self._notify_new_mentions(kb_id, new_ids)
+            except Exception:
+                logger.warning(
+                    "mention notification failed (update_content)", exc_info=True
+                )
             log_action_bg(
                 self.pool,
                 user_id=self.user_id,
@@ -654,6 +681,47 @@ class HostedDocumentService(DocumentService):
             )
 
         return dict(row)
+
+    async def _notify_new_mentions(self, kb_id: str, mention_ids: set[str]) -> None:
+        """Upsert a coalesced kb_notification for each newly-mentioned user who has KB access.
+
+        Self-mentions are silently ignored.  DB errors per user are logged and
+        swallowed so one bad UUID never blocks the others.
+        """
+        for uid in mention_ids:
+            if uid == self.user_id:
+                continue
+            try:
+                has_access = await self.pool.fetchval(
+                    "SELECT 1 FROM knowledge_bases kb "
+                    "WHERE kb.id = $1::uuid "
+                    "AND (kb.user_id = $2::uuid "
+                    "     OR EXISTS (SELECT 1 FROM kb_shares ks "
+                    "                WHERE ks.kb_id = kb.id AND ks.shared_with = $2::uuid))",
+                    kb_id,
+                    uid,
+                )
+                if not has_access:
+                    continue
+                await self.pool.execute(
+                    "INSERT INTO kb_notifications (recipient_id, kb_id, last_actor_id) "
+                    "VALUES ($1::uuid, $2::uuid, $3::uuid) "
+                    "ON CONFLICT (recipient_id, kb_id) WHERE read_at IS NULL "
+                    "DO UPDATE SET "
+                    "    unread_count     = kb_notifications.unread_count + 1, "
+                    "    last_activity_at = now(), "
+                    "    last_actor_id    = EXCLUDED.last_actor_id",
+                    uid,
+                    kb_id,
+                    self.user_id,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to notify mention for user %s in kb %s",
+                    uid,
+                    kb_id,
+                    exc_info=True,
+                )
 
     async def list_history(self, doc_id: str) -> list[dict]:
         rows = await self.pool.fetch(

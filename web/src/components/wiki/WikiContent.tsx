@@ -738,6 +738,15 @@ export function WikiContent({
           );
         }
 
+        // Mention chips — @username links with mention: scheme
+        if (href?.startsWith("mention:")) {
+          return (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 whitespace-nowrap">
+              {children}
+            </span>
+          );
+        }
+
         // Internal wiki links
         if (
           href &&
