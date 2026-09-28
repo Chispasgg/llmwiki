@@ -531,11 +531,24 @@ class HostedDocumentService(DocumentService):
     async def create_note(
         self, kb_id: str, filename: str, path: str, content: str
     ) -> dict:
-        kb = await self.pool.fetchval(
-            "SELECT id FROM knowledge_bases WHERE id = $1 AND user_id = $2",
-            kb_id,
-            self.user_id,
-        )
+        # Verify create access: owner OR superadmin OR editor-share on the KB.
+        # A viewer share does NOT grant create access.
+        if self.is_superadmin:
+            kb = await self.pool.fetchval(
+                "SELECT id FROM knowledge_bases WHERE id = $1",
+                kb_id,
+            )
+        else:
+            kb = await self.pool.fetchval(
+                "SELECT id FROM knowledge_bases kb "
+                "WHERE kb.id = $1 "
+                "AND (kb.user_id = $2 "
+                "     OR EXISTS (SELECT 1 FROM kb_shares ks "
+                "                WHERE ks.kb_id = kb.id AND ks.shared_with = $2::uuid "
+                "                AND ks.access_level = 'editor'))",
+                kb_id,
+                self.user_id,
+            )
         if not kb:
             raise HTTPException(status_code=404, detail="Knowledge base not found")
 
