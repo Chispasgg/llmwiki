@@ -120,6 +120,9 @@ interface EditorModalProps {
 
 function EditorModal({ scene, onSave, onCancel }: EditorModalProps) {
   const apiRef = React.useRef<ExcalidrawImperativeAPI | null>(null);
+  // True once the Excalidraw imperative API has been delivered (canvas mounted).
+  // Guardar is disabled until then to prevent a silent no-op save.
+  const [ready, setReady] = React.useState(false);
 
   const initialData = React.useMemo((): ExcalidrawInitialDataState | undefined => {
     const parsed = parseScene(scene);
@@ -162,7 +165,8 @@ function EditorModal({ scene, onSave, onCancel }: EditorModalProps) {
             </button>
             <button
               onClick={handleSave}
-              className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors cursor-pointer"
+              disabled={!ready}
+              className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               type="button"
             >
               Guardar
@@ -176,6 +180,7 @@ function EditorModal({ scene, onSave, onCancel }: EditorModalProps) {
             initialData={initialData}
             excalidrawAPI={(api: ExcalidrawImperativeAPI) => {
               apiRef.current = api;
+              setReady(true);
             }}
           />
         </div>

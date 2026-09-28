@@ -133,7 +133,9 @@ export const ExcalidrawNode = Node.create({
               // when element.getAttribute() is called.
               const escaped = json
                 .replace(/&/g, "&amp;")
-                .replace(/"/g, "&quot;");
+                .replace(/"/g, "&quot;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
               return `<div data-type="excalidraw" data-scene="${escaped}"></div>`;
             }
 
