@@ -25,6 +25,7 @@ import {
   User,
   MessageSquare,
   Bot,
+  FilePlus,
 } from "lucide-react";
 import {
   CommandDialog,
@@ -176,6 +177,7 @@ interface KBSidenavProps {
   commentsPanelOpen: boolean;
   onChatPanelToggle: () => void;
   chatPanelOpen: boolean;
+  onCreatePage?: () => void;
 }
 
 export function KBSidenav({
@@ -206,6 +208,7 @@ export function KBSidenav({
   commentsPanelOpen,
   onChatPanelToggle,
   chatPanelOpen,
+  onCreatePage,
 }: KBSidenavProps) {
   const router = useRouter();
   const { branding } = useBranding();
@@ -516,6 +519,18 @@ export function KBSidenav({
                 <Upload className="size-3.5 shrink-0" />
                 Subir archivos
               </button>
+              {onCreatePage && (
+                <button
+                  onClick={() => {
+                    onCreatePage();
+                    setActionsOpen(false);
+                  }}
+                  className="flex items-center gap-2.5 w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
+                >
+                  <FilePlus className="size-3.5 shrink-0" />
+                  Nueva página
+                </button>
+              )}
               {isOwner && (
                 <button
                   onClick={() => {

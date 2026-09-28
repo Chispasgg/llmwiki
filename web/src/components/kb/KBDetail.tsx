@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Upload as UploadIcon, BookOpen, ArrowUpRight, Loader2, Menu, Pencil, Eye, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { Upload as UploadIcon, BookOpen, ArrowUpRight, Loader2, Menu, Pencil, Eye, ShieldCheck, ShieldAlert, FilePlus } from 'lucide-react'
 import * as tus from 'tus-js-client'
 import { useUserStore, useKBStore, useNotificationsStore } from '@/stores'
 import { useKBDocuments } from '@/hooks/useKBDocuments'
@@ -22,6 +22,12 @@ import { CommentsHistoryView } from '@/components/kb/CommentsHistoryView'
 import type { BreadcrumbItem } from '@/components/wiki/WikiContent'
 import type { DocumentListItem, WikiNode } from '@/lib/types'
 import type { ViewMode } from '@/app/(dashboard)/wikis/[slug]/[[...path]]/page'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -493,10 +499,18 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   const [wikiMode, setWikiMode] = React.useState<'read' | 'edit'>('read')
   const [verifying, setVerifying] = React.useState(false)
   const wikiEditorRef = React.useRef<import('@tiptap/react').Editor | null>(null)
+  // When navigating to a newly created page we want to land in edit mode.
+  // This ref signals the wikiActivePath effect to set 'edit' instead of 'read'.
+  const openInEditModeRef = React.useRef(false)
 
   // Return to read when navigating to a different wiki page
   React.useEffect(() => {
-    setWikiMode('read')
+    if (openInEditModeRef.current) {
+      setWikiMode('edit')
+      openInEditModeRef.current = false
+    } else {
+      setWikiMode('read')
+    }
   }, [wikiActivePath])
 
   const handleWikiSave = React.useCallback(async () => {
@@ -746,6 +760,60 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
     [wikiActivePath, wikiPathSet, updateParam, wikiDocs],
   )
 
+
+  // ─── Create wiki page dialog ─────────────────────────────────
+  const [createPageDialogOpen, setCreatePageDialogOpen] = React.useState(false)
+  const [createPageTitle, setCreatePageTitle] = React.useState('')
+
+  const handleCreatePage = async () => {
+    const title = createPageTitle.trim()
+    if (!title) return
+    if (!requireUser() || !userId) return
+
+    // Build unique slug from title
+    const base =
+      title
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-') || 'pagina'
+
+    const existing = new Set(
+      wikiDocs.filter((d) => d.path === '/wiki/').map((d) => d.filename),
+    )
+    let filename = `${base}.md`
+    if (existing.has(filename)) {
+      let i = 2
+      while (existing.has(`${base}-${i}.md`)) i++
+      filename = `${base}-${i}.md`
+    }
+
+    const today = new Date().toISOString().slice(0, 10)
+    const content = `---\ntitle: "${title}"\ndate: ${today}\n---\n\n`
+
+    try {
+      const data = await apiFetch<DocumentListItem>(`/v1/knowledge-bases/${kbId}/documents/note`, {
+        method: 'POST',
+        body: JSON.stringify({ filename, path: '/wiki/', content }),
+      })
+      setDocuments((prev) => [data, ...prev])
+      const relative = (data.path + data.filename).replace(/^\/wiki\/?/, '')
+      // Signal the wikiActivePath effect to open in edit mode
+      openInEditModeRef.current = true
+      setWikiActivePath(relative)
+      if (filesViewActive || graphViewActive || commentsViewActive) {
+        setActiveView('wiki')
+        navigateToView('wiki')
+      }
+      setCreatePageDialogOpen(false)
+      setCreatePageTitle('')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create page')
+    }
+  }
 
   // ─── Document CRUD ───────────────────────────────────────────
   const handleCreateNote = async (targetPath: string = '/') => {
@@ -1066,6 +1134,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
             commentsPanelOpen={commentsPanelOpen}
             onChatPanelToggle={toggleChatPanel}
             chatPanelOpen={chatPanelOpen}
+            onCreatePage={canEditWiki ? () => setCreatePageDialogOpen(true) : undefined}
           />
         </div>
 
@@ -1301,10 +1370,19 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
                     Add some sources, then ask Claude to compile a wiki from them.
                   </p>
                 </div>
-                <div className="flex items-center gap-3 mt-2">
+                <div className="flex items-center gap-3 mt-2 flex-wrap justify-center">
+                  {canEditWiki && (
+                    <button
+                      onClick={() => setCreatePageDialogOpen(true)}
+                      className="inline-flex items-center gap-2 rounded-full bg-foreground text-background px-5 py-2 text-sm font-medium hover:opacity-90 transition-opacity cursor-pointer"
+                    >
+                      <FilePlus className="size-3.5 opacity-60" />
+                      Crear primera página
+                    </button>
+                  )}
                   <button
                     onClick={() => handleUploadClick()}
-                    className="inline-flex items-center gap-2 rounded-full bg-foreground text-background px-5 py-2 text-sm font-medium hover:opacity-90 transition-opacity cursor-pointer"
+                    className="inline-flex items-center gap-2 rounded-full border border-border px-5 py-2 text-sm font-medium hover:bg-accent transition-colors cursor-pointer"
                   >
                     <UploadIcon className="size-3.5 opacity-60" />
                     Upload Sources
@@ -1325,6 +1403,57 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
           </div>
         </div>
       </div>
+
+      {/* Create wiki page dialog */}
+      <Dialog
+        open={createPageDialogOpen}
+        onOpenChange={(open) => {
+          setCreatePageDialogOpen(open)
+          if (!open) setCreatePageTitle('')
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Nueva página de wiki</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-1">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium" htmlFor="create-page-title">
+                Título de la página
+              </label>
+              <input
+                id="create-page-title"
+                type="text"
+                value={createPageTitle}
+                onChange={(e) => setCreatePageTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && createPageTitle.trim()) {
+                    void handleCreatePage()
+                  }
+                }}
+                placeholder="Ej. Introducción al proyecto"
+                autoFocus
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setCreatePageDialogOpen(false)}
+                className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-accent cursor-pointer transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                disabled={!createPageTitle.trim()}
+                onClick={() => void handleCreatePage()}
+                className="px-3 py-1.5 text-sm bg-foreground text-background rounded-md hover:opacity-90 disabled:opacity-50 cursor-pointer transition-opacity"
+              >
+                Crear
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <SelectionActionBar
         count={selectedIds.size}
