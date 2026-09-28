@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Upload as UploadIcon, BookOpen, ArrowUpRight, Loader2, Menu, Pencil, Eye } from 'lucide-react'
+import { Upload as UploadIcon, BookOpen, ArrowUpRight, Loader2, Menu, Pencil, Eye, ShieldCheck, ShieldAlert } from 'lucide-react'
 import * as tus from 'tus-js-client'
 import { useUserStore, useKBStore, useNotificationsStore } from '@/stores'
 import { useKBDocuments } from '@/hooks/useKBDocuments'
@@ -491,6 +491,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   }, [user, kbEntry])
 
   const [wikiMode, setWikiMode] = React.useState<'read' | 'edit'>('read')
+  const [verifying, setVerifying] = React.useState(false)
   const wikiEditorRef = React.useRef<import('@tiptap/react').Editor | null>(null)
 
   // Return to read when navigating to a different wiki page
@@ -517,6 +518,32 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   const handleWikiCancel = React.useCallback(() => {
     setWikiMode('read')
   }, [])
+
+  const handleVerify = React.useCallback(async () => {
+    if (!activeWikiDocId) return
+    setVerifying(true)
+    try {
+      const res = await apiFetch<{
+        id: string
+        verified_at: string
+        verified_by: string
+        verified_by_name: string
+        needs_review: boolean
+      }>(`/v1/documents/${activeWikiDocId}/verify`, { method: 'POST' })
+      setDocuments((prev) =>
+        prev.map((d) =>
+          d.id === res.id
+            ? { ...d, verified_at: res.verified_at, verified_by: res.verified_by, verified_by_name: res.verified_by_name, needs_review: res.needs_review }
+            : d
+        )
+      )
+      toast.success('Page verified')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to verify page')
+    } finally {
+      setVerifying(false)
+    }
+  }, [activeWikiDocId, setDocuments])
 
   // ─── Auth guard ───────────────────────────────────────────────
   const requireUser = () => {
@@ -1150,36 +1177,70 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
                 transition={{ duration: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
                 className="h-full flex flex-col"
               >
-                {/* ── Read / Edit toggle ── */}
-                {canEditWiki && (
-                  <div className="flex items-center justify-end gap-2 px-4 py-1.5 border-b border-border shrink-0">
-                    {wikiMode === 'edit' ? (
-                      <>
-                        <button
-                          onClick={handleWikiCancel}
-                          className="inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={handleWikiSave}
-                          className="inline-flex items-center gap-1.5 rounded-md bg-foreground text-background px-3 py-1 text-xs font-medium hover:opacity-90 transition-opacity cursor-pointer"
-                        >
-                          Save
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        onClick={() => setWikiMode('edit')}
-                        className="inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
-                        title="Edit this page"
-                      >
-                        <Pencil className="size-3" />
-                        Edit
-                      </button>
+                {/* ── Toolbar: verification badge + read/edit controls ── */}
+                <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border shrink-0">
+                  {wikiMode === 'read' && activeWikiDoc && (
+                    activeWikiDoc.needs_review ? (
+                      activeWikiDoc.verified_at ? (
+                        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                          <ShieldAlert className="size-3" />
+                          Desactualizada — verificada por {activeWikiDoc.verified_by_name} el {new Date(activeWikiDoc.verified_at).toLocaleDateString()}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                          <ShieldAlert className="size-3" />
+                          Sin verificar
+                        </span>
+                      )
+                    ) : activeWikiDoc.verified_at ? (
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                        <ShieldCheck className="size-3" />
+                        Verified by {activeWikiDoc.verified_by_name} · {new Date(activeWikiDoc.verified_at).toLocaleDateString()}
+                      </span>
+                    ) : null
+                  )}
+                  <div className="ml-auto flex items-center gap-2">
+                    {canEditWiki && (
+                      wikiMode === 'edit' ? (
+                        <>
+                          <button
+                            onClick={handleWikiCancel}
+                            className="inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleWikiSave}
+                            className="inline-flex items-center gap-1.5 rounded-md bg-foreground text-background px-3 py-1 text-xs font-medium hover:opacity-90 transition-opacity cursor-pointer"
+                          >
+                            Save
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          {activeWikiDoc?.needs_review && (
+                            <button
+                              onClick={handleVerify}
+                              disabled={verifying}
+                              className="inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <ShieldCheck className="size-3" />
+                              {verifying ? 'Verifying...' : 'Mark as verified'}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setWikiMode('edit')}
+                            className="inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
+                            title="Edit this page"
+                          >
+                            <Pencil className="size-3" />
+                            Edit
+                          </button>
+                        </>
+                      )
                     )}
                   </div>
-                )}
+                </div>
 
                 <div className="flex-1 min-h-0 flex">
                   <div className="flex-1 min-w-0 overflow-y-auto">

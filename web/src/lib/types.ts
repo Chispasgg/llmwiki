@@ -91,6 +91,10 @@ export interface Document {
   document_number: number | null;
   sort_order: number | null;
   archived: boolean;
+  verified_at: string | null;
+  verified_by: string | null;
+  verified_by_name: string | null;
+  needs_review: boolean;
   created_at: string;
   updated_at: string;
 }
