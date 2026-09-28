@@ -1,8 +1,11 @@
 import { Extension } from '@tiptap/core'
+import { PluginKey } from '@tiptap/pm/state'
 import Suggestion from '@tiptap/suggestion'
 import type { MutableRefObject } from 'react'
 import type { UserSuggestion } from '@/lib/shares'
 import type { MentionSuggestionState } from './types'
+
+const mentionSuggestionPluginKey = new PluginKey('mentionSuggestion')
 
 /**
  * Creates a TipTap Extension that powers the `@` mention autocomplete.
@@ -55,6 +58,7 @@ export function createMentionExtension(
     addProseMirrorPlugins() {
       return [
         Suggestion<UserSuggestion, UserSuggestion>({
+          pluginKey: mentionSuggestionPluginKey,
           editor: this.editor,
           char: '@',
           allowSpaces: false,
