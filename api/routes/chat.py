@@ -24,7 +24,12 @@ from pydantic import BaseModel, Field
 from config import settings
 from deps import _is_superadmin, get_user_id
 from services.chat_prompt import DEFAULT_CHAT_SYSTEM_PROMPT
-from services.chat_provider import ChatProviderError, get_chat_provider
+from services.chat_config import resolve_chat_config
+from services.chat_provider import (
+    ChatProviderError,
+    build_chat_provider,
+    get_chat_provider,
+)
 from services.chat_retrieval import ContextChunk, retrieve_context
 
 router = APIRouter(tags=["chat"])
@@ -142,15 +147,19 @@ def serialize_sources(chunks: list[ContextChunk]) -> list[dict]:
 )
 async def chat_status(
     user_id: Annotated[str, Depends(get_user_id)],
+    request: Request,
 ):
     """Devuelve si el chat está habilitado y qué proveedor/modelo está configurado.
 
-    No expone CHAT_API_KEY ni ningún secreto de configuración.
+    Lee la configuración efectiva desde BD (BD manda, env es fallback).
+    No expone api_key ni ningún secreto de configuración.
     """
+    pool = request.app.state.pool
+    cfg = await resolve_chat_config(pool, settings)
     return {
-        "enabled": settings.chat_enabled,
-        "provider": settings.CHAT_PROVIDER,
-        "model": settings.CHAT_MODEL,
+        "enabled": cfg["enabled"],
+        "provider": cfg["provider"],
+        "model": cfg["model"],
     }
 
 
@@ -174,11 +183,13 @@ async def kb_chat(
     con fragmentos ``token``, un evento final ``sources`` con las citas, y
     ``error`` ante fallos del proveedor.
     """
-    # Si el chat está deshabilitado, respuesta directa (sin streaming)
-    if not settings.chat_enabled:
+    pool = request.app.state.pool
+
+    # Resolver configuración efectiva (BD manda, env fallback)
+    cfg = await resolve_chat_config(pool, settings)
+    if not cfg["enabled"]:
         return {"enabled": False}
 
-    pool = request.app.state.pool
     is_sa = await _is_superadmin(pool, user_id)
 
     # Control de acceso a la KB
@@ -200,7 +211,7 @@ async def kb_chat(
     context_block = build_context_block(ctx)
     messages = build_messages(system_prompt, context_block, history, body.message)
 
-    provider = get_chat_provider(settings)
+    provider = build_chat_provider(cfg)
     sources_payload = serialize_sources(ctx)
 
     async def _stream():

@@ -185,3 +185,30 @@ def get_chat_provider(settings) -> "ChatProvider | None":
         )
     logger.warning("CHAT_PROVIDER desconocido: %r — chat deshabilitado", provider)
     return None
+
+
+def build_chat_provider(cfg: dict) -> "ChatProvider | None":
+    """Fábrica de proveedores a partir de un dict resuelto por resolve_chat_config.
+
+    Args:
+        cfg: dict con claves provider, url, model, api_key, enabled
+             (tal como devuelve resolve_chat_config).
+
+    Returns:
+        Instancia del proveedor correspondiente, o None si:
+        - cfg['enabled'] es False (url o model ausentes), o
+        - cfg['provider'] tiene un valor desconocido.
+
+    La API key queda encapsulada dentro del proveedor; nunca se expone al exterior.
+    """
+    if not cfg.get("enabled"):
+        return None
+    provider = cfg.get("provider", "")
+    if provider == "ollama":
+        return OllamaChatProvider(cfg["url"], cfg["model"])
+    if provider == "openai":
+        return OpenAICompatProvider(cfg["url"], cfg["model"], cfg.get("api_key", ""))
+    logger.warning(
+        "Proveedor desconocido en config resuelta: %r — chat deshabilitado", provider
+    )
+    return None

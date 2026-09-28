@@ -1,16 +1,21 @@
 """Superadmin-only management endpoints."""
 
 import json
+import logging
 from typing import Annotated
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from config import settings
 from deps import require_superadmin, get_user_id
 from routes._branding_helpers import validate_branding_input
+from services.chat_config import resolve_chat_config
 from services.log import log_action_bg
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/superadmin", tags=["superadmin"])
 
@@ -509,3 +514,246 @@ async def put_chat_prompt_admin(
         metadata={"prompt_length": len(prompt)},
     )
     return await _fetch_chat_row(pool)
+
+
+# ── AI Providers ──────────────────────────────────────────────────
+
+_MODELS_FETCH_TIMEOUT = httpx.Timeout(8.0, connect=4.0)
+
+
+class AiProviderOut(BaseModel):
+    provider: str
+    base_url: str
+    model: str
+    has_api_key: bool
+
+
+class AiProvidersAdminOut(BaseModel):
+    active_provider: str
+    providers: list[AiProviderOut]
+
+
+class AiProviderPutIn(BaseModel):
+    base_url: str | None = None
+    """None = no cambiar; "" = borrar (cae a env); string no vacío = actualizar."""
+    api_key: str | None = None
+    """None o "" = no cambiar. Para actualizar: string no vacío. No hay modo de borrar
+    por seguridad; si necesitas limpiarla, envía un espacio o gestiona fuera de banda."""
+    model: str | None = None
+    """None = no cambiar; "" = borrar (cae a env); string no vacío = actualizar."""
+
+
+class AiActiveIn(BaseModel):
+    provider: str
+
+
+async def _fetch_ai_providers(pool) -> AiProvidersAdminOut:
+    """Lee active_provider y la lista de proveedores. No expone api_key."""
+    cs_row = await pool.fetchrow(
+        "SELECT active_provider FROM chat_settings WHERE id = true"
+    )
+    active = (cs_row["active_provider"] if cs_row else None) or "ollama"
+
+    rows = await pool.fetch(
+        "SELECT provider, base_url, model, api_key FROM ai_providers ORDER BY provider"
+    )
+    providers = [
+        AiProviderOut(
+            provider=r["provider"],
+            base_url=r["base_url"] or "",
+            model=r["model"] or "",
+            has_api_key=bool(r["api_key"]),
+        )
+        for r in rows
+    ]
+    return AiProvidersAdminOut(active_provider=active, providers=providers)
+
+
+@router.get("/ai-providers", response_model=AiProvidersAdminOut)
+async def get_ai_providers(
+    _sa: Annotated[str, Depends(require_superadmin)],
+    request: Request,
+) -> AiProvidersAdminOut:
+    """Lista proveedores de IA configurados y proveedor activo (superadmin).
+
+    La api_key nunca se devuelve; ``has_api_key`` indica si hay una definida.
+    """
+    return await _fetch_ai_providers(request.app.state.pool)
+
+
+@router.put("/ai-providers/{provider}", response_model=AiProvidersAdminOut)
+async def put_ai_provider(
+    provider: str,
+    body: AiProviderPutIn,
+    user_id: Annotated[str, Depends(require_superadmin)],
+    request: Request,
+) -> AiProvidersAdminOut:
+    """Actualiza parámetros de un proveedor de IA (superadmin).
+
+    Convención de campos:
+    - ``base_url``: None = no cambiar; "" = borrar (cae a env); string = actualizar.
+    - ``model``:    None = no cambiar; "" = borrar (cae a env); string = actualizar.
+    - ``api_key``:  None o "" = no cambiar; string no vacío = actualizar.
+      (Para no exponer accidentalmente, la clave vacía nunca machaca la existente.)
+
+    Crea la fila si no existe para el proveedor indicado.
+    """
+    pool = request.app.state.pool
+
+    # Upsert: aseguramos que la fila exista antes de actualizar
+    await pool.execute(
+        "INSERT INTO ai_providers (provider) VALUES ($1) ON CONFLICT DO NOTHING",
+        provider,
+    )
+
+    updates: list[str] = []
+    params: list = []
+
+    if body.base_url is not None:
+        params.append(body.base_url)
+        updates.append(f"base_url = ${len(params)}")
+
+    # api_key: solo actualizar si viene no-nulo y no-vacío
+    if body.api_key:
+        params.append(body.api_key)
+        updates.append(f"api_key = ${len(params)}")
+
+    if body.model is not None:
+        params.append(body.model)
+        updates.append(f"model = ${len(params)}")
+
+    if updates:
+        params.append(user_id)
+        params.append(provider)
+        set_clause = ", ".join(updates)
+        await pool.execute(
+            f"UPDATE ai_providers "
+            f"SET {set_clause}, updated_at = now(), updated_by = ${len(params) - 1}::uuid "
+            f"WHERE provider = ${len(params)}",
+            *params,
+        )
+        log_action_bg(
+            pool,
+            user_id=user_id,
+            action="ai_provider.update",
+            resource_type="ai_providers",
+            metadata={
+                "provider": provider,
+                "fields": [u.split(" =")[0] for u in updates],
+            },
+        )
+
+    return await _fetch_ai_providers(pool)
+
+
+@router.put("/ai-active", response_model=AiProvidersAdminOut)
+async def put_ai_active(
+    body: AiActiveIn,
+    user_id: Annotated[str, Depends(require_superadmin)],
+    request: Request,
+) -> AiProvidersAdminOut:
+    """Establece el proveedor de IA activo para el chat wiki (superadmin).
+
+    Valida que el proveedor exista en ``ai_providers`` antes de activarlo.
+    """
+    pool = request.app.state.pool
+
+    exists = await pool.fetchval(
+        "SELECT provider FROM ai_providers WHERE provider = $1", body.provider
+    )
+    if not exists:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": f"Proveedor '{body.provider}' no encontrado en ai_providers"
+            },
+        )
+
+    await pool.execute(
+        "UPDATE chat_settings SET active_provider = $1 WHERE id = true",
+        body.provider,
+    )
+    log_action_bg(
+        pool,
+        user_id=user_id,
+        action="ai_provider.set_active",
+        resource_type="chat_settings",
+        metadata={"provider": body.provider},
+    )
+    return await _fetch_ai_providers(pool)
+
+
+@router.get("/ai-providers/{provider}/models")
+async def get_ai_provider_models(
+    provider: str,
+    _sa: Annotated[str, Depends(require_superadmin)],
+    request: Request,
+) -> dict:
+    """Lista modelos disponibles en vivo para un proveedor (superadmin).
+
+    Para Ollama: consulta ``GET {url}/api/tags`` y devuelve los nombres.
+    Ante cualquier error de red o timeout devuelve lista vacía + mensaje de error
+    (nunca HTTP 500) para no romper la UI.
+
+    Respuesta: ``{ "models": ["nombre1", ...] }``
+    En caso de error: ``{ "models": [], "error": "<descripción>" }``
+    """
+    pool = request.app.state.pool
+    cfg = await resolve_chat_config(pool, settings)
+
+    # Obtener URL efectiva del proveedor solicitado (puede diferir del activo)
+    ap_row = await pool.fetchrow(
+        "SELECT base_url FROM ai_providers WHERE provider = $1", provider
+    )
+    if ap_row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"message": f"Proveedor '{provider}' no encontrado"},
+        )
+
+    base_url = (ap_row["base_url"] or "").strip()
+    if not base_url:
+        # Fallback a env según proveedor
+        if provider == "ollama":
+            base_url = getattr(settings, "OLLAMA_URL", "") or ""
+        else:
+            base_url = getattr(settings, "CHAT_API_URL", "") or ""
+
+    if not base_url:
+        return {"models": [], "error": "URL del proveedor no configurada"}
+
+    if provider == "ollama":
+        return await _fetch_ollama_models(base_url)
+
+    # Otros proveedores: aún no implementado
+    return {
+        "models": [],
+        "error": f"Listado de modelos no soportado para proveedor '{provider}'",
+    }
+
+
+async def _fetch_ollama_models(base_url: str) -> dict:
+    """Consulta GET {url}/api/tags y devuelve lista de nombres de modelos.
+
+    Ante cualquier error devuelve ``{"models": [], "error": "<msg>"}`` sin relanzar.
+    """
+    url = base_url.rstrip("/") + "/api/tags"
+    try:
+        async with httpx.AsyncClient(timeout=_MODELS_FETCH_TIMEOUT) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            data = resp.json()
+            models = [m["name"] for m in data.get("models", []) if m.get("name")]
+            return {"models": models}
+    except httpx.TimeoutException:
+        logger.warning("Timeout consultando modelos Ollama: %s", url)
+        return {"models": [], "error": "Timeout al conectar con Ollama"}
+    except httpx.HTTPStatusError as exc:
+        logger.warning("HTTP error consultando modelos Ollama: %s", exc)
+        return {
+            "models": [],
+            "error": f"Ollama respondió HTTP {exc.response.status_code}",
+        }
+    except Exception as exc:
+        logger.warning("Error consultando modelos Ollama: %s", exc)
+        return {"models": [], "error": str(exc)}

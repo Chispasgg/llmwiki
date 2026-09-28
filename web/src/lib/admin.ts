@@ -230,6 +230,48 @@ export const putChatPrompt = (system_prompt: string) =>
 export const getChatStatus = () =>
   apiFetch<ChatStatusAdmin>('/v1/chat/status');
 
+// ── AI Providers ────────────────────────────────────────────────
+
+export interface AiProvider {
+  provider: string;
+  base_url: string;
+  model: string;
+  has_api_key: boolean;
+}
+
+export interface AiProvidersResponse {
+  active_provider: string;
+  providers: AiProvider[];
+}
+
+export interface AiProviderModelsResponse {
+  models: string[];
+  error?: string;
+}
+
+export const getAiProviders = () =>
+  apiFetch<AiProvidersResponse>('/v1/superadmin/ai-providers');
+
+export const putAiProvider = (
+  provider: string,
+  body: { base_url?: string; api_key?: string; model?: string },
+) =>
+  apiFetch<AiProvidersResponse>(`/v1/superadmin/ai-providers/${provider}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+
+export const setActiveProvider = (provider: string) =>
+  apiFetch<AiProvidersResponse>('/v1/superadmin/ai-active', {
+    method: 'PUT',
+    body: JSON.stringify({ provider }),
+  });
+
+export const getProviderModels = (provider: string) =>
+  apiFetch<AiProviderModelsResponse>(
+    `/v1/superadmin/ai-providers/${provider}/models`,
+  );
+
 // ── Embeddings ──────────────────────────────────────────────────
 
 export interface EmbeddingStats {
