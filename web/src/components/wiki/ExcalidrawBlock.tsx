@@ -4,7 +4,7 @@ import * as React from "react";
 import { Download, Maximize2 } from "lucide-react";
 import { DiagramViewer } from "./DiagramViewer";
 import { sceneToSvg } from "@/components/wiki/excalidraw/ExcalidrawLoader";
-import type { ExcalidrawScene } from "@/components/wiki/excalidraw/ExcalidrawLoader";
+import { parseScene } from "@/components/wiki/excalidraw/utils";
 
 function downloadSvg(svg: string) {
   const blob = new Blob([svg], { type: "image/svg+xml" });
@@ -16,25 +16,6 @@ function downloadSvg(svg: string) {
   URL.revokeObjectURL(url);
 }
 
-/**
- * Parses the raw text of a ```excalidraw fenced block.
- * Returns a valid ExcalidrawScene or null if the JSON is missing/invalid.
- */
-function parseScene(source: string): ExcalidrawScene | null {
-  try {
-    const parsed: unknown = JSON.parse(source);
-    if (
-      parsed === null ||
-      typeof parsed !== "object" ||
-      !Array.isArray((parsed as Record<string, unknown>).elements)
-    ) {
-      return null;
-    }
-    return parsed as ExcalidrawScene;
-  } catch {
-    return null;
-  }
-}
 
 export function ExcalidrawBlock({ source }: { source: string }) {
   const containerRef = React.useRef<HTMLDivElement>(null);

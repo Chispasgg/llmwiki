@@ -23,29 +23,10 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { NodeViewWrapper } from "@tiptap/react";
 import type { ReactNodeViewProps } from "@tiptap/react";
-import { sceneToSvg, ExcalidrawCanvas } from "./ExcalidrawLoader";
+import { sceneToSvg, sceneToJson, ExcalidrawCanvas } from "./ExcalidrawLoader";
 import type { ExcalidrawScene } from "./ExcalidrawLoader";
+import { parseScene } from "./utils";
 import type { ExcalidrawImperativeAPI, ExcalidrawInitialDataState } from "@excalidraw/excalidraw/types";
-
-// ---------------------------------------------------------------------------
-// Scene parser (mirrors ExcalidrawBlock.tsx for consistency)
-// ---------------------------------------------------------------------------
-
-function parseScene(source: string): ExcalidrawScene | null {
-  try {
-    const parsed: unknown = JSON.parse(source);
-    if (
-      parsed === null ||
-      typeof parsed !== "object" ||
-      !Array.isArray((parsed as Record<string, unknown>).elements)
-    ) {
-      return null;
-    }
-    return parsed as ExcalidrawScene;
-  } catch {
-    return null;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // ScenePreview — static SVG thumbnail
@@ -114,7 +95,7 @@ function ScenePreview({ scene }: { scene: string }) {
 
 interface EditorModalProps {
   scene: string;
-  onSave: (api: ExcalidrawImperativeAPI) => void;
+  onSave: (api: ExcalidrawImperativeAPI) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -133,7 +114,7 @@ function EditorModal({ scene, onSave, onCancel }: EditorModalProps) {
 
   const handleSave = () => {
     if (apiRef.current) {
-      onSave(apiRef.current);
+      void onSave(apiRef.current);
     }
   };
 
@@ -205,12 +186,16 @@ export function ExcalidrawNodeView({
   const openModal = () => setModalOpen(true);
   const closeModal = () => setModalOpen(false);
 
-  const handleSave = (api: ExcalidrawImperativeAPI) => {
+  const handleSave = async (api: ExcalidrawImperativeAPI): Promise<void> => {
     const elements = api.getSceneElements();
     const appState = api.getAppState();
     const files = api.getFiles();
 
-    const sceneJson = JSON.stringify({ elements, appState, files });
+    // serializeAsJSON strips non-serializable state (collaborators Map,
+    // fileHandle, deleted elements) producing a reload-safe JSON string.
+    // Using JSON.stringify directly would encode collaborators as {} causing
+    // TypeError on re-open when Excalidraw calls collaborators.forEach().
+    const sceneJson = await sceneToJson(elements, appState, files);
     updateAttributes({ scene: sceneJson });
     closeModal();
   };

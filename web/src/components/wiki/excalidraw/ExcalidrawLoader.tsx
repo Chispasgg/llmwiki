@@ -18,6 +18,9 @@ import dynamic from "next/dynamic";
 import type { ExcalidrawElement, NonDeleted } from "@excalidraw/excalidraw/element/types";
 import type { BinaryFiles, AppState } from "@excalidraw/excalidraw/types";
 
+// Re-export shared parser so consumers get it from one place.
+export { parseScene } from "./utils";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -51,6 +54,33 @@ export const ExcalidrawCanvas = dynamic(
 // ---------------------------------------------------------------------------
 // Utilities
 // ---------------------------------------------------------------------------
+
+/**
+ * Serialize an Excalidraw scene to a reload-safe JSON string.
+ *
+ * Uses `serializeAsJSON` from the Excalidraw package, which strips non-
+ * serializable state (collaborators Map, fileHandle, deleted elements, etc.)
+ * and produces a stable format that Excalidraw can reload without crashing.
+ *
+ * Signature of the upstream function (verified from dist/types):
+ *   serializeAsJSON(
+ *     elements: readonly ExcalidrawElement[],
+ *     appState: Partial<AppState>,
+ *     files: BinaryFiles,
+ *     type: "local" | "database"
+ *   ): string
+ *
+ * Output root shape: { type, version, source, elements, appState, files }
+ * — fully compatible with ExcalidrawInitialDataState / ImportedDataState.
+ */
+export async function sceneToJson(
+  elements: readonly ExcalidrawElement[],
+  appState: Partial<AppState>,
+  files: BinaryFiles | null,
+): Promise<string> {
+  const { serializeAsJSON } = await import("@excalidraw/excalidraw");
+  return serializeAsJSON(elements, appState, files ?? {}, "local");
+}
 
 /**
  * Convert an Excalidraw scene to an SVG element.
