@@ -1,7 +1,10 @@
 import { Extension } from '@tiptap/core'
+import { PluginKey } from '@tiptap/pm/state'
 import Suggestion from '@tiptap/suggestion'
 import type { MutableRefObject } from 'react'
 import type { SlashCommand, SlashSuggestionState } from './types'
+
+const slashSuggestionPluginKey = new PluginKey('slashSuggestion')
 
 /**
  * Creates a TipTap Extension that powers the `/` slash-command menu.
@@ -21,6 +24,7 @@ export function createSlashExtension(
     addProseMirrorPlugins() {
       return [
         Suggestion<SlashCommand, SlashCommand>({
+          pluginKey: slashSuggestionPluginKey,
           editor: this.editor,
           char: '/',
           allowSpaces: false,
