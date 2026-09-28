@@ -123,6 +123,17 @@ class DocumentService(ABC):
         """Copy a document to a different space, auto-resolving name conflicts."""
         raise HTTPException(status_code=501, detail="Not supported in this mode")
 
+    async def verify_document(self, doc_id: str) -> dict | None:
+        """Mark a document as verified by the current user.
+
+        Returns a dict with verified_at, verified_by, verified_by_name, needs_review.
+        Returns None if not found or caller lacks editor+ permission.
+        Raises HTTPException(501) in local mode (hosted-only feature).
+        """
+        raise HTTPException(
+            status_code=501, detail="Document verification requires hosted mode"
+        )
+
     async def list_history(self, doc_id: str) -> list[dict]:
         """Return the version history for a document (newest first).
 
