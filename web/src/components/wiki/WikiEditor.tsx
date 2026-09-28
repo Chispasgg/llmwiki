@@ -14,6 +14,10 @@ import { SlashMenu } from './slash/SlashMenu'
 import { PagePicker } from './slash/PagePicker'
 import { createSlashExtension } from './slash/SlashExtension'
 import type { SlashCommand, SlashSuggestionState } from './slash/types'
+import { MentionMenu } from './mention/MentionMenu'
+import { createMentionExtension } from './mention/MentionExtension'
+import type { MentionSuggestionState } from './mention/types'
+import { searchUsers } from '@/lib/shares'
 import type { Editor } from '@tiptap/react'
 import type { DocumentListItem } from '@/lib/types'
 
@@ -60,9 +64,18 @@ export function WikiEditor({
   const itemsRef = React.useRef<SlashCommand[]>([])
   const openLinkPickerRef = React.useRef<() => void>(() => {})
 
+  // ── Mention-menu state ───────────────────────────────────────────────────────
+  const [mentionSuggestion, setMentionSuggestion] =
+    React.useState<MentionSuggestionState | null>(null)
+  const mentionDispatchRef = React.useRef<
+    ((state: MentionSuggestionState | null) => void) | null
+  >(null)
+  const mentionKeyDownRef = React.useRef<((event: KeyboardEvent) => boolean) | null>(null)
+
   // Keep dispatch and openLinkPicker refs current on every render.
   dispatchRef.current = setSlashSuggestion
   openLinkPickerRef.current = () => setLinkPickerOpen(true)
+  mentionDispatchRef.current = setMentionSuggestion
 
   // Slash command definitions.  The "link-page" item reads openLinkPickerRef at
   // call-time so it always has the current setter even though items are built once.
@@ -160,6 +173,11 @@ export function WikiEditor({
     createSlashExtension(dispatchRef, keyDownRef, itemsRef),
   )
 
+  // ── Mention extension (created once, captures stable refs) ───────────────────
+  const [mentionExtension] = React.useState(() =>
+    createMentionExtension(mentionDispatchRef, mentionKeyDownRef, searchUsers),
+  )
+
   // ── TipTap editor ─────────────────────────────────────────────────────────────
   const editor = useEditor({
     immediatelyRender: false,
@@ -167,7 +185,7 @@ export function WikiEditor({
       StarterKit.configure({ heading: { levels: [1, 2, 3] }, link: false }),
       Placeholder.configure({ placeholder: 'Start writing… Type / for commands' }),
       Typography,
-      Link.configure({ autolink: true, openOnClick: false }),
+      Link.configure({ autolink: true, openOnClick: false, protocols: ['mention'] }),
       Image.configure({ inline: false, allowBase64: true }),
       Table.configure({ resizable: false }),
       TableRow,
@@ -175,6 +193,7 @@ export function WikiEditor({
       TableCell,
       Markdown.configure({ html: false, transformCopiedText: true, transformPastedText: true }),
       slashExtension,
+      mentionExtension,
     ],
     content: initialContent,
     editorProps: {
@@ -236,6 +255,9 @@ export function WikiEditor({
 
       {/* Floating slash-command menu (rendered via portal to document.body) */}
       <SlashMenu suggestion={slashSuggestion} keyDownRef={keyDownRef} />
+
+      {/* Floating mention autocomplete menu */}
+      <MentionMenu suggestion={mentionSuggestion} keyDownRef={mentionKeyDownRef} />
 
       {/* Page-picker dialog for the "Link page…" slash command */}
       <PagePicker
