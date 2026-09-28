@@ -573,11 +573,27 @@ class HostedDocumentService(DocumentService):
         return dict(row)
 
     async def update_content(self, doc_id: str, content: str) -> dict | None:
-        current = await self.pool.fetchrow(
-            "SELECT content, version, path FROM documents WHERE id = $1 AND user_id = $2",
-            doc_id,
-            self.user_id,
-        )
+        # Verify edit access: owner OR superadmin OR editor-share on the KB.
+        # A viewer share does NOT grant edit access.
+        if self.is_superadmin:
+            current = await self.pool.fetchrow(
+                "SELECT d.content, d.version, d.path, d.knowledge_base_id::text AS kb_id "
+                "FROM documents d WHERE d.id = $1",
+                doc_id,
+            )
+        else:
+            current = await self.pool.fetchrow(
+                "SELECT d.content, d.version, d.path, d.knowledge_base_id::text AS kb_id "
+                "FROM documents d "
+                "JOIN knowledge_bases kb ON kb.id = d.knowledge_base_id "
+                "WHERE d.id = $1 "
+                "AND (kb.user_id = $2 "
+                "     OR EXISTS (SELECT 1 FROM kb_shares ks "
+                "                WHERE ks.kb_id = kb.id AND ks.shared_with = $2::uuid "
+                "                AND ks.access_level = 'editor'))",
+                doc_id,
+                self.user_id,
+            )
         if not current:
             return None
 
@@ -599,7 +615,7 @@ class HostedDocumentService(DocumentService):
         row = await self.pool.fetchrow(
             "UPDATE documents SET content = $1, version = version + 1, updated_at = now(), "
             "last_edited_by = $3, last_edited_via = 'web' "
-            "WHERE id = $2 AND user_id = $3 RETURNING id, content, version",
+            "WHERE id = $2 RETURNING id, content, version",
             content,
             doc_id,
             self.user_id,
@@ -607,11 +623,7 @@ class HostedDocumentService(DocumentService):
         if not row:
             return None
 
-        kb_id = await self.pool.fetchval(
-            "SELECT knowledge_base_id::text FROM documents WHERE id = $1 AND user_id = $2",
-            doc_id,
-            self.user_id,
-        )
+        kb_id = current["kb_id"]
         if kb_id:
             chunks = chunk_text(content) if content else []
             await store_chunks(self.pool, str(doc_id), self.user_id, kb_id, chunks)

@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Upload as UploadIcon, BookOpen, ArrowUpRight, Loader2, Menu } from 'lucide-react'
+import { Upload as UploadIcon, BookOpen, ArrowUpRight, Loader2, Menu, Pencil, Eye } from 'lucide-react'
 import * as tus from 'tus-js-client'
 import { useUserStore, useKBStore, useNotificationsStore } from '@/stores'
 import { useKBDocuments } from '@/hooks/useKBDocuments'
@@ -15,6 +15,7 @@ import { FilesGrid } from '@/components/kb/FilesGrid'
 import { GraphViewer } from '@/components/kb/GraphViewer'
 import { SelectionActionBar } from '@/components/kb/SelectionActionBar'
 import { WikiContent } from '@/components/wiki/WikiContent'
+import { WikiEditor, getWikiMarkdown } from '@/components/wiki/WikiEditor'
 import { CommentsPanel } from '@/components/kb/CommentsPanel'
 import { ChatPanel } from '@/components/kb/ChatPanel'
 import { CommentsHistoryView } from '@/components/kb/CommentsHistoryView'
@@ -189,6 +190,8 @@ type Props = {
 export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Props) {
   const searchParams = useSearchParams()
   const userId = useUserStore((s) => s.user?.id)
+  const user = useUserStore((s) => s.user)
+  const kbEntry = useKBStore((s) => s.knowledgeBases.find((kb) => kb.id === kbId) ?? null)
   const workspaceSlug = useKBStore((s) => s.knowledgeBases.find((kb) => kb.id === kbId)?.workspace_slug ?? null)
   const workspaceName = useKBStore((s) => s.knowledgeBases.find((kb) => kb.id === kbId)?.workspace_name ?? null)
   const ownerName = useKBStore((s) => s.knowledgeBases.find((kb) => kb.id === kbId)?.owner_name ?? null)
@@ -415,6 +418,8 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   const [pageLastEditor, setPageLastEditor] = React.useState<string | null>(null)
   const [pageLoading, setPageLoading] = React.useState(false)
   const [pageLoadedPath, setPageLoadedPath] = React.useState<string | null>(null)
+  // Incrementing this forces a re-fetch of page content (e.g. after a save)
+  const [contentRefreshKey, setContentRefreshKey] = React.useState(0)
 
   const activeWikiDoc = React.useMemo(() => {
     if (!wikiActivePath) return null
@@ -473,7 +478,45 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
         }
       })
     return () => controller.abort()
-  }, [wikiActivePath, activeWikiDocId, activeWikiVersion])
+  }, [wikiActivePath, activeWikiDocId, activeWikiVersion, contentRefreshKey])
+
+  // ─── Wiki edit mode ───────────────────────────────────────────
+  // Permission: owner OR superadmin can edit.
+  // TODO: extend to cover share-level "editor" once KnowledgeBase exposes it.
+  const canEditWiki = React.useMemo(() => {
+    if (!user || !kbEntry) return false
+    if (kbEntry.user_id === user.id) return true
+    if (user.role === 'superadmin') return true
+    return false
+  }, [user, kbEntry])
+
+  const [wikiMode, setWikiMode] = React.useState<'read' | 'edit'>('read')
+  const wikiEditorRef = React.useRef<import('@tiptap/react').Editor | null>(null)
+
+  // Return to read when navigating to a different wiki page
+  React.useEffect(() => {
+    setWikiMode('read')
+  }, [wikiActivePath])
+
+  const handleWikiSave = React.useCallback(async () => {
+    if (!wikiEditorRef.current || !activeWikiDocId) return
+    const content = getWikiMarkdown(wikiEditorRef.current)
+    try {
+      await apiFetch(`/v1/documents/${activeWikiDocId}/content`, {
+        method: 'PUT',
+        body: JSON.stringify({ content }),
+      })
+      setWikiMode('read')
+      setContentRefreshKey((k) => k + 1) // triggers re-fetch in content useEffect
+      toast.success('Page saved')
+    } catch (err) {
+      toast.error((err as Error).message || 'Failed to save page')
+    }
+  }, [activeWikiDocId])
+
+  const handleWikiCancel = React.useCallback(() => {
+    setWikiMode('read')
+  }, [])
 
   // ─── Auth guard ───────────────────────────────────────────────
   const requireUser = () => {
@@ -1105,33 +1148,73 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
-                className="h-full"
+                className="h-full flex flex-col"
               >
-                <div className="h-full flex">
-                  <div className="flex-1 min-w-0 overflow-y-auto">
-                    <WikiContent
-                      content={pageContent}
-                      title={pageTitle}
-                      onNavigate={handleWikiNavigate}
-                      onSourceClick={handleCitationSourceClick}
-                      onGraphClick={handlePageGraphClick}
-                      documents={documents}
-                      breadcrumbs={wikiBreadcrumbs}
-                      searchTerm={wikiSearchTerm}
-                      docId={activeWikiDocId}
-                      authorName={pageAuthor}
-                      lastEditorName={pageLastEditor}
-                      contentRef={wikiContentRef}
-                    />
+                {/* ── Read / Edit toggle ── */}
+                {canEditWiki && (
+                  <div className="flex items-center justify-end gap-2 px-4 py-1.5 border-b border-border shrink-0">
+                    {wikiMode === 'edit' ? (
+                      <>
+                        <button
+                          onClick={handleWikiCancel}
+                          className="inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleWikiSave}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-foreground text-background px-3 py-1 text-xs font-medium hover:opacity-90 transition-opacity cursor-pointer"
+                        >
+                          Save
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => setWikiMode('edit')}
+                        className="inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
+                        title="Edit this page"
+                      >
+                        <Pencil className="size-3" />
+                        Edit
+                      </button>
+                    )}
                   </div>
-                  {commentsPanelOpen && (
+                )}
+
+                <div className="flex-1 min-h-0 flex">
+                  <div className="flex-1 min-w-0 overflow-y-auto">
+                    {wikiMode === 'edit' ? (
+                      <WikiEditor
+                        key={`wiki-editor-${wikiActivePath}`}
+                        initialContent={pageContent}
+                        pageTitle={pageTitle}
+                        onEditorReady={(ed) => { wikiEditorRef.current = ed }}
+                      />
+                    ) : (
+                      <WikiContent
+                        content={pageContent}
+                        title={pageTitle}
+                        onNavigate={handleWikiNavigate}
+                        onSourceClick={handleCitationSourceClick}
+                        onGraphClick={handlePageGraphClick}
+                        documents={documents}
+                        breadcrumbs={wikiBreadcrumbs}
+                        searchTerm={wikiSearchTerm}
+                        docId={activeWikiDocId}
+                        authorName={pageAuthor}
+                        lastEditorName={pageLastEditor}
+                        contentRef={wikiContentRef}
+                      />
+                    )}
+                  </div>
+                  {wikiMode === 'read' && commentsPanelOpen && (
                     <CommentsPanel
                       docId={activeWikiDocId}
                       wikiContentRef={wikiContentRef}
                       onClose={() => setCommentsPanelOpen(false)}
                     />
                   )}
-                  {chatPanelOpen && (
+                  {wikiMode === 'read' && chatPanelOpen && (
                     <ChatPanel
                       kbId={kbId}
                       kbSlug={kbSlug}
