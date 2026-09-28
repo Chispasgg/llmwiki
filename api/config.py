@@ -75,5 +75,36 @@ class Settings(BaseSettings):
     LATEX_TEMPLATE_PATH: str = "config/wiki-export.tex"
     LATEX_TEMPLATES_DIR: str = "/app/config/tex_templates"
 
+    # Proveedor de generación de chat (vacío = chat deshabilitado).
+    # Valores esperados: "" | "ollama" | "openai"
+    CHAT_PROVIDER: str = ""
+    CHAT_MODEL: str = ""
+    CHAT_API_URL: str = ""  # si vacío y CHAT_PROVIDER=="ollama" → cae a OLLAMA_URL
+    CHAT_API_KEY: str = ""  # solo para openai-compatible
+
+    def _resolved_chat_url(self) -> str:
+        """URL efectiva del proveedor de chat.
+
+        Devuelve CHAT_API_URL si está definido; si no y el proveedor es ollama,
+        cae a OLLAMA_URL; en cualquier otro caso devuelve cadena vacía.
+        """
+        if self.CHAT_API_URL:
+            return self.CHAT_API_URL
+        if self.CHAT_PROVIDER == "ollama":
+            return self.OLLAMA_URL
+        return ""
+
+    @property
+    def resolved_chat_url(self) -> str:
+        """URL efectiva del proveedor de chat (para uso en CT-002+)."""
+        return self._resolved_chat_url()
+
+    @property
+    def chat_enabled(self) -> bool:
+        """True solo si provider, model y URL están todos definidos."""
+        return bool(
+            self.CHAT_PROVIDER and self.CHAT_MODEL and self._resolved_chat_url()
+        )
+
 
 settings = Settings()
