@@ -9,6 +9,7 @@ import Link from '@tiptap/extension-link'
 import Image from '@tiptap/extension-image'
 import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table'
 import { Markdown } from 'tiptap-markdown'
+import { ExcalidrawNode } from './excalidraw/ExcalidrawNode'
 import { NoteToolbar } from '@/components/editor/NoteToolbar'
 import { SlashMenu } from './slash/SlashMenu'
 import { PagePicker } from './slash/PagePicker'
@@ -191,6 +192,7 @@ export function WikiEditor({
       TableRow,
       TableHeader,
       TableCell,
+      ExcalidrawNode,
       Markdown.configure({ html: false, transformCopiedText: true, transformPastedText: true }),
       slashExtension,
       mentionExtension,
