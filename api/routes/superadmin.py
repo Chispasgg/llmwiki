@@ -424,3 +424,88 @@ async def delete_branding_admin(
         metadata={},
     )
     return await _fetch_branding_row(pool)
+
+
+# ── Chat Prompt ───────────────────────────────────────────────────
+
+
+class ChatAdminOut(BaseModel):
+    system_prompt: str
+    updated_at: str | None
+    updated_by_email: str | None
+
+
+class ChatPutIn(BaseModel):
+    system_prompt: str
+
+
+async def _fetch_chat_row(pool) -> ChatAdminOut:
+    """Read the single chat_settings row and join updated_by email."""
+    row = await pool.fetchrow(
+        "SELECT cs.system_prompt, "
+        "       cs.updated_at::text AS updated_at, "
+        "       u.email AS updated_by_email "
+        "FROM chat_settings cs "
+        "LEFT JOIN users u ON u.id = cs.updated_by "
+        "WHERE cs.id = true"
+    )
+    if row is None:
+        return ChatAdminOut(
+            system_prompt="",
+            updated_at=None,
+            updated_by_email=None,
+        )
+    return ChatAdminOut(
+        system_prompt=row["system_prompt"] or "",
+        updated_at=row["updated_at"],
+        updated_by_email=row["updated_by_email"],
+    )
+
+
+@router.get("/chat", response_model=ChatAdminOut)
+async def get_chat_prompt_admin(
+    _sa: Annotated[str, Depends(require_superadmin)],
+    request: Request,
+) -> ChatAdminOut:
+    """Read current chat system prompt (superadmin only)."""
+    return await _fetch_chat_row(request.app.state.pool)
+
+
+@router.put("/chat", response_model=ChatAdminOut)
+async def put_chat_prompt_admin(
+    user_id: Annotated[str, Depends(require_superadmin)],
+    request: Request,
+    body: ChatPutIn,
+) -> ChatAdminOut:
+    """Replace chat system prompt (superadmin only).
+
+    Validates that the prompt is non-empty after stripping and does not
+    exceed 8000 characters before persisting.
+    """
+    prompt = body.system_prompt.strip()
+    if not prompt:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "El prompt no puede estar vacío"},
+        )
+    if len(prompt) > 8000:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "El prompt no puede superar los 8000 caracteres"},
+        )
+    pool = request.app.state.pool
+    await pool.execute(
+        "UPDATE chat_settings "
+        "SET system_prompt=$1, updated_at=now(), updated_by=$2::uuid "
+        "WHERE id = true",
+        prompt,
+        user_id,
+    )
+    log_action_bg(
+        pool,
+        user_id=user_id,
+        action="chat.prompt.update",
+        resource_type="chat_settings",
+        metadata={"prompt_length": len(prompt)},
+    )
+    return await _fetch_chat_row(pool)

@@ -133,6 +133,7 @@ else:
     from routes.users import router as users_router
     from routes.kb_naming import router as kb_naming_router
     from routes.search import router as search_router
+    from routes.chat import router as chat_router
 
     app.include_router(users_router)
     app.include_router(api_keys_router)
@@ -152,3 +153,4 @@ else:
     app.include_router(comments_router)
     app.include_router(search_router)
     app.include_router(hosted_files_router)
+    app.include_router(chat_router)
