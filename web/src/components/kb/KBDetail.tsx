@@ -16,6 +16,7 @@ import { GraphViewer } from '@/components/kb/GraphViewer'
 import { SelectionActionBar } from '@/components/kb/SelectionActionBar'
 import { WikiContent } from '@/components/wiki/WikiContent'
 import { CommentsPanel } from '@/components/kb/CommentsPanel'
+import { ChatPanel } from '@/components/kb/ChatPanel'
 import { CommentsHistoryView } from '@/components/kb/CommentsHistoryView'
 import type { BreadcrumbItem } from '@/components/wiki/WikiContent'
 import type { DocumentListItem, WikiNode } from '@/lib/types'
@@ -297,11 +298,19 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   const pParam = searchParams.get('p')
   const urlWikiDocNumber = pParam ? parseInt(pParam, 10) : null
 
+  // CT-007: ?cita=<text> highlights that text on the loaded wiki page.
+  // It feeds the same wikiSearchTerm pipeline that the palette search uses,
+  // so WikiContent's existing mark+scroll logic handles rendering.
+  // Priority: cita wins on initial/URL-driven load; palette overwrites it
+  // when the user searches interactively (handleWikiSelect).
+  const citaParam = searchParams.get('cita') ?? ''
+
   const [wikiActivePath, setWikiActivePath] = React.useState<string | null>(null)
-  const [wikiSearchTerm, setWikiSearchTerm] = React.useState('')
+  const [wikiSearchTerm, setWikiSearchTerm] = React.useState(citaParam)
   const lastWikiDocNumberRef = React.useRef<number | null>(urlWikiDocNumber)
 
-  // Initialize wikiActivePath from ?p= on mount and when ?p= changes
+  // Initialize wikiActivePath from ?p= on mount and when ?p= changes.
+  // Also apply ?cita= as the highlight term for URL-driven navigations.
   React.useEffect(() => {
     if (urlWikiDocNumber == null) return
     if (!documents.length) return
@@ -310,8 +319,9 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
       const path = (doc.path + doc.filename).replace(/^\/wiki\/?/, '')
       setWikiActivePath(path)
       lastWikiDocNumberRef.current = urlWikiDocNumber
+      setWikiSearchTerm(citaParam)
     }
-  }, [urlWikiDocNumber, documents])
+  }, [urlWikiDocNumber, documents, citaParam])
 
   // ─── Source doc selection ────────────────────────────────────
   // Read ?doc= only on mount (for bookmarked URLs / browser back-forward)
@@ -342,6 +352,9 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   // ─── Comments state ──────────────────────────────────────────
   const [commentsPanelOpen, setCommentsPanelOpen] = React.useState(false)
   const wikiContentRef = React.useRef<HTMLElement | null>(null)
+
+  // ─── Chat state ───────────────────────────────────────────────
+  const [chatPanelOpen, setChatPanelOpen] = React.useState(false)
 
   // ─── Wiki tree ───────────────────────────────────────────────
   const indexDoc = wikiDocs.find((d) => d.filename === 'index.json' && d.path === '/wiki/')
@@ -571,6 +584,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
 
   const handleCommentsView = React.useCallback(() => navigateToView('comments'), [navigateToView])
   const toggleCommentsPanel = React.useCallback(() => setCommentsPanelOpen((v) => !v), [])
+  const toggleChatPanel = React.useCallback(() => setChatPanelOpen((v) => !v), [])
 
   const handleGraphNodeClick = React.useCallback((docId: string, sourceKind: string) => {
     const doc = documents.find((d) => d.id === docId)
@@ -980,6 +994,8 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
             onCommentsHistory={handleCommentsView}
             onCommentsPanelToggle={toggleCommentsPanel}
             commentsPanelOpen={commentsPanelOpen}
+            onChatPanelToggle={toggleChatPanel}
+            chatPanelOpen={chatPanelOpen}
           />
         </div>
 
@@ -1113,6 +1129,13 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
                       docId={activeWikiDocId}
                       wikiContentRef={wikiContentRef}
                       onClose={() => setCommentsPanelOpen(false)}
+                    />
+                  )}
+                  {chatPanelOpen && (
+                    <ChatPanel
+                      kbId={kbId}
+                      kbSlug={kbSlug}
+                      onClose={() => setChatPanelOpen(false)}
                     />
                   )}
                 </div>

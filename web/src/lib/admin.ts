@@ -202,6 +202,34 @@ export const putBranding = (body: {
 export const resetBranding = () =>
   apiFetch<BrandingAdmin>('/v1/superadmin/branding', { method: 'DELETE' });
 
+// ── Chat System Prompt ──────────────────────────────────────────
+
+export interface ChatPromptAdmin {
+  system_prompt: string;
+  updated_at: string | null;
+  updated_by_email: string | null;
+}
+
+// TODO(CT-006): once lib/chat.ts exports getChatStatus, import from there and remove this.
+export interface ChatStatusAdmin {
+  enabled: boolean;
+  provider: string | null;
+  model: string | null;
+}
+
+export const getChatPrompt = () =>
+  apiFetch<ChatPromptAdmin>('/v1/superadmin/chat');
+
+export const putChatPrompt = (system_prompt: string) =>
+  apiFetch<ChatPromptAdmin>('/v1/superadmin/chat', {
+    method: 'PUT',
+    body: JSON.stringify({ system_prompt }),
+  });
+
+/** Temporary: CT-006 creates getChatStatus in lib/chat.ts; import from there once available. */
+export const getChatStatus = () =>
+  apiFetch<ChatStatusAdmin>('/v1/chat/status');
+
 // ── Embeddings ──────────────────────────────────────────────────
 
 export interface EmbeddingStats {

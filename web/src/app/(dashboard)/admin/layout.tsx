@@ -17,6 +17,7 @@ const NAV_LINKS = [
   { href: "/admin/logs", label: "Logs" },
   { href: "/admin/email", label: "Email" },
   { href: "/admin/branding", label: "Marca" },
+  { href: "/admin/chat", label: "Chat" },
   { href: "/admin/embeddings", label: "Embeddings" },
 ];
 

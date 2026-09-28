@@ -24,6 +24,7 @@ import {
   MoreHorizontal,
   User,
   MessageSquare,
+  Bot,
 } from "lucide-react";
 import {
   CommandDialog,
@@ -173,6 +174,8 @@ interface KBSidenavProps {
   onCommentsHistory: () => void;
   onCommentsPanelToggle: () => void;
   commentsPanelOpen: boolean;
+  onChatPanelToggle: () => void;
+  chatPanelOpen: boolean;
 }
 
 export function KBSidenav({
@@ -201,6 +204,8 @@ export function KBSidenav({
   onCommentsHistory,
   onCommentsPanelToggle,
   commentsPanelOpen,
+  onChatPanelToggle,
+  chatPanelOpen,
 }: KBSidenavProps) {
   const router = useRouter();
   const { branding } = useBranding();
@@ -763,6 +768,20 @@ export function KBSidenav({
         >
           <MessageSquare className="size-3.5" />
           <span className="flex-1 text-left">Comentarios</span>
+        </button>
+        <button
+          onClick={onChatPanelToggle}
+          aria-pressed={chatPanelOpen}
+          aria-label="Mostrar/ocultar panel de chat"
+          className={cn(
+            "flex items-center gap-2 w-full px-2.5 py-2 text-[13px] rounded-md transition-colors cursor-pointer",
+            chatPanelOpen
+              ? "bg-accent text-foreground font-medium"
+              : "text-muted-foreground hover:text-foreground hover:bg-accent",
+          )}
+        >
+          <Bot className="size-3.5" />
+          <span className="flex-1 text-left">Chat</span>
         </button>
       </div>
 
