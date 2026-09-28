@@ -6,18 +6,25 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from deps import get_document_service
 from services.base import DocumentService
-from services.types import CreateNote, UpdateContent, UpdateMetadata, BulkDelete, MoveToSpace, CopyToSpace
+from services.types import (
+    CreateNote,
+    UpdateContent,
+    UpdateMetadata,
+    BulkDelete,
+    MoveToSpace,
+    CopyToSpace,
+)
 
 router = APIRouter(tags=["documents"])
 
-_DATA_URI_RE = re.compile(r'data:([^;,\s]+)[;,]')
+_DATA_URI_RE = re.compile(r"data:([^;,\s]+)[;,]")
 
 
 def _validate_data_uris(content: str) -> None:
     """Reject any data: URI whose MIME type is not image/*."""
     for match in _DATA_URI_RE.finditer(content):
         mime = match.group(1).lower()
-        if not mime.startswith('image/'):
+        if not mime.startswith("image/"):
             raise HTTPException(
                 status_code=422,
                 detail=f"Data URI con tipo MIME no permitido: '{mime}'. Solo se permiten imágenes (image/*).",
@@ -34,7 +41,9 @@ async def list_documents(
 
 
 @router.get("/v1/documents/{doc_id}")
-async def get_document(doc_id: UUID, service: Annotated[DocumentService, Depends(get_document_service)]):
+async def get_document(
+    doc_id: UUID, service: Annotated[DocumentService, Depends(get_document_service)]
+):
     row = await service.get(str(doc_id))
     if not row:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -42,7 +51,9 @@ async def get_document(doc_id: UUID, service: Annotated[DocumentService, Depends
 
 
 @router.get("/v1/documents/{doc_id}/url")
-async def get_document_url(doc_id: UUID, service: Annotated[DocumentService, Depends(get_document_service)]):
+async def get_document_url(
+    doc_id: UUID, service: Annotated[DocumentService, Depends(get_document_service)]
+):
     result = await service.get_url(str(doc_id))
     if not result:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -50,7 +61,9 @@ async def get_document_url(doc_id: UUID, service: Annotated[DocumentService, Dep
 
 
 @router.get("/v1/documents/{doc_id}/content")
-async def get_document_content(doc_id: UUID, service: Annotated[DocumentService, Depends(get_document_service)]):
+async def get_document_content(
+    doc_id: UUID, service: Annotated[DocumentService, Depends(get_document_service)]
+):
     row = await service.get_content(str(doc_id))
     if not row:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -107,7 +120,9 @@ async def bulk_delete_documents(
 
 
 @router.delete("/v1/documents/{doc_id}", status_code=204)
-async def delete_document(doc_id: UUID, service: Annotated[DocumentService, Depends(get_document_service)]):
+async def delete_document(
+    doc_id: UUID, service: Annotated[DocumentService, Depends(get_document_service)]
+):
     if not await service.delete(str(doc_id)):
         raise HTTPException(status_code=404, detail="Document not found")
 
@@ -128,6 +143,20 @@ async def copy_document_to_space(
     service: Annotated[DocumentService, Depends(get_document_service)],
 ):
     return await service.copy_to_space(str(doc_id), body.target_space_id)
+
+
+@router.post("/v1/documents/{doc_id}/verify")
+async def verify_document(
+    doc_id: UUID,
+    service: Annotated[DocumentService, Depends(get_document_service)],
+):
+    result = await service.verify_document(str(doc_id))
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"message": "Document not found or insufficient permissions"},
+        )
+    return result
 
 
 @router.get(

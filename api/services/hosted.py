@@ -389,7 +389,15 @@ class HostedKBService(KBService):
 _DOC_COLUMNS = (
     "id, knowledge_base_id, user_id, filename, path, title, "
     "file_type, status, tags, date, metadata, error_message, "
-    "version, document_number, archived, created_at, updated_at"
+    "version, document_number, archived, created_at, updated_at, "
+    "verified_at, verified_by"
+)
+
+# Computed verification fields for SELECT (not usable in RETURNING).
+_DOC_VERIFICATION_COMPUTED = (
+    "(verified_at IS NULL OR updated_at > verified_at) AS needs_review, "
+    "(SELECT COALESCE(NULLIF(u.display_name, ''), u.email) "
+    " FROM users u WHERE u.id = verified_by) AS verified_by_name"
 )
 
 
@@ -404,7 +412,7 @@ class HostedDocumentService(DocumentService):
         if self.is_superadmin:
             if path:
                 rows = await self.pool.fetch(
-                    f"SELECT {_DOC_COLUMNS} FROM documents "
+                    f"SELECT {_DOC_COLUMNS}, {_DOC_VERIFICATION_COMPUTED} FROM documents "
                     "WHERE knowledge_base_id = $1 AND archived = false AND path = $2 "
                     "ORDER BY filename",
                     kb_id,
@@ -412,7 +420,7 @@ class HostedDocumentService(DocumentService):
                 )
             else:
                 rows = await self.pool.fetch(
-                    f"SELECT {_DOC_COLUMNS} FROM documents "
+                    f"SELECT {_DOC_COLUMNS}, {_DOC_VERIFICATION_COMPUTED} FROM documents "
                     "WHERE knowledge_base_id = $1 AND archived = false "
                     "ORDER BY filename",
                     kb_id,
@@ -420,7 +428,7 @@ class HostedDocumentService(DocumentService):
             return [dict(r) for r in rows]
         if path:
             rows = await self.pool.fetch(
-                f"SELECT {_DOC_COLUMNS} FROM documents "
+                f"SELECT {_DOC_COLUMNS}, {_DOC_VERIFICATION_COMPUTED} FROM documents "
                 "WHERE knowledge_base_id = $1 AND archived = false AND path = $2 "
                 "AND EXISTS (SELECT 1 FROM knowledge_bases kb2 LEFT JOIN kb_shares ks2 ON ks2.kb_id = kb2.id "
                 "WHERE kb2.id = $1 AND (kb2.user_id = $3 OR ks2.shared_with = $3::uuid)) "
@@ -431,7 +439,7 @@ class HostedDocumentService(DocumentService):
             )
         else:
             rows = await self.pool.fetch(
-                f"SELECT {_DOC_COLUMNS} FROM documents "
+                f"SELECT {_DOC_COLUMNS}, {_DOC_VERIFICATION_COMPUTED} FROM documents "
                 "WHERE knowledge_base_id = $1 AND archived = false "
                 "AND EXISTS (SELECT 1 FROM knowledge_bases kb2 LEFT JOIN kb_shares ks2 ON ks2.kb_id = kb2.id "
                 "WHERE kb2.id = $1 AND (kb2.user_id = $2 OR ks2.shared_with = $2::uuid)) "
@@ -444,12 +452,12 @@ class HostedDocumentService(DocumentService):
     async def get(self, doc_id: str) -> dict | None:
         if self.is_superadmin:
             row = await self.pool.fetchrow(
-                f"SELECT {_DOC_COLUMNS} FROM documents d WHERE d.id = $1",
+                f"SELECT {_DOC_COLUMNS}, {_DOC_VERIFICATION_COMPUTED} FROM documents d WHERE d.id = $1",
                 doc_id,
             )
             return dict(row) if row else None
         row = await self.pool.fetchrow(
-            f"SELECT {_DOC_COLUMNS} FROM documents d "
+            f"SELECT {_DOC_COLUMNS}, {_DOC_VERIFICATION_COMPUTED} FROM documents d "
             "WHERE d.id = $1 "
             "AND EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
             "WHERE kb.id = d.knowledge_base_id AND (kb.user_id = $2 OR ks.shared_with = $2::uuid))",
@@ -681,6 +689,53 @@ class HostedDocumentService(DocumentService):
             )
 
         return dict(row)
+
+    async def verify_document(self, doc_id: str) -> dict | None:
+        """Mark a document as verified by the current user.
+
+        Requires editor+ access: owner, superadmin, or kb_shares.access_level='editor'.
+        Returns None if document not found or caller lacks permission (caller maps to 404).
+        """
+        # Access check: replicate update_content permission pattern exactly.
+        if self.is_superadmin:
+            access = await self.pool.fetchrow(
+                "SELECT d.id FROM documents d WHERE d.id = $1",
+                doc_id,
+            )
+        else:
+            access = await self.pool.fetchrow(
+                "SELECT d.id FROM documents d "
+                "JOIN knowledge_bases kb ON kb.id = d.knowledge_base_id "
+                "WHERE d.id = $1 "
+                "AND (kb.user_id = $2 "
+                "     OR EXISTS (SELECT 1 FROM kb_shares ks "
+                "                WHERE ks.kb_id = kb.id AND ks.shared_with = $2::uuid "
+                "                AND ks.access_level = 'editor'))",
+                doc_id,
+                self.user_id,
+            )
+        if not access:
+            return None
+
+        row = await self.pool.fetchrow(
+            "UPDATE documents SET verified_at = now(), verified_by = $2::uuid "
+            "WHERE id = $1 "
+            "RETURNING id, verified_at, verified_by::text AS verified_by",
+            doc_id,
+            self.user_id,
+        )
+        if not row:
+            return None
+
+        verifier_name = await self.pool.fetchval(
+            "SELECT COALESCE(NULLIF(display_name, ''), email) FROM users WHERE id = $1",
+            self.user_id,
+        )
+        result = dict(row)
+        result["verified_by_name"] = verifier_name
+        # Just verified: verified_at = now() >= updated_at, so needs_review is always false.
+        result["needs_review"] = False
+        return result
 
     async def _notify_new_mentions(self, kb_id: str, mention_ids: set[str]) -> None:
         """Upsert a coalesced kb_notification for each newly-mentioned user who has KB access.
