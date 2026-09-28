@@ -1189,6 +1189,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
                         initialContent={pageContent}
                         pageTitle={pageTitle}
                         onEditorReady={(ed) => { wikiEditorRef.current = ed }}
+                        documents={wikiDocs}
                       />
                     ) : (
                       <WikiContent
