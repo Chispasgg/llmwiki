@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from deps import _is_superadmin, get_user_id
 import services.buzon.read as read
 from services.buzon.send import SendBody, send_message
+from services.buzon.sent import list_sent_messages
 from services.buzon.status import StatusBody, update_line_status
 
 router = APIRouter(tags=["buzon"])
@@ -175,3 +176,25 @@ async def get_inbox_messages_endpoint(
     is_sa = await _is_superadmin(pool, user_id)
     await _assert_kb_access(pool, kb_id, user_id, is_sa)
     return await read.get_inbox_messages(pool, str(kb_id), str(doc_id))
+
+
+@router.get(
+    "/v1/knowledge-bases/{kb_id}/buzon/sent",
+    summary="Mensajes enviados por el usuario en esta KB",
+    description=(
+        "Devuelve todas las líneas de todos los buzones de la KB cuyo remitente es el "
+        "usuario de sesión, junto con el estado que el destinatario haya colocado. "
+        "Si el usuario no tiene buzón en esta KB devuelve lista vacía. "
+        "Ordenado por ID de mensaje descendente (más reciente primero)."
+    ),
+)
+async def list_sent_endpoint(
+    kb_id: UUID,
+    user_id: Annotated[str, Depends(get_user_id)],
+    request: Request,
+):
+    pool = request.app.state.pool
+    is_sa = await _is_superadmin(pool, user_id)
+    await _assert_kb_access(pool, kb_id, user_id, is_sa)
+    session_email = await _fetch_user_email(pool, user_id)
+    return await list_sent_messages(pool, str(kb_id), session_email)
