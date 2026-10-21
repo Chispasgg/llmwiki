@@ -15,14 +15,8 @@ from __future__ import annotations
 from fastapi import HTTPException
 
 from services.buzon.parser import parse_line
+from services.buzon.paths import BUZON_PATH
 from services.types import parse_frontmatter, title_from_filename
-
-# Path where buzon documents live directly (not in any subfolder).
-# The scaffold stores documents with a trailing slash: path='/wiki/buzon/'.
-# The archive lives at '/wiki/buzon/archivo/' — an exact match on _BUZON_PATH
-# naturally excludes it and any future subfolders.
-# CONTRACT (BZ-007): buzon pages are created with path='/wiki/buzon/' + filename='<slug>.md'.
-_BUZON_PATH = "/wiki/buzon/"
 
 
 async def list_inboxes(
@@ -55,7 +49,7 @@ async def list_inboxes(
         "  AND NOT d.archived "
         "ORDER BY d.filename",
         kb_id,
-        _BUZON_PATH,
+        BUZON_PATH,
     )
 
     norm_session = session_email.lower()

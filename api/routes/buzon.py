@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from deps import _is_superadmin, get_user_id
 import services.buzon.read as read
+from services.buzon.send import SendBody, send_message
 
 router = APIRouter(tags=["buzon"])
 
@@ -83,6 +84,41 @@ async def list_inboxes_endpoint(
     await _assert_kb_access(pool, kb_id, user_id, is_sa)
     session_email = await _fetch_user_email(pool, user_id)
     return await read.list_inboxes(pool, str(kb_id), session_email)
+
+
+@router.post(
+    "/v1/knowledge-bases/{kb_id}/buzon/send",
+    summary="Enviar mensaje al buzón de un destinatario",
+    description=(
+        "Añade una nueva línea de mensaje al buzón del destinatario. "
+        "El remitente se resuelve por el buzón de la KB cuyo frontmatter email coincide "
+        "con el email de sesión. El destinatario se identifica por recipient_doc_id. "
+        "Detecta colisión de ID (-b) automáticamente. Notifica solo al dueño del buzón destino."
+    ),
+    status_code=200,
+)
+async def send_message_endpoint(
+    kb_id: UUID,
+    body: SendBody,
+    user_id: Annotated[str, Depends(get_user_id)],
+    request: Request,
+):
+    pool = request.app.state.pool
+    is_sa = await _is_superadmin(pool, user_id)
+    await _assert_kb_access(pool, kb_id, user_id, is_sa)
+    sender_email = await _fetch_user_email(pool, user_id)
+    return await send_message(
+        pool=pool,
+        kb_id=str(kb_id),
+        sender_user_id=user_id,
+        sender_email=sender_email,
+        recipient_doc_id=body.recipient_doc_id,
+        tipo=body.tipo,
+        texto=body.texto,
+        plazo=body.plazo,
+        reply_to=body.reply_to,
+        enlaces=body.enlaces,
+    )
 
 
 @router.get(

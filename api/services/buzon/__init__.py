@@ -13,10 +13,13 @@ from services.buzon.parser import (
     parse_line,
     set_closed,
 )
+from services.buzon.paths import BUZON_ARCHIVO_PATH, BUZON_PATH
 from services.buzon.read import get_inbox_messages, list_inboxes
 from services.buzon.store import append_line, edit_line
 
 __all__ = [
+    "BUZON_ARCHIVO_PATH",
+    "BUZON_PATH",
     "IdParts",
     "ParsedLine",
     "append_estado",
