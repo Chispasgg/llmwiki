@@ -4,6 +4,7 @@ Re-exports the public API of parser.py, store.py and read.py so callers can
 import from ``services.buzon`` directly without naming the submodule.
 """
 
+from services.buzon.create import create_my_inbox
 from services.buzon.guards import reject_newlines
 from services.buzon.parser import (
     IdParts,
@@ -21,6 +22,7 @@ from services.buzon.store import append_line, edit_line
 __all__ = [
     "BUZON_ARCHIVO_PATH",
     "BUZON_PATH",
+    "create_my_inbox",
     "reject_newlines",
     "IdParts",
     "ParsedLine",

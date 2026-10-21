@@ -17,9 +17,11 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 
 from deps import _is_superadmin, get_user_id
 import services.buzon.read as read
+from services.buzon.create import create_my_inbox
 from services.buzon.send import SendBody, send_message
 from services.buzon.sent import list_sent_messages
 from services.buzon.status import StatusBody, update_line_status
@@ -62,6 +64,37 @@ async def _fetch_user_email(pool, user_id: str) -> str:
     if row is None:
         return ""
     return (row["email"] or "").lower()
+
+
+async def _fetch_user_profile(pool, user_id: str) -> dict:
+    """Return email (lowercase) and display_name for the user.
+
+    Used by the buzón create endpoint which needs both fields in a single
+    query to avoid an extra round-trip.
+    """
+    row = await pool.fetchrow(
+        "SELECT email, display_name FROM users WHERE id = $1", user_id
+    )
+    if row is None:
+        return {"email": "", "display_name": None}
+    return {
+        "email": (row["email"] or "").lower(),
+        "display_name": row["display_name"],
+    }
+
+
+# ── Request body models ────────────────────────────────────────────────────────
+
+
+class CreateInboxBody(BaseModel):
+    """Body for POST /buzon/mine.
+
+    ``name`` is optional.  When provided it is used as the slug source and
+    displayed title.  The email written into the frontmatter always comes from
+    the authenticated session and is never taken from this body.
+    """
+
+    name: str | None = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -198,3 +231,37 @@ async def list_sent_endpoint(
     await _assert_kb_access(pool, kb_id, user_id, is_sa)
     session_email = await _fetch_user_email(pool, user_id)
     return await list_sent_messages(pool, str(kb_id), session_email)
+
+
+@router.post(
+    "/v1/knowledge-bases/{kb_id}/buzon/mine",
+    summary="Crear (o recuperar) el buzón propio en una KB",
+    description=(
+        "Crea el buzón del usuario de sesión en la KB si no existe, o devuelve "
+        "el existente (idempotente).  La identidad del buzón es el email de sesión "
+        "almacenado en el frontmatter — nunca el campo ``name`` del body. "
+        "Requiere acceso editor+ (dueño, editor-share o superadmin). "
+        "Si el slug colisiona con el de otro usuario se añade sufijo -2, -3… "
+        "Devuelve: doc_id, path, filename, email."
+    ),
+    status_code=200,
+)
+async def create_mine_endpoint(
+    kb_id: UUID,
+    body: CreateInboxBody,
+    user_id: Annotated[str, Depends(get_user_id)],
+    request: Request,
+):
+    pool = request.app.state.pool
+    is_sa = await _is_superadmin(pool, user_id)
+    await _assert_kb_access(pool, kb_id, user_id, is_sa)
+    profile = await _fetch_user_profile(pool, user_id)
+    return await create_my_inbox(
+        pool=pool,
+        kb_id=str(kb_id),
+        user_id=user_id,
+        session_email=profile["email"],
+        display_name=profile["display_name"],
+        name=body.name,
+        is_superadmin=is_sa,
+    )
