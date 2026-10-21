@@ -26,6 +26,7 @@ import {
   MessageSquare,
   Bot,
   FilePlus,
+  Inbox,
 } from "lucide-react";
 import {
   CommandDialog,
@@ -178,6 +179,8 @@ interface KBSidenavProps {
   onChatPanelToggle: () => void;
   chatPanelOpen: boolean;
   onCreatePage?: () => void;
+  buzonViewActive: boolean;
+  onBuzonToggle: () => void;
 }
 
 export function KBSidenav({
@@ -209,6 +212,8 @@ export function KBSidenav({
   onChatPanelToggle,
   chatPanelOpen,
   onCreatePage,
+  buzonViewActive,
+  onBuzonToggle,
 }: KBSidenavProps) {
   const router = useRouter();
   const { branding } = useBranding();
@@ -798,6 +803,23 @@ export function KBSidenav({
           <Bot className="size-3.5" />
           <span className="flex-1 text-left">Chat</span>
         </button>
+        {/* Buzón — only in hosted mode */}
+        {process.env.NEXT_PUBLIC_MODE !== "local" && (
+          <button
+            onClick={onBuzonToggle}
+            aria-pressed={buzonViewActive}
+            aria-label="Abrir buzón"
+            className={cn(
+              "flex items-center gap-2 w-full px-2.5 py-2 text-[13px] rounded-md transition-colors cursor-pointer",
+              buzonViewActive
+                ? "bg-accent text-foreground font-medium"
+                : "text-muted-foreground hover:text-foreground hover:bg-accent",
+            )}
+          >
+            <Inbox className="size-3.5" />
+            <span className="flex-1 text-left">Buzón</span>
+          </button>
+        )}
       </div>
 
       {/* User menu + version */}

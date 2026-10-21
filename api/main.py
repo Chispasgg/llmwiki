@@ -134,6 +134,7 @@ else:
     from routes.kb_naming import router as kb_naming_router
     from routes.search import router as search_router
     from routes.chat import router as chat_router
+    from routes.buzon import router as buzon_router
 
     app.include_router(users_router)
     app.include_router(api_keys_router)
@@ -154,3 +155,4 @@ else:
     app.include_router(search_router)
     app.include_router(hosted_files_router)
     app.include_router(chat_router)
+    app.include_router(buzon_router)

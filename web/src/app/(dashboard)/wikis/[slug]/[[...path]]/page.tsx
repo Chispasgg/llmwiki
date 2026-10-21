@@ -7,7 +7,7 @@ import { useKBDocuments } from '@/hooks/useKBDocuments'
 import { KBDetail } from '@/components/kb/KBDetail'
 import { Loader2 } from 'lucide-react'
 
-export type ViewMode = 'wiki' | 'files' | 'graph' | 'comments'
+export type ViewMode = 'wiki' | 'files' | 'graph' | 'comments' | 'buzon'
 
 interface ParsedRoute {
   view: ViewMode
@@ -30,6 +30,8 @@ function parseRoute(pathSegments?: string[]): ParsedRoute {
       return { view: 'graph', filesPath: '/' }
     case 'comments':
       return { view: 'comments', filesPath: '/' }
+    case 'buzon':
+      return { view: 'buzon', filesPath: '/' }
     default:
       return { view: 'wiki', filesPath: '/' }
   }
