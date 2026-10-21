@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from deps import _is_superadmin, get_user_id
 import services.buzon.read as read
 from services.buzon.send import SendBody, send_message
+from services.buzon.status import StatusBody, update_line_status
 
 router = APIRouter(tags=["buzon"])
 
@@ -118,6 +119,40 @@ async def send_message_endpoint(
         plazo=body.plazo,
         reply_to=body.reply_to,
         enlaces=body.enlaces,
+    )
+
+
+@router.post(
+    "/v1/knowledge-bases/{kb_id}/buzon/status",
+    summary="Actualizar estado de una línea de buzón",
+    description=(
+        "Añade un estado (append_estado) y/o cambia el checkbox cerrado/abierto (set_closed) "
+        "de la línea identificada por line_id en el buzón buzon_doc_id. "
+        "Un usuario normal solo puede editar líneas de su propio buzón; el superadmin puede "
+        "editar cualquier línea de cualquier buzón de la KB."
+    ),
+    status_code=200,
+)
+async def update_status_endpoint(
+    kb_id: UUID,
+    body: StatusBody,
+    user_id: Annotated[str, Depends(get_user_id)],
+    request: Request,
+):
+    pool = request.app.state.pool
+    is_sa = await _is_superadmin(pool, user_id)
+    await _assert_kb_access(pool, kb_id, user_id, is_sa)
+    session_email = await _fetch_user_email(pool, user_id)
+    return await update_line_status(
+        pool=pool,
+        kb_id=str(kb_id),
+        user_id=user_id,
+        session_email=session_email,
+        is_superadmin=is_sa,
+        buzon_doc_id=body.buzon_doc_id,
+        line_id=body.line_id,
+        estado=body.estado,
+        closed=body.closed,
     )
 
 

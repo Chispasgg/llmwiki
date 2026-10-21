@@ -24,6 +24,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 from typing import Literal
 
+from services.buzon.guards import reject_newlines
 from services.buzon.parser import build_line, parse_line
 from services.buzon.paths import BUZON_PATH
 from services.buzon.store import append_line
@@ -46,24 +47,6 @@ class SendBody(BaseModel):
     plazo: str | None = None
     reply_to: str | None = None
     enlaces: list[EnlaceItem] | None = None
-
-
-# ── Internal helpers ──────────────────────────────────────────────────────────
-
-
-def _reject_newlines(field: str, value: str) -> None:
-    """Raise HTTP 400 if *value* contains a newline character.
-
-    Any field that ends up in the single-line buzón format must not contain
-    ``\\n`` or ``\\r``.  A line-break in any of these fields would let a caller
-    inject extra parseable lines — forging messages as if another user sent them.
-    This is the single validation point; do not duplicate per-field checks.
-    """
-    if "\n" in value or "\r" in value:
-        raise HTTPException(
-            status_code=400,
-            detail={"message": f"{field} must be a single line (no newlines allowed)"},
-        )
 
 
 def _slug_from_filename(filename: str) -> str:
@@ -173,15 +156,15 @@ async def send_message(
     # ── 1. Validate all string fields against newline injection ─────────────
     # Any field that reaches build_line must be a single line; a newline in any
     # of them would let a caller inject extra parseable buzón lines.
-    _reject_newlines("texto", texto)
+    reject_newlines("texto", texto)
     if plazo is not None:
-        _reject_newlines("plazo", plazo)
+        reject_newlines("plazo", plazo)
     if reply_to is not None:
-        _reject_newlines("reply_to", reply_to)
+        reject_newlines("reply_to", reply_to)
     if enlaces:
         for i, e in enumerate(enlaces):
-            _reject_newlines(f"enlaces[{i}].label", e.label)
-            _reject_newlines(f"enlaces[{i}].url", e.url)
+            reject_newlines(f"enlaces[{i}].label", e.label)
+            reject_newlines(f"enlaces[{i}].url", e.url)
 
     # ── 2. Resolve sender slug ───────────────────────────────────────────────
     inbox_rows = await pool.fetch(
