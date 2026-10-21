@@ -344,19 +344,22 @@ export function BuzonView({ kbId }: BuzonViewProps) {
   const confirmInputAction = React.useCallback(async () => {
     if (!pendingInput) return
     const { lineId, buzonDocId, action, text } = pendingInput
-    if (!text.trim()) {
+    // Strip newlines before composing estado: pasted multiline text would
+    // produce a malformed state string and an opaque 400 from the backend.
+    const cleanText = text.replace(/[\r\n]+/g, ' ').trim()
+    if (!cleanText) {
       toast.error('Escribe el texto antes de confirmar')
       return
     }
     let estado: string
     if (action === 'aceptado') {
-      estado = `aceptado → ${text.trim()}`
+      estado = `aceptado → ${cleanText}`
     } else if (action === 'hecho') {
       // DD/MM format → "hecho DD/MM", otherwise → "hecho → <url>"
-      const isDate = /^\d{1,2}\/\d{1,2}$/.test(text.trim())
-      estado = isDate ? `hecho ${text.trim()}` : `hecho → ${text.trim()}`
+      const isDate = /^\d{1,2}\/\d{1,2}$/.test(cleanText)
+      estado = isDate ? `hecho ${cleanText}` : `hecho → ${cleanText}`
     } else {
-      estado = `rechazado: ${text.trim()}`
+      estado = `rechazado: ${cleanText}`
     }
     await submitStatus({ lineId, buzonDocId, estado })
   }, [pendingInput, submitStatus])

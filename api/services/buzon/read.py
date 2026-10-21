@@ -94,10 +94,15 @@ async def get_inbox_messages(
     except ``raw`` (already present at the top level) and ``id_parts`` is
     expanded as a sub-dict.
     """
+    # Restrict to buzon documents only: a /wiki/ page with a guessed doc_id
+    # must not be served by this endpoint (path + file_type + archived guard).
     row = await pool.fetchrow(
-        "SELECT content FROM documents WHERE id = $1 AND knowledge_base_id = $2",
+        "SELECT content FROM documents "
+        "WHERE id = $1 AND knowledge_base_id = $2 "
+        "  AND path = $3 AND file_type = 'md' AND NOT archived",
         doc_id,
         kb_id,
+        BUZON_PATH,
     )
     if row is None:
         raise HTTPException(status_code=404, detail={"message": "Buzon not found"})

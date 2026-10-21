@@ -430,3 +430,67 @@ async def test_list_inboxes_doc_with_trailing_slash_path_is_returned():
 
     assert len(result) == 1
     assert result[0]["path"] == "/wiki/buzon/"
+
+
+# ---------------------------------------------------------------------------
+# MAYOR rework — get_inbox_messages must scope the query to BUZON_PATH
+# ---------------------------------------------------------------------------
+
+
+async def test_get_inbox_messages_sql_scopes_to_buzon_path():
+    """The SQL in get_inbox_messages must filter to BUZON_PATH so that a
+    doc_id belonging to a /wiki/ page (not a buzon) cannot be served by this
+    endpoint.
+
+    The query must include `path = $N` and pass BUZON_PATH as that parameter.
+    """
+    pool = _make_pool_fetchrow(_content_row(""))
+
+    from services.buzon.read import get_inbox_messages
+    from services.buzon.paths import BUZON_PATH
+
+    await get_inbox_messages(pool, _KB_ID, _DOC_ID)
+
+    call_args = pool.fetchrow.call_args[0]
+    sql_called = call_args[0]
+    params = call_args[1:]
+
+    assert "path = $" in sql_called, (
+        f"SQL does not filter by path. Query was:\n{sql_called}"
+    )
+    assert BUZON_PATH in params, (
+        f"BUZON_PATH ('{BUZON_PATH}') not passed as query parameter. "
+        f"Params were: {params}"
+    )
+
+
+async def test_get_inbox_messages_non_buzon_doc_returns_404():
+    """A doc that exists in the KB but has path='/wiki/' (not BUZON_PATH) is
+    invisible to the path-scoped query: pool returns None → 404.
+
+    This prevents arbitrary wiki pages from being served via the buzon endpoint.
+    """
+    # Simulate the DB returning nothing because path '/wiki/' != BUZON_PATH
+    pool = _make_pool_fetchrow(None)
+
+    from services.buzon.read import get_inbox_messages
+
+    with pytest.raises(HTTPException) as exc:
+        await get_inbox_messages(pool, _KB_ID, _DOC_ID)
+
+    assert exc.value.status_code == 404
+
+
+async def test_get_inbox_messages_legitimate_buzon_returns_messages():
+    """A doc stored at BUZON_PATH is found by the path-scoped query and its
+    messages are returned as structured entries."""
+    content = _VALID_LINE + "\n"
+    pool = _make_pool_fetchrow(_content_row(content))
+
+    from services.buzon.read import get_inbox_messages
+
+    result = await get_inbox_messages(pool, _KB_ID, _DOC_ID)
+
+    assert len(result) == 1
+    assert result[0]["raw"] == _VALID_LINE
+    assert result[0]["parsed"] is not None
