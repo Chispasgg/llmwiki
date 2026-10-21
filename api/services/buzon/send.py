@@ -24,7 +24,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 from typing import Literal
 
-from services.buzon.guards import reject_newlines
+from services.buzon.guards import reject_bad_url, reject_newlines
 from services.buzon.parser import build_line, parse_line
 from services.buzon.paths import BUZON_PATH
 from services.buzon.store import append_line
@@ -165,6 +165,9 @@ async def send_message(
         for i, e in enumerate(enlaces):
             reject_newlines(f"enlaces[{i}].label", e.label)
             reject_newlines(f"enlaces[{i}].url", e.url)
+            # Reject unsafe URL schemes (javascript:, data:, etc.) — stored XSS vector.
+            # The frontend also enforces this; here we ensure nothing unsafe reaches storage.
+            reject_bad_url(f"enlaces[{i}].url", e.url)
 
     # ── 2. Resolve sender slug ───────────────────────────────────────────────
     inbox_rows = await pool.fetch(

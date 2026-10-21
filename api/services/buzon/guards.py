@@ -20,3 +20,23 @@ def reject_newlines(field: str, value: str) -> None:
             status_code=400,
             detail={"message": f"{field} must be a single line (no newlines allowed)"},
         )
+
+
+def reject_bad_url(field: str, url: str) -> None:
+    """Raise HTTP 400 if *url* does not start with http:// or https://.
+
+    Only http/https URLs are safe to render as clickable links.  Schemes
+    like ``javascript:``, ``data:`` or ``vbscript:`` execute code when
+    clicked (stored XSS).  This guard runs at write-time so the bad URL
+    is never persisted — defense in depth alongside the frontend check.
+    """
+    if not url.lower().startswith(("http://", "https://")):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": (
+                    f"{field} must start with http:// or https:// "
+                    "(other URL schemes are not allowed)"
+                )
+            },
+        )

