@@ -149,7 +149,16 @@ export function BuzonCompose({ open, onClose, inboxes, sending, onSend }: BuzonC
           {/* Tipo */}
           <label>
             Tipo
-            <select value={tipo} onChange={(e) => setTipo(e.target.value as Tipo)}>
+            <select
+              value={tipo}
+              onChange={(e) => {
+                const newTipo = e.target.value as Tipo
+                setTipo(newTipo)
+                // Limpiar reply_to cuando el tipo deja de ser 'Respuesta'
+                // para evitar enviar un reply_to obsoleto en el payload.
+                if (newTipo !== 'Respuesta') setReplyTo('')
+              }}
+            >
               {TIPOS.map((t) => (
                 <option key={t} value={t}>
                   {t}
@@ -193,21 +202,12 @@ export function BuzonCompose({ open, onClose, inboxes, sending, onSend }: BuzonC
           </label>
 
           {/* Enlaces opcionales */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div className={styles['enlace-section']}>
             {/* Cabecera de sección con botón Añadir */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                fontSize: '12.5px',
-                fontWeight: 500,
-                color: 'var(--fg-2)',
-              }}
-            >
+            <div className={styles['enlace-header']}>
               <span>
                 Enlaces <span className={styles.hint}>(opcionales)</span>
               </span>
-              <span style={{ flex: 1 }} />
               <button
                 type="button"
                 className={`${styles.btn} ${styles.sm}`}
@@ -241,7 +241,7 @@ export function BuzonCompose({ open, onClose, inboxes, sending, onSend }: BuzonC
                 </button>
               </div>
             ))}
-          </div>
+          </div>  {/* .enlace-section */}
 
           {/* Preview en vivo — solo visible cuando hay texto */}
           {previewLine && (
