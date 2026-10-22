@@ -1,0 +1,109 @@
+/* Tema aislado del módulo buzón — paleta teal de referencia.
+ * Las variables están encapsuladas en .buzonRoot para no contaminar
+ * los tokens globales de la app (globals.css / shadcn).
+ * Las tareas siguientes consumen estas variables mediante buzonTheme.ts.
+ */
+
+.buzonRoot {
+  /* ── Fondos y superficies ─────────────────────────────────────── */
+  --bg: #f3f6f6;
+  --surface: #ffffff;
+  --surface-2: #fbfbfb;
+  --hover: #f2f6f7;
+  --sel: #e3f0f2;
+
+  /* ── Bordes ───────────────────────────────────────────────────── */
+  --line: #ebebeb;
+  --line-strong: #dbdbdb;
+
+  /* ── Texto ────────────────────────────────────────────────────── */
+  --fg: #1f1f1f;
+  --fg-2: #575757;
+  --fg-3: #666666;
+
+  /* ── Marca ────────────────────────────────────────────────────── */
+  --brand: #15808f;
+  --brand-hover: #0f6b7d;
+  --link: #0f6b7d;
+  --on-brand: #ffffff;
+  --brand-soft: #eaf5f6;
+  --ring: rgb(34 181 197 / 0.25);
+
+  /* ── Semánticos ───────────────────────────────────────────────── */
+  --danger: #b42318;
+  --danger-soft: #fce9e8;
+  --success: #067647;
+  --success-soft: #dcfae6;
+  --warn: #b54708;
+  --warn-soft: #fef3c7;
+
+  /* ── Miscelánea ───────────────────────────────────────────────── */
+  --chip: #f1f1f1;
+  --mark: #d6e9ec;
+
+  /* ── Sombras ──────────────────────────────────────────────────── */
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 10px 30px rgb(0 0 0 / 0.05);
+  --shadow-pop: 0 12px 40px rgb(0 0 0 / 0.16);
+
+  /* ── Avatar HSL helpers ───────────────────────────────────────── */
+  --av-s: 38%;
+  --av-l: 89%;
+  --av-fg-l: 27%;
+
+  /* ── Base del contenedor ──────────────────────────────────────── */
+  color-scheme: light;
+  color: var(--fg);
+  background: var(--bg);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Override oscuro: .dark no se hashea; .buzonRoot sí. */
+:global(.dark) .buzonRoot {
+  /* ── Fondos y superficies ─────────────────────────────────────── */
+  --bg: #09090b;
+  --surface: #131316;
+  --surface-2: #18181b;
+  --hover: #1f1f23;
+  --sel: #12333a;
+
+  /* ── Bordes ───────────────────────────────────────────────────── */
+  --line: #26262b;
+  --line-strong: #34343a;
+
+  /* ── Texto ────────────────────────────────────────────────────── */
+  --fg: #f4f4f5;
+  --fg-2: #a1a1aa;
+  --fg-3: #8d8d96;
+
+  /* ── Marca ────────────────────────────────────────────────────── */
+  --brand: #22b5c5;
+  --brand-hover: #51d7ce;
+  --link: #51d7ce;
+  --on-brand: #03191c;
+  --brand-soft: #0f2a2e;
+  --ring: rgb(34 181 197 / 0.3);
+
+  /* ── Semánticos ───────────────────────────────────────────────── */
+  --danger: #f97066;
+  --danger-soft: #2a0f0e;
+  --success: #32d583;
+  --success-soft: #08200f;
+  --warn: #fdb022;
+  --warn-soft: #241703;
+
+  /* ── Miscelánea ───────────────────────────────────────────────── */
+  --chip: #232327;
+  --mark: #1b4950;
+
+  /* ── Sombras ──────────────────────────────────────────────────── */
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-pop: 0 16px 48px rgb(0 0 0 / 0.6);
+
+  /* ── Avatar HSL helpers ───────────────────────────────────────── */
+  --av-s: 28%;
+  --av-l: 24%;
+  --av-fg-l: 82%;
+
+  /* ── Base del contenedor ──────────────────────────────────────── */
+  color-scheme: dark;
+}
