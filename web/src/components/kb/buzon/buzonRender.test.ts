@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { refKind, extractLinks, renderBody } from './buzonRender'
+import { refKind, extractLinks, renderBody, buildPreviewLine } from './buzonRender'
 
 // ── renderBody — guarda anti-XSS ──────────────────────────────────────────────
 
@@ -98,5 +98,71 @@ describe('extractLinks', () => {
 
   test('cuerpo vacío → lista vacía', () => {
     expect(extractLinks('')).toEqual([])
+  })
+})
+
+// ── buildPreviewLine ──────────────────────────────────────────────────────────
+
+describe('buildPreviewLine', () => {
+  // La función genera un timestamp con la hora actual; lo validamos con regex
+  // para no depender de la zona horaria del runner.
+
+  test('Mensaje simple: formato correcto con separadores · y —', () => {
+    const line = buildPreviewLine({
+      tipo: 'Mensaje',
+      texto: 'Hola mundo',
+      plazo: '',
+      replyTo: '',
+      enlaces: [],
+    })
+    // - [ ] {YYYYMMDD}-{HHMM}-yo-destinatario · Mensaje — Hola mundo
+    expect(line).toMatch(/^- \[ \] \d{8}-\d{4}-yo-destinatario · Mensaje — Hola mundo$/)
+  })
+
+  test('con plazo: incluye "plazo DD/MM" en la cabecera, después del tipo', () => {
+    const line = buildPreviewLine({
+      tipo: 'Tarea',
+      texto: 'Revisar informe',
+      plazo: '25/10',
+      replyTo: '',
+      enlaces: [],
+    })
+    expect(line).toContain('· Tarea · plazo 25/10 —')
+    expect(line).toContain('— Revisar informe')
+  })
+
+  test('Respuesta con replyTo: produce "Respuesta a <id>" en cabecera, no "Respuesta" suelto', () => {
+    const replyId = '20261020-1400-alice-bob'
+    const line = buildPreviewLine({
+      tipo: 'Respuesta',
+      texto: 'Conforme',
+      plazo: '',
+      replyTo: replyId,
+      enlaces: [],
+    })
+    // "Respuesta a <id>" debe estar antes del separador " — "
+    const bodyStart = line.indexOf(' — ')
+    const replyIdx = line.indexOf(`Respuesta a ${replyId}`)
+    expect(replyIdx).toBeGreaterThan(-1)
+    expect(replyIdx).toBeLessThan(bodyStart) // en cabecera, no en cuerpo
+    expect(line).toContain('— Conforme')
+    // No debe aparecer "· Respuesta ·" ni "· Respuesta —" (el tipo solo)
+    expect(line).not.toMatch(/· Respuesta ·/)
+    expect(line).not.toMatch(/· Respuesta —/)
+  })
+
+  test('con enlaces: añade [label](url) en el cuerpo separado por ·', () => {
+    const line = buildPreviewLine({
+      tipo: 'Mensaje',
+      texto: 'Ver ticket',
+      plazo: '',
+      replyTo: '',
+      enlaces: [
+        { label: 'JIRA-1', url: 'https://jira.example.com/browse/JIRA-1' },
+      ],
+    })
+    expect(line).toContain('[JIRA-1](https://jira.example.com/browse/JIRA-1)')
+    // El enlace va después del texto separado por " · "
+    expect(line).toContain('— Ver ticket · [JIRA-1]')
   })
 })

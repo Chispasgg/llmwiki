@@ -1,10 +1,49 @@
 /**
  * Helpers puros de renderizado del módulo buzón.
- * Exportados aquí para ser compartidos entre BuzonView (BL-006) y BuzonReader (BL-004).
+ * Exportados aquí para ser compartidos entre BuzonView (BL-006), BuzonCompose (BL-005)
+ * y BuzonReader (BL-004).
  */
 
 import * as React from 'react'
 import { ExternalLink } from 'lucide-react'
+import type { Tipo } from './buzonTypes'
+
+// ── buildPreviewLine ──────────────────────────────────────────────────────────
+
+/**
+ * Client-side preview of a buzón line.
+ * Uses "yo" as sender slug (not known client-side) and "destinatario" as placeholder.
+ * The server will produce the real line with correct slugs.
+ */
+export function buildPreviewLine(opts: {
+  tipo: Tipo
+  texto: string
+  plazo: string
+  replyTo: string
+  enlaces: { label: string; url: string }[]
+}): string {
+  const FIELD_SEP = ' · '
+  const BODY_SEP = ' — '
+  const now = new Date()
+  const fecha = now.toISOString().slice(0, 10).replace(/-/g, '')
+  const hora = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`
+
+  const idStr = `${fecha}-${hora}-yo-destinatario`
+  const headerParts: string[] = [idStr]
+  if (opts.tipo === 'Respuesta' && opts.replyTo) {
+    headerParts.push(`Respuesta a ${opts.replyTo}`)
+  } else {
+    headerParts.push(opts.tipo)
+  }
+  if (opts.plazo) headerParts.push(`plazo ${opts.plazo}`)
+
+  const bodyParts: string[] = [opts.texto || '(texto vacío)']
+  for (const { label, url } of opts.enlaces) {
+    if (label && url) bodyParts.push(`[${label}](${url})`)
+  }
+
+  return `- [ ] ${headerParts.join(FIELD_SEP)}${BODY_SEP}${bodyParts.join(FIELD_SEP)}`
+}
 
 // ── renderBody ────────────────────────────────────────────────────────────────
 
