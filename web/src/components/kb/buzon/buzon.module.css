@@ -57,7 +57,9 @@
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
-/* ── Chip ─────────────────────────────────────────────────────────────────── */
+/* ── Chip ─────────────────────────────────────────────────────────────────────
+ * Requiere un ancestro con .buzonRoot para que las custom properties resuelvan.
+ * ──────────────────────────────────────────────────────────────────────────── */
 
 .chip{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:999px;font-size:11.5px;font-weight:500;white-space:nowrap;background:var(--chip);color:var(--fg-2);font-variant-numeric:tabular-nums}
 .chip.t-task{background:var(--brand-soft);color:var(--link)}
@@ -68,12 +70,39 @@
 .chip.s-done{background:var(--success-soft);color:var(--success)}
 .chip.s-rejected,.chip.d-over{background:var(--danger-soft);color:var(--danger)}
 .chip.d-soon{background:var(--warn-soft);color:var(--warn)}
+/* .chip.s-seen es intencionalmente ausente: el estado "visto" usa chip neutro
+   (sin kind), sin énfasis visual. No es un olvido. */
 .chip.big{height:24px;padding:0 9px;font-size:12px}
 
-/* ── Avatar ───────────────────────────────────────────────────────────────── */
+/* ── Avatar ───────────────────────────────────────────────────────────────────
+ * Requiere un ancestro con .buzonRoot para que las custom properties resuelvan.
+ * ──────────────────────────────────────────────────────────────────────────── */
 
 .av{display:inline-grid;place-items:center;flex:none;width:32px;height:32px;border-radius:50%;font-weight:600;font-size:13px;background:hsl(var(--h) var(--av-s) var(--av-l));color:hsl(var(--h) 45% var(--av-fg-l))}
 .av.lg{width:40px;height:40px;font-size:15px}
+
+/* ── Lista de mensajes ────────────────────────────────────────────────────── */
+
+.list{display:flex;flex-direction:column;min-height:0;min-width:0}
+.rows{overflow:auto;flex:1;min-height:0}
+.day{position:sticky;top:0;z-index:1;padding:6px 16px;font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--fg-3);background:var(--surface);border-bottom:1px solid var(--line)}
+.row{display:grid;grid-template-columns:8px 32px minmax(0,1fr);gap:10px;align-items:start;width:100%;text-align:left;padding:12px 16px 12px 10px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
+.row:hover{background:var(--hover)}
+.row.sel{background:var(--sel)}
+.dot{width:8px;height:8px;border-radius:50%;margin-top:12px}
+.row.unread .dot{background:var(--brand)}
+.row-main{min-width:0;display:flex;flex-direction:column;gap:3px}
+.row-top{display:flex;align-items:center;gap:8px;min-width:0}
+.row-top b{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row.unread .row-top b{font-weight:700}
+.row-top time{margin-left:auto;color:var(--fg-3);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.row-subj{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--fg-2);overflow-wrap:anywhere;margin:0}
+.row.unread .row-subj{color:var(--fg)}
+.row.closed .row-subj,.row.closed .row-top b{color:var(--fg-3)}
+.row-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:3px}
+.empty{padding:40px 24px;text-align:center;color:var(--fg-3)}
+.empty strong{display:block;color:var(--fg);font-size:15px;margin-bottom:4px}
+.skel{height:64px;margin:10px 16px;border-radius:8px;background:var(--hover)}
 
 /* Override oscuro: .dark no se hashea; .buzonRoot sí. */
 :global(.dark) .buzonRoot {

@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import type { ReactNode } from 'react'
 import styles from '../buzon.module.css'
 
 interface ChipProps {
@@ -9,7 +9,7 @@ interface ChipProps {
    *  'd-over' | 'd-soon' (plazo), 'big' (modificador tamaño).
    *  Sin `kind` → chip neutro con color de fondo por defecto. */
   kind?: string
-  children: React.ReactNode
+  children: ReactNode
 }
 
 // CSS Modules expone las clases con índice string; necesitamos acceso dinámico
