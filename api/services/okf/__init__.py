@@ -1,9 +1,26 @@
 """OKF (Open Knowledge Format) — paquete de servicios.
 
-Re-exports the public config API so callers can import from
-``services.okf`` directly without naming the submodule.
+Re-exporta la API pública de los submódulos para que los consumidores
+puedan importar desde ``services.okf`` sin nombrar el submódulo.
 """
 
 from services.okf.config import OkfConfig, load_okf_config
+from services.okf.mapping import derive_type
+from services.okf.serialize import (
+    PageInput,
+    build_index_md,
+    build_log_md,
+    serialize_concept,
+    to_iso8601,
+)
 
-__all__ = ["OkfConfig", "load_okf_config"]
+__all__ = [
+    "OkfConfig",
+    "load_okf_config",
+    "derive_type",
+    "PageInput",
+    "build_index_md",
+    "build_log_md",
+    "serialize_concept",
+    "to_iso8601",
+]

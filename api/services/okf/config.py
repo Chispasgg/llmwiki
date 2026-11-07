@@ -1,10 +1,10 @@
 """Cargador de configuración del exportador OKF.
 
-Lee ``config/okf/mapping.yaml`` desde la raíz del repositorio y construye
+Lee ``config/okf/mapping.yaml`` desde la raíz de ``llmwiki/`` y construye
 un ``OkfConfig`` inmutable con la configuración del exportador OKF v0.2.
 
 La ruta por defecto se resuelve a partir de la ubicación de este módulo
-(tres niveles arriba: okf/ → services/ → api/ → raíz).  El parámetro
+(tres niveles arriba: okf/ → services/ → api/ → llmwiki/).  El parámetro
 ``path`` permite sobreescribirla en tests o en invocaciones especiales.
 """
 
@@ -27,7 +27,7 @@ class OkfConfig:
     section_map: tuple[tuple[str, str], ...]  # (patrón, tipo), en orden
 
 
-# Ruta por defecto: raíz_repo/config/okf/mapping.yaml
+# Ruta por defecto: llmwiki/config/okf/mapping.yaml
 _DEFAULT_CONFIG_PATH = (
     Path(__file__).parent.parent.parent.parent / "config" / "okf" / "mapping.yaml"
 )
@@ -52,6 +52,12 @@ def load_okf_config(path: str | None = None) -> OkfConfig:
     with resolved.open(encoding="utf-8") as fh:
         raw = yaml.safe_load(fh)
 
+    default_type = str(raw["default_type"])
+    if not default_type.strip():
+        raise ValueError(
+            "El campo 'default_type' en la configuración OKF no puede estar vacío."
+        )
+
     # Convierte cada entrada de section_map de lista YAML a tupla inmutable (patrón, tipo)
     section_map: tuple[tuple[str, str], ...] = tuple(
         (str(entry[0]), str(entry[1])) for entry in raw["section_map"]
@@ -59,7 +65,7 @@ def load_okf_config(path: str | None = None) -> OkfConfig:
 
     return OkfConfig(
         okf_version=str(raw["okf_version"]),
-        default_type=str(raw["default_type"]),
+        default_type=default_type,
         default_out_dir=str(raw["default_out_dir"]),
         vocabulary=tuple(str(v) for v in raw["vocabulary"]),
         section_map=section_map,

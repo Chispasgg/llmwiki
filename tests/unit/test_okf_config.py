@@ -57,3 +57,17 @@ def test_load_yaml_missing_field_raises_key_error(tmp_path):
     incomplete.write_text("okf_version: '0.2'\n# sin otros campos obligatorios\n")
     with pytest.raises(KeyError):
         load_okf_config(str(incomplete))
+
+
+def test_empty_default_type_raises_value_error(tmp_path):
+    """YAML con default_type vacío lanza ValueError."""
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "okf_version: '0.2'\n"
+        "default_type: ''\n"
+        "default_out_dir: './out'\n"
+        "vocabulary: [Concepto]\n"
+        "section_map: []\n"
+    )
+    with pytest.raises(ValueError, match="default_type"):
+        load_okf_config(str(bad))
