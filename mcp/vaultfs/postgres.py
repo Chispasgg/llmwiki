@@ -50,6 +50,87 @@ def _assemble_hybrid(lexical_rows, semantic_rows, query_vec, limit):
     return out
 
 
+def _build_lex_query(
+    kb_id: str,
+    query: str,
+    user_id: str,
+    limit: int,
+    path_clause: str = "",
+    tags: list[str] | None = None,
+    include_id: bool = False,
+) -> tuple[str, list]:
+    """Returns (sql, params) for the lexical FTS SELECT.
+
+    Params: $1=kb_id, $2=query, $3=user_id, $4=limit, [$5=tags].
+    """
+    share_exists = (
+        "EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
+        "WHERE kb.id = $1 AND (kb.user_id = $3 OR ks.shared_with = $3::uuid))"
+    )
+    tsv = "to_tsvector('simple', dc.content)"
+    tsq = "plainto_tsquery('simple', $2)"
+
+    params: list = [kb_id, query, user_id, limit]
+    tags_clause = ""
+    if tags:
+        tags_clause = f" AND d.tags @> ${len(params) + 1}::text[]"
+        params.append(tags)
+
+    id_col = "dc.id::text AS id, " if include_id else ""
+    sql = (
+        f"SELECT {id_col}dc.content, dc.page, dc.header_breadcrumb, dc.chunk_index, "
+        f"  d.filename, d.title, d.path, d.file_type, d.tags, "
+        f"  ts_rank({tsv}, {tsq}) AS score "
+        f"FROM document_chunks dc "
+        f"JOIN documents d ON dc.document_id = d.id "
+        f"WHERE dc.knowledge_base_id = $1 "
+        f"  AND {tsv} @@ {tsq} "
+        f"  AND NOT d.archived "
+        f"  AND {share_exists}"
+        f"{path_clause}{tags_clause} "
+        f"ORDER BY score DESC, dc.chunk_index "
+        f"LIMIT $4"
+    )
+    return sql, params
+
+
+def _build_sem_query(
+    kb_id: str,
+    user_id: str,
+    embedding_model: str,
+    path_clause: str = "",
+    tags: list[str] | None = None,
+) -> tuple[str, list]:
+    """Returns (sql, params) for the semantic embedding SELECT.
+
+    Params: $1=kb_id, $2=user_id, $3=embedding_model, [$4=tags].
+    Note: query text is NOT a parameter — the embedding SELECT filters by
+    vector presence; the query string is used only to generate the query
+    vector via embed_query() before this function is called.
+    """
+    sem_share_exists = (
+        "EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
+        "WHERE kb.id = $1 AND (kb.user_id = $2 OR ks.shared_with = $2::uuid))"
+    )
+    params: list = [kb_id, user_id, embedding_model]
+    tags_clause = ""
+    if tags:
+        tags_clause = f" AND d.tags @> ${len(params) + 1}::text[]"
+        params.append(tags)
+    sql = (
+        f"SELECT dc.id::text AS id, dc.content, dc.page, dc.header_breadcrumb, dc.chunk_index, "
+        f"  d.filename, d.title, d.path, d.file_type, d.tags, dc.embedding "
+        f"FROM document_chunks dc "
+        f"JOIN documents d ON dc.document_id = d.id "
+        f"WHERE dc.knowledge_base_id = $1 "
+        f"  AND NOT d.archived "
+        f"  AND {sem_share_exists}"
+        f"  AND dc.embedding IS NOT NULL AND dc.embedding_model = $3"
+        f"{path_clause}{tags_clause}"
+    )
+    return sql, params
+
+
 _s3_session = None
 
 
@@ -496,77 +577,25 @@ class PostgresVaultFS(VaultFS):
         path_filter: str | None = None,
         tags: list[str] | None = None,
     ) -> list[dict]:
-        # Fragmento WHERE compartido entre búsqueda léxica y semántica.
-        # Los parámetros posicionales son: $1=kb_id, $2=query, $3=user_id; tags si aplica en $5+.
         path_clause = ""
         if path_filter == "wiki":
             path_clause = " AND d.path LIKE '/wiki/%%'"
         elif path_filter == "sources":
             path_clause = " AND d.path NOT LIKE '/wiki/%%'"
 
-        # Parámetros base; $4 se reserva para LIMIT en léxico-only y semántico no lo usa.
-        base_params: list = [kb_id, query, self.user_id]
-        tags_clause = ""
-        if tags:
-            # El offset +2 sobre len(base_params)=3 da $5 porque en la SELECT léxica
-            # el LIMIT ocupa $4 (se añade a params DESPUÉS de base_params); tags va a $5.
-            # En léxico-only y lex_params: [kb_id, query, user_id, limit, ?tags].
-            tags_clause = f" AND d.tags @> ${len(base_params) + 2}::text[]"
-
-        # Cláusula EXISTS de compartición (usada en ambas SELECT).
-        share_exists = (
-            "EXISTS (SELECT 1 FROM knowledge_bases kb LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
-            "WHERE kb.id = $1 AND (kb.user_id = $3 OR ks.shared_with = $3::uuid))"
-        )
-
-        # Usa FTS nativo de PostgreSQL (tsvector/tsquery + ts_rank).
-        # 'simple' dictionary: solo lowercase+split, funciona para ES+EN sin configuración extra.
-        tsv = "to_tsvector('simple', dc.content)"
-        tsq = "plainto_tsquery('simple', $2)"
-
         if not settings.OLLAMA_URL:
-            # Modo léxico puro (comportamiento original intacto).
-            params: list = [*base_params, limit]
-            if tags:
-                params.append(tags)
-            return await scoped_query(
-                self.user_id,
-                f"SELECT dc.content, dc.page, dc.header_breadcrumb, dc.chunk_index, "
-                f"  d.filename, d.title, d.path, d.file_type, d.tags, "
-                f"  ts_rank({tsv}, {tsq}) AS score "
-                f"FROM document_chunks dc "
-                f"JOIN documents d ON dc.document_id = d.id "
-                f"WHERE dc.knowledge_base_id = $1 "
-                f"  AND {tsv} @@ {tsq} "
-                f"  AND NOT d.archived "
-                f"  AND {share_exists}"
-                f"{path_clause}{tags_clause} "
-                f"ORDER BY score DESC, dc.chunk_index "
-                f"LIMIT $4",
-                *params,
+            # Modo léxico puro.
+            sql, params = _build_lex_query(
+                kb_id, query, self.user_id, limit, path_clause, tags
             )
+            return await scoped_query(self.user_id, sql, *params)
 
         # Modo híbrido: léxico como candidatos + semántico para re-ranking con RRF.
         lex_limit = max(limit * 5, 50)
-        lex_params: list = [*base_params, lex_limit]
-        if tags:
-            lex_params.append(tags)
-        lexical_rows = await scoped_query(
-            self.user_id,
-            f"SELECT dc.id::text AS id, dc.content, dc.page, dc.header_breadcrumb, dc.chunk_index, "
-            f"  d.filename, d.title, d.path, d.file_type, d.tags, "
-            f"  ts_rank({tsv}, {tsq}) AS score "
-            f"FROM document_chunks dc "
-            f"JOIN documents d ON dc.document_id = d.id "
-            f"WHERE dc.knowledge_base_id = $1 "
-            f"  AND {tsv} @@ {tsq} "
-            f"  AND NOT d.archived "
-            f"  AND {share_exists}"
-            f"{path_clause}{tags_clause} "
-            f"ORDER BY score DESC, dc.chunk_index "
-            f"LIMIT $4",
-            *lex_params,
+        lex_sql, lex_params = _build_lex_query(
+            kb_id, query, self.user_id, lex_limit, path_clause, tags, include_id=True
         )
+        lexical_rows = await scoped_query(self.user_id, lex_sql, *lex_params)
 
         qv = await embed_query(query)
         if qv is None:
@@ -575,32 +604,12 @@ class PostgresVaultFS(VaultFS):
                 {k: v for k, v in r.items() if k != "id"} for r in lexical_rows[:limit]
             ]
 
-        # SELECT semántica: sin ORDER ni LIMIT, filtrando solo chunks con embedding.
-        # IMPORTANTE: base_params incluye query en $2, que NO se referencia en la SQL semántica.
-        # Es un placeholder intencional para mantener el alineamiento $1=kb_id / $3=user_id
-        # del WHERE compartido (share_exists). NO reordenar esta lista.
-        sem_params: list = [*base_params, settings.EMBEDDING_MODEL]
-        # sem_params = [$1=kb_id, $2=query(placeholder), $3=user_id, $4=EMBEDDING_MODEL]
-        sem_tags_clause = ""
-        if tags:
-            # El offset +1 sobre len(sem_params)=4 da $5 porque sem_params ya incluye
-            # los 4 parámetros anteriores (a diferencia de tags_clause léxico, donde el
-            # LIMIT se añade después de base_params al construir params/lex_params).
-            sem_tags_clause = f" AND d.tags @> ${len(sem_params) + 1}::text[]"
-            sem_params.append(tags)
-        semantic_rows = await scoped_query(
-            self.user_id,
-            f"SELECT dc.id::text AS id, dc.content, dc.page, dc.header_breadcrumb, dc.chunk_index, "
-            f"  d.filename, d.title, d.path, d.file_type, d.tags, dc.embedding "
-            f"FROM document_chunks dc "
-            f"JOIN documents d ON dc.document_id = d.id "
-            f"WHERE dc.knowledge_base_id = $1 "
-            f"  AND NOT d.archived "
-            f"  AND {share_exists}"
-            f"  AND dc.embedding IS NOT NULL AND dc.embedding_model = $4"
-            f"{path_clause}{sem_tags_clause}",
-            *sem_params,
+        # SELECT semántica: query no es un parámetro SQL aquí — se usó para generar
+        # el vector qv arriba. Params: $1=kb_id, $2=user_id, $3=embedding_model, [$4=tags].
+        sem_sql, sem_params = _build_sem_query(
+            kb_id, self.user_id, settings.EMBEDDING_MODEL, path_clause, tags
         )
+        semantic_rows = await scoped_query(self.user_id, sem_sql, *sem_params)
 
         fused = _assemble_hybrid(lexical_rows, semantic_rows, qv, limit)
         # Eliminar 'id' interno de las filas devueltas para conservar el contrato de salida.
