@@ -7,6 +7,7 @@ puedan importar desde ``services.okf`` sin nombrar el submódulo.
 from services.okf.config import OkfConfig, load_okf_config
 from services.okf.exporter import OkfReader, export_bundle
 from services.okf.mapping import derive_type
+from services.okf.output import pack_zip, to_manifest, write_tree
 from services.okf.serialize import (
     PageInput,
     build_index_md,
@@ -21,6 +22,9 @@ __all__ = [
     "OkfReader",
     "export_bundle",
     "derive_type",
+    "pack_zip",
+    "to_manifest",
+    "write_tree",
     "PageInput",
     "build_index_md",
     "build_log_md",
