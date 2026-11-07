@@ -10,8 +10,6 @@ importable en el entorno de tests (api project) sin que el paquete
 mcp[cli] esté instalado.
 """
 
-from __future__ import annotations
-
 import json
 import sys
 from pathlib import Path
