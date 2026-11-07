@@ -78,15 +78,25 @@ def export_bundle(reader: OkfReader, cfg: OkfConfig) -> dict[str, str]:
     ``log.md``, se escribe con un nombre seguro (``index_.md`` / ``log_.md``)
     para no pisar los ficheros generados.
 
+    Guard de colisión de relpath: si dos páginas distintas producen la misma
+    ruta relativa en el manifiesto (tras el renombrado de reservados), se
+    lanza ``ValueError`` con los identificadores de ambas páginas en conflicto.
+
     Args:
         reader: lector que implementa el protocolo ``OkfReader``.
         cfg:    configuración OKF con versión, vocabulario y section_map.
 
     Returns:
         Manifiesto en memoria: ``{relpath: contenido_markdown}``.
+
+    Raises:
+        ValueError: si dos páginas producen la misma ruta relativa.
     """
     manifest: dict[str, str] = {}
     index_entries: list[tuple[str, str]] = []
+    # Mapa relpath → "path/filename" de la primera página que lo ocupa;
+    # permite emitir un mensaje de error descriptivo con ambas páginas.
+    _assigned: dict[str, str] = {}
 
     for page in reader.list_pages():
         relpath = _page_relpath(page)
@@ -95,6 +105,16 @@ def export_bundle(reader: OkfReader, cfg: OkfConfig) -> dict[str, str]:
         # los ficheros generados por el ensamblador.
         if relpath in _RESERVED:
             relpath = _SAFE_NAME[relpath]
+
+        # Guard de colisión: dos páginas distintas que producen el mismo relpath.
+        page_id = f"{page.path.rstrip('/')}/{page.filename}"
+        if relpath in _assigned:
+            raise ValueError(
+                f"Colisión de ruta en el bundle OKF: las páginas "
+                f"'{_assigned[relpath]}' y '{page_id}' "
+                f"producen la misma ruta relativa '{relpath}'"
+            )
+        _assigned[relpath] = page_id
 
         concept_id = relpath.removesuffix(".md")
         description = page.description or ""

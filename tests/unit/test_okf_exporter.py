@@ -280,3 +280,26 @@ class TestExportBundle:
         assert "entities/mcp.md" in idx_content
         # La descripción debe aparecer
         assert "Protocolo MCP" in idx_content
+
+    def test_collision_guard_raises_value_error(self):
+        """Dos páginas que producen la misma ruta relativa → ValueError descriptivo.
+
+        Escenario: página 1 tiene path /wiki/entities/ (el prefijo /wiki/ se
+        elimina) y página 2 tiene path /entities/ (sin prefijo /wiki/). Ambas
+        tienen filename='clash.md', por lo que producen el mismo relpath
+        'entities/clash.md'.
+        """
+        cfg = _make_cfg()
+        pages = [
+            _make_page(path="/wiki/entities/", filename="clash.md"),
+            _make_page(path="/entities/", filename="clash.md"),
+        ]
+        reader = FakeReader(pages)
+
+        with pytest.raises(ValueError) as exc_info:
+            export_bundle(reader, cfg)
+
+        # El mensaje debe mencionar la ruta en conflicto y las dos páginas
+        msg = str(exc_info.value)
+        assert "clash.md" in msg, "El mensaje no menciona la ruta en conflicto"
+        assert "entities" in msg, "El mensaje no menciona la ruta en conflicto"

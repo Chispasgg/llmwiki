@@ -8,6 +8,7 @@ from services.okf.config import OkfConfig, load_okf_config
 from services.okf.exporter import OkfReader, export_bundle
 from services.okf.mapping import derive_type
 from services.okf.output import pack_zip, to_manifest, write_tree
+from services.okf.reader_local import LocalOkfReader
 from services.okf.serialize import (
     PageInput,
     build_index_md,
@@ -25,6 +26,7 @@ __all__ = [
     "pack_zip",
     "to_manifest",
     "write_tree",
+    "LocalOkfReader",
     "PageInput",
     "build_index_md",
     "build_log_md",

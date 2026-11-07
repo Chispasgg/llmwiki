@@ -378,6 +378,58 @@ def cmd_lint(workspace: str, kb: str) -> None:
     sys.exit(result.returncode)
 
 
+def cmd_export_okf(
+    workspace: str,
+    out_dir: str | None = None,
+    kb: str | None = None,
+) -> None:
+    """Exporta la wiki local a un bundle OKF escrito en disco.
+
+    Resolución del directorio de salida:
+    - Si ``--out`` se da explícitamente, se usa tal cual (resuelto contra CWD).
+    - Si no, ``cfg.default_out_dir`` se resuelve contra la raíz del workspace,
+      no contra el CWD (corrección del MENOR de OKF-001).
+
+    ``--kb`` no aplica en modo local: hay una sola wiki por workspace.
+    """
+    ws = Path(workspace).resolve()
+    if not (ws / ".llmwiki" / "index.db").exists():
+        print(f"Workspace not initialized. Run: llmwiki init {ws}", file=sys.stderr)
+        sys.exit(1)
+
+    # Inyectar api/ en sys.path para importar los servicios OKF sin lanzar
+    # el servidor FastAPI completo.
+    api_str = str(API_DIR)
+    if api_str not in sys.path:
+        sys.path.insert(0, api_str)
+
+    from services.okf.config import load_okf_config  # noqa: PLC0415
+    from services.okf.exporter import export_bundle  # noqa: PLC0415
+    from services.okf.output import write_tree  # noqa: PLC0415
+    from services.okf.reader_local import LocalOkfReader  # noqa: PLC0415
+
+    cfg = load_okf_config()
+
+    if out_dir:
+        resolved_out = str(Path(out_dir).resolve())
+    else:
+        # default_out_dir anclado al workspace, no al CWD
+        resolved_out = str(ws / cfg.default_out_dir)
+
+    if kb:
+        print(
+            "Aviso: --kb se ignora en modo local (un único wiki por workspace).",
+            file=sys.stderr,
+        )
+
+    reader = LocalOkfReader(ws)
+    bundle = export_bundle(reader, cfg)
+    write_tree(bundle, resolved_out)
+
+    print(f"✓ OKF export completado: {resolved_out}")
+    print(f"  {len(bundle)} fichero(s) escritos")
+
+
 def cmd_reindex(workspace: str) -> None:
     ws = Path(workspace).resolve()
     db_path = ws / ".llmwiki" / "index.db"
@@ -437,6 +489,20 @@ def main():
     p_lint.add_argument("workspace", help="Path to workspace folder")
     p_lint.add_argument("--kb", required=True, help="Slug de la knowledge base a analizar")
 
+    p_export = sub.add_parser("export-okf", help="Export wiki to OKF bundle on disk")
+    p_export.add_argument("workspace", help="Path to workspace folder")
+    p_export.add_argument(
+        "--out",
+        default=None,
+        dest="out_dir",
+        help="Output directory (default: <workspace>/okf-export, resolved against workspace)",
+    )
+    p_export.add_argument(
+        "--kb",
+        default=None,
+        help="Knowledge base slug (ignored in local mode: one wiki per workspace)",
+    )
+
     p_reindex = sub.add_parser("reindex", help="Force full rebuild of index")
     p_reindex.add_argument("workspace", help="Path to workspace folder")
 
@@ -458,6 +524,12 @@ def main():
         cmd_mcp_config(args.workspace, getattr(args, "name", None), getattr(args, "http_url", None))
     elif args.command == "lint":
         cmd_lint(args.workspace, args.kb)
+    elif args.command == "export-okf":
+        cmd_export_okf(
+            args.workspace,
+            out_dir=getattr(args, "out_dir", None),
+            kb=getattr(args, "kb", None),
+        )
     elif args.command == "reindex":
         cmd_reindex(args.workspace)
 
