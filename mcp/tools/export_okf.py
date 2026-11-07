@@ -19,8 +19,12 @@ from pathlib import Path
 # Asegura que llmwiki/api/ esté en sys.path para importar services.okf.
 # En el entorno de tests (uv --project api) conftest ya lo añade; aquí
 # cubrimos el runtime del servidor MCP donde solo mcp/ está en el path.
-_API_DIR = str((Path(__file__).parent.parent.parent.parent / "api").resolve())
-if _API_DIR not in sys.path:
+# Cadena de parents desde mcp/tools/export_okf.py:
+#   .parent       → mcp/tools/
+#   .parent.parent  → mcp/
+#   .parent.parent.parent → llmwiki/   ← api/ vive aquí
+_API_DIR = str((Path(__file__).parent.parent.parent / "api").resolve())
+if _API_DIR not in sys.path and Path(_API_DIR).is_dir():
     sys.path.insert(0, _API_DIR)
 
 
