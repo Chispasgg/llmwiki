@@ -1,10 +1,11 @@
-"""Pure frontmatter parsing for wiki pages. No DB, no state."""
+"""Pure frontmatter parsing and manipulation for wiki pages. No DB, no state."""
 
 import re
 
 import yaml
 
 _FRONTMATTER_RE = re.compile(r"\A---[ \t]*\n(.+?\n)---[ \t]*\n", re.DOTALL)
+_FM_BLOCK_RE = re.compile(r"\A(---[ \t]*\n)(.*?\n)(---[ \t]*\n)", re.DOTALL)
 
 
 def parse_frontmatter(content: str) -> dict:
@@ -35,3 +36,26 @@ def extract_metadata(meta: dict) -> tuple[str | None, dict]:
         metadata["description"] = meta["description"].strip()
 
     return date_str, metadata
+
+
+def inject_frontmatter_key(content: str, key: str, value: str) -> str:
+    """Inject or replace `key` in the YAML frontmatter block of content.
+
+    If frontmatter is absent, a minimal block is prepended. The value is
+    sanitized to a single line. Existing keys are updated in-place; new keys
+    are appended before the closing fence.
+    """
+    value_clean = value.strip().replace("\n", " ")
+    key_re = re.compile(r"^" + re.escape(key) + r"\s*:.*$", re.MULTILINE)
+
+    m = _FM_BLOCK_RE.match(content)
+    if m:
+        open_fence, fm_body, close_fence = m.group(1), m.group(2), m.group(3)
+        rest = content[m.end() :]
+        if key_re.search(fm_body):
+            new_body = key_re.sub(f"{key}: {value_clean}", fm_body)
+        else:
+            new_body = fm_body.rstrip("\n") + f"\n{key}: {value_clean}\n"
+        return open_fence + new_body + close_fence + rest
+    else:
+        return f"---\n{key}: {value_clean}\n---\n{content}"
