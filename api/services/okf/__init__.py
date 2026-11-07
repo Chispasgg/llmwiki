@@ -5,6 +5,7 @@ puedan importar desde ``services.okf`` sin nombrar el submódulo.
 """
 
 from services.okf.config import OkfConfig, load_okf_config
+from services.okf.exporter import OkfReader, export_bundle
 from services.okf.mapping import derive_type
 from services.okf.serialize import (
     PageInput,
@@ -17,6 +18,8 @@ from services.okf.serialize import (
 __all__ = [
     "OkfConfig",
     "load_okf_config",
+    "OkfReader",
+    "export_bundle",
     "derive_type",
     "PageInput",
     "build_index_md",
