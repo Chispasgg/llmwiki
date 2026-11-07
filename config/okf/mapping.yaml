@@ -1,0 +1,18 @@
+okf_version: "0.2"
+default_type: "Concepto"
+default_out_dir: "./okf-export"
+vocabulary: ["Concepto", "Entidad", "Norma", "Procedimiento", "Referencia", "Overview"]
+# section_map: lista ORDENADA de [patrón_de_ruta, tipo]; el primero que casa gana.
+# El patrón casa si aparece como substring en la ruta de la página (path+filename), case-insensitive.
+section_map:
+  - ["overview", "Overview"]
+  - ["index", "Overview"]
+  - ["entities/", "Entidad"]
+  - ["entities", "Entidad"]
+  - ["normas", "Norma"]
+  - ["procedim", "Procedimiento"]
+  - ["howto", "Procedimiento"]
+  - ["guia", "Procedimiento"]
+  - ["references/", "Referencia"]
+  - ["references", "Referencia"]
+  - ["concepts", "Concepto"]
