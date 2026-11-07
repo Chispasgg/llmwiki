@@ -23,8 +23,8 @@ class OkfConfig:
     okf_version: str
     default_type: str
     default_out_dir: str
-    vocabulary: list[str]
-    section_map: list[tuple[str, str]]  # (patrón, tipo), en orden
+    vocabulary: tuple[str, ...]
+    section_map: tuple[tuple[str, str], ...]  # (patrón, tipo), en orden
 
 
 # Ruta por defecto: raíz_repo/config/okf/mapping.yaml
@@ -52,15 +52,15 @@ def load_okf_config(path: str | None = None) -> OkfConfig:
     with resolved.open(encoding="utf-8") as fh:
         raw = yaml.safe_load(fh)
 
-    # Convierte cada entrada de section_map de lista a tupla (patrón, tipo)
-    section_map: list[tuple[str, str]] = [
+    # Convierte cada entrada de section_map de lista YAML a tupla inmutable (patrón, tipo)
+    section_map: tuple[tuple[str, str], ...] = tuple(
         (str(entry[0]), str(entry[1])) for entry in raw["section_map"]
-    ]
+    )
 
     return OkfConfig(
         okf_version=str(raw["okf_version"]),
         default_type=str(raw["default_type"]),
         default_out_dir=str(raw["default_out_dir"]),
-        vocabulary=list(raw["vocabulary"]),
+        vocabulary=tuple(str(v) for v in raw["vocabulary"]),
         section_map=section_map,
     )

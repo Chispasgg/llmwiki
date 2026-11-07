@@ -1,5 +1,7 @@
 """Tests unitarios para api/services/okf/config.py."""
 
+import pytest
+
 from services.okf.config import load_okf_config
 
 
@@ -41,3 +43,17 @@ def test_section_map_is_ordered_tuples():
     assert patterns.index("entities/") < patterns.index("normas"), (
         '"entities/" debe preceder a "normas" en section_map'
     )
+
+
+def test_load_nonexistent_raises_file_not_found():
+    """load_okf_config con ruta inexistente lanza FileNotFoundError."""
+    with pytest.raises(FileNotFoundError):
+        load_okf_config("/ruta/inexistente.yaml")
+
+
+def test_load_yaml_missing_field_raises_key_error(tmp_path):
+    """YAML sin campo obligatorio lanza KeyError."""
+    incomplete = tmp_path / "incomplete.yaml"
+    incomplete.write_text("okf_version: '0.2'\n# sin otros campos obligatorios\n")
+    with pytest.raises(KeyError):
+        load_okf_config(str(incomplete))
