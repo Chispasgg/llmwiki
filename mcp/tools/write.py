@@ -13,6 +13,7 @@ from textmatch import validate_single_match
 from frontmatter import (
     parse_frontmatter as _parse_frontmatter,
     extract_metadata as _extract_metadata,
+    inject_frontmatter_key as _inject_frontmatter_key,
 )
 
 _ASSET_EXTENSIONS = {".svg", ".csv", ".json", ".xml", ".html"}
@@ -371,7 +372,11 @@ def register(mcp: FastMCP, get_user_id, fs_factory) -> None:
             "OTHER parts are preserved; if another writer changed the SAME text first, it fails loudly "
             "(nothing is written) and you re-read and retry. For large or structural rewrites prefer "
             "create+overwrite. Empty new_text is rejected unless allow_delete=true; big content shrink is flagged.\n"
-            "- append: add content to the end of an existing page"
+            "- append: add content to the end of an existing page\n\n"
+            "OKF type field (optional, `create` only):\n"
+            "Pass `type` to tag the page with its OKF knowledge type. Recommended vocabulary: "
+            "Concepto, Entidad, Norma, Procedimiento, Referencia, Overview. The field is open — "
+            "other values are accepted. When omitted, the page is created without a `type` key."
         ),
     )
     async def write(
@@ -387,6 +392,7 @@ def register(mcp: FastMCP, get_user_id, fs_factory) -> None:
         new_text: str = "",
         overwrite: bool = False,
         allow_delete: bool = False,
+        type: str | None = None,
     ) -> str:
         user_id = get_user_id(ctx)
         fs = fs_factory(user_id)
@@ -397,8 +403,13 @@ def register(mcp: FastMCP, get_user_id, fs_factory) -> None:
         handler = WriteHandler(fs, kb)
 
         if command == "create":
+            # Inject OKF type into frontmatter when the caller provides it.
+            # Only for create; str_replace and append target existing content.
+            effective_content = content
+            if type and type.strip():
+                effective_content = _inject_frontmatter_key(content, "type", type)
             return await handler.create(
-                path, title, content, tags or [], date_str, overwrite
+                path, title, effective_content, tags or [], date_str, overwrite
             )
         elif command == "str_replace":
             return await handler.edit(path, old_text, new_text, tags, allow_delete)

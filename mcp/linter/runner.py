@@ -17,6 +17,7 @@ async def run_lint(fs, kb_id: str, kb_slug: str, config_dir: str) -> list[Findin
         findings += C.check_footnotes(d)
         findings += C.check_freshness(d)
         findings += C.check_scope(d, policy)
+        findings += C.check_missing_type(d)
     findings += C.check_broken_links(docs)
     findings += C.check_index_size(wiki_docs, policy["index_max_entries"])
     findings += C.check_reachability(wiki_docs, policy["reachability_max_hops"])

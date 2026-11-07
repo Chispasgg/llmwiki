@@ -103,6 +103,7 @@ Fields:
 - `description` — one-sentence summary of what this page covers (required). Keep it concrete and specific — this shows up in graph tooltips and search results.
 - `date` — when the page was created or last substantially revised, YYYY-MM-DD (required)
 - `tags` — list of relevant topic tags for filtering and discovery (required, at least 2)
+- `type` — OKF knowledge type (optional but recommended). Use one of: `Concepto`, `Entidad`, `Norma`, `Procedimiento`, `Referencia`, `Overview`. Pass it to `write(type=...)` on create and it is injected automatically. Omit it only when the type genuinely does not apply.
 
 When updating a page, update `date` if the revision is substantial. Always preserve existing frontmatter fields when editing.
 

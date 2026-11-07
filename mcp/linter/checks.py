@@ -299,6 +299,26 @@ def check_scope(doc: dict, policy: dict) -> list[Finding]:
     return out
 
 
+def check_missing_type(doc: dict) -> list[Finding]:
+    """Warning when a wiki page frontmatter lacks the OKF `type` field.
+
+    Severity is always WARNING — this is an informational nudge, not a blocking
+    error. The linter exit-code and error classification are unaffected.
+    """
+    meta = parse_frontmatter(doc.get("content") or "")
+    if meta.get("type"):
+        return []
+    return [
+        Finding(
+            "missing_type",
+            _full_path(doc),
+            "warning",
+            "frontmatter sin campo 'type' (tipo OKF)",
+            "Añade type: <Concepto|Entidad|Norma|Procedimiento|Referencia|Overview> al frontmatter.",
+        )
+    ]
+
+
 def check_counts(docs: list[dict], policy: dict) -> list[Finding]:
     rules = policy.get("counts", [])
     if not rules:
