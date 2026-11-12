@@ -169,14 +169,18 @@ async def test_upload_image_no_extension_raises_400():
 # ---------------------------------------------------------------------------
 
 
-async def test_upload_image_empty_file_rejected():
-    """Zero-byte file → HTTPException(400, 'Fichero vacío'), ingest never called."""
+async def test_upload_image_empty_file_rejected(tmp_path):
+    """Zero-byte file → HTTPException(400, 'Fichero vacío'), ingest never called, temp cleaned up."""
+    fd, controlled_temp = _controlled_fd(tmp_path, "llmwiki_img_empty")
     pool = _make_pool(owner=USER_ID, quota_used=0)
     request = _make_request(pool)
     upload_file = _make_upload_file("img.png", b"")
 
     mock_ingest = AsyncMock()
-    with patch("routes.images.ingest_uploaded_file", new=mock_ingest):
+    with (
+        patch("tempfile.mkstemp", return_value=(fd, str(controlled_temp))),
+        patch("routes.images.ingest_uploaded_file", new=mock_ingest),
+    ):
         from routes.images import upload_image
 
         with pytest.raises(HTTPException) as exc_info:
@@ -190,6 +194,7 @@ async def test_upload_image_empty_file_rejected():
     assert exc_info.value.status_code == 400
     assert "vacío" in exc_info.value.detail
     mock_ingest.assert_not_called()
+    assert not controlled_temp.exists()
 
 
 # ---------------------------------------------------------------------------

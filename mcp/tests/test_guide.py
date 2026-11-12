@@ -160,3 +160,18 @@ def test_guide_svg_section_clarifies_real_link_not_base64():
     """The SVG assets section must use the exact phrases 'real file link' and 'base64 data URI'."""
     assert "real file link" in GUIDE_TEXT
     assert "base64 data URI" in GUIDE_TEXT
+
+
+# ---------------------------------------------------------------------------
+# Cleanup final: API_BASE path prefix + wiki-unique filenames
+# ---------------------------------------------------------------------------
+
+
+def test_guide_api_base_includes_path_prefix():
+    """GUIDE_TEXT must clarify that API_BASE must include the reverse-proxy path prefix."""
+    assert "API path prefix" in GUIDE_TEXT
+
+
+def test_guide_advises_unique_filenames():
+    """GUIDE_TEXT must advise using descriptive, wiki-unique filenames for uploaded images."""
+    assert "wiki-unique" in GUIDE_TEXT

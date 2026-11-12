@@ -266,10 +266,14 @@ The API responds with:
 Then reference the image in a wiki page with `![Description](screenshot.png)` using the
 `filename` from the response.
 
+> **Use descriptive, wiki-unique filenames** (e.g. `login-form-error.png`, not `screenshot.png`):
+> if two images share the same filename, `![](filename)` resolves to the first match —
+> the second upload silently shadows the first.
+
 **Where to find the values:**
 - `<kb_id>` — the UUID of the target knowledge base. Use the id shown next to each knowledge
   base in this guide's list (call `guide` to see it).
-- `<API_BASE>` — the base URL of this wiki instance's API (e.g. `https://yourwiki.example.com`).
+- `<API_BASE>` — the base URL of this wiki instance's API, **including the API path prefix** used by the reverse proxy (e.g. `https://yourwiki.example.com/wiki`, not just the origin).
 - `<your-api-key>` — an API key created on the API keys page of the wiki. The key already starts with `sv_` — use it as-is in the header (do not add a second `sv_` prefix).
 
 > **CLI only:** Uploading raster images via this endpoint is only available to CLI clients that

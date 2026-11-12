@@ -13,7 +13,6 @@ from config import settings
 from deps import get_user_id
 from services.upload_ingest import (
     ALLOWED_EXTENSIONS,
-    CONTENT_TYPES,
     ingest_uploaded_file,
 )
 
