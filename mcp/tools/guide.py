@@ -140,7 +140,8 @@ graph TD
 
 **SVG assets** — for custom visuals Mermaid can't express:
 - Create: `write(command="create", path="/wiki/", title="diagram.svg", content="<svg>...</svg>", tags=["diagram"])`
-- Embed in wiki pages: `![Description](diagram.svg)`
+- Embed in wiki pages: `![Description](diagram.svg)` — this is a **real file link**, not a base64 data URI.
+  SVG assets stored this way add zero base64 overhead to your context, keeping token cost minimal.
 
 ### Printable Format (A4/PDF) — REQUIRED
 
@@ -232,6 +233,56 @@ Every write automatically parses citations and cross-references and stores them 
 - **`search(mode="references", query="stale")`** — pages flagged as potentially stale because a page they link to was updated.
 
 Use the reference graph to maintain consistency. After editing a page, check the impact surface in the response and update affected pages.
+
+## Inserting Images
+
+### SVG (any client)
+
+SVG assets are stored as first-class wiki files and embedded via a real file link — no base64 encoding.
+`write(command="create", path="/wiki/", title="diagram.svg", content="<svg>...</svg>")` creates the
+asset; `![Description](diagram.svg)` embeds it. See **SVG assets** under Visual Elements for the
+full create call. This approach works from any client and adds zero base64 overhead.
+
+### Raster images (PNG / JPG / WEBP / GIF) — CLI client (upload via HTTP)
+
+If you are a **CLI client** with shell access, upload the file by path — bytes go disk→network,
+no base64 in your context:
+
+```
+curl -sS -X POST "<API_BASE>/v1/knowledge-bases/<kb_id>/images" \\
+  -H "Authorization: Bearer sv_<your-api-key>" \\
+  -F "file=@/path/to/screenshot.png"
+```
+
+The API responds with:
+
+```json
+{"document_id": "...", "filename": "screenshot.png"}
+```
+
+Then reference the image in a wiki page with `![Description](screenshot.png)` using the
+`filename` from the response.
+
+**Where to find the values:**
+- `<kb_id>` — the UUID of the target knowledge base. Obtain it from the wiki URL
+  (e.g. `https://yourwiki.example.com/wikis/<kb_id>/...`).
+- `<API_BASE>` — the base URL of this wiki instance's API (e.g. `https://yourwiki.example.com`).
+- `<your-api-key>` — an API key (prefix `sv_`) created on the API keys page of the wiki.
+
+> **CLI only:** Uploading raster images via this endpoint is only available to CLI clients that
+> have shell access. If you are a Desktop client (MCP-only, no shell), use the base64 fallback
+> below.
+
+### Raster images — Desktop client (MCP-only, no shell) — base64 fallback
+
+Embed the image inline as a data URI in the markdown:
+
+```
+![Description](data:image/png;base64,<base64-encoded-bytes>)
+```
+
+This works from any client but consumes tokens proportional to the image size.
+Prefer the curl upload above whenever shell access is available.
 
 ## Available Knowledge Bases
 
