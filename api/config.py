@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     QUOTA_MAX_PAGES: int = 500  # per-user page limit (free tier)
     QUOTA_MAX_PAGES_PER_DOC: int = 300  # max pages per single document
     QUOTA_MAX_STORAGE_BYTES: int = 1_073_741_824  # 1 GB per user
+    MAX_UPLOAD_BYTES: int = 104_857_600  # 100 MB — límite por subida TUS
 
     CONVERTER_URL: str = ""
     CONVERTER_SECRET: str = ""

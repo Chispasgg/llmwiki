@@ -1,6 +1,6 @@
 """API key token verifier for MCP server mode.
 
-Clients send: Authorization: Bearer wk_<key>
+Clients send: Authorization: Bearer sv_<key>
 This verifier hashes the key and looks it up in the api_keys table.
 """
 import asyncio

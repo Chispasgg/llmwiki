@@ -89,7 +89,7 @@ class SqliteVaultFS(VaultFS):
     async def list_knowledge_bases(self) -> list[dict]:
         db = self._db_or_raise()
         cursor = await db.execute(
-            "SELECT w.name, w.name as slug, "
+            "SELECT w.id, w.name, w.name as slug, "
             "(SELECT count(*) FROM documents WHERE source_kind != 'wiki' AND status != 'failed') as source_count, "
             "(SELECT count(*) FROM documents WHERE source_kind = 'wiki' AND status != 'failed') as wiki_count "
             "FROM workspace w",
