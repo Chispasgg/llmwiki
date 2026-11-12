@@ -20,7 +20,7 @@ def _append_file(path: Path, data: bytes):
         f.write(data)
 
 TUS_VERSION = "1.0.0"
-MAX_SIZE = 104_857_600  # 100 MB
+MAX_SIZE = settings.MAX_UPLOAD_BYTES
 UPLOAD_DIR = Path("/tmp/supavault_tus_uploads")
 STALE_SECONDS = 3600
 
