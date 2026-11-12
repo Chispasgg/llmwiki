@@ -124,6 +124,7 @@ else:
     from routes.graph import router as graph_router
     from routes.ws import router as ws_router
     from infra.tus import router as tus_router
+    from routes.images import router as images_router
     from routes.hosted_files import router as hosted_files_router
     from routes.workspaces import router as workspaces_router
     from routes.favorites import router as favorites_router
@@ -144,6 +145,7 @@ else:
     app.include_router(export_admin_router)
     app.include_router(latex_templates_router)
     app.include_router(tus_router)
+    app.include_router(images_router)
     app.include_router(graph_router)
     app.include_router(ws_router)
     app.include_router(workspaces_router)
