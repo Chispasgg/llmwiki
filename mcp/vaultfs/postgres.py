@@ -165,7 +165,7 @@ class PostgresVaultFS(VaultFS):
     async def list_knowledge_bases(self) -> list[dict]:
         return await scoped_query(
             self.user_id,
-            "SELECT DISTINCT kb.name, kb.slug, kb.created_at "
+            "SELECT DISTINCT kb.id::text AS id, kb.name, kb.slug, kb.created_at "
             "FROM knowledge_bases kb "
             "LEFT JOIN kb_shares ks ON ks.kb_id = kb.id "
             "WHERE kb.user_id = $1 OR ks.shared_with = $1::uuid "

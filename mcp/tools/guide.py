@@ -245,12 +245,15 @@ full create call. This approach works from any client and adds zero base64 overh
 
 ### Raster images (PNG / JPG / WEBP / GIF) — CLI client (upload via HTTP)
 
+**Hosted mode only.** This upload endpoint exists on hosted wiki instances only; it is not
+available in local mode.
+
 If you are a **CLI client** with shell access, upload the file by path — bytes go disk→network,
 no base64 in your context:
 
 ```
 curl -sS -X POST "<API_BASE>/v1/knowledge-bases/<kb_id>/images" \\
-  -H "Authorization: Bearer sv_<your-api-key>" \\
+  -H "Authorization: Bearer <your-api-key>" \\
   -F "file=@/path/to/screenshot.png"
 ```
 
@@ -264,25 +267,28 @@ Then reference the image in a wiki page with `![Description](screenshot.png)` us
 `filename` from the response.
 
 **Where to find the values:**
-- `<kb_id>` — the UUID of the target knowledge base. Obtain it from the wiki URL
-  (e.g. `https://yourwiki.example.com/wikis/<kb_id>/...`).
+- `<kb_id>` — the UUID of the target knowledge base. Use the id shown next to each knowledge
+  base in this guide's list (call `guide` to see it).
 - `<API_BASE>` — the base URL of this wiki instance's API (e.g. `https://yourwiki.example.com`).
-- `<your-api-key>` — an API key (prefix `sv_`) created on the API keys page of the wiki.
+- `<your-api-key>` — an API key created on the API keys page of the wiki. The key already starts with `sv_` — use it as-is in the header (do not add a second `sv_` prefix).
 
 > **CLI only:** Uploading raster images via this endpoint is only available to CLI clients that
-> have shell access. If you are a Desktop client (MCP-only, no shell), use the base64 fallback
-> below.
+> have shell access. If you are a Desktop client (MCP-only, no shell), see below.
 
-### Raster images — Desktop client (MCP-only, no shell) — base64 fallback
+### Raster images — Desktop client (MCP-only, no shell)
 
-Embed the image inline as a data URI in the markdown:
+**Raster images embedded as `data:` URIs are not rendered** in the wiki's published view —
+the renderer blocks `data:` URLs for security reasons. There is no inline base64 fallback
+for raster images in the wiki.
 
+Your options without shell access:
+- **Use SVG** for diagrams and visuals — SVG assets render as real file links (see section above).
+- **Request shell access** to run the curl upload.
+
+For reference — this syntax exists but will not render as an image in the wiki's reader:
 ```
 ![Description](data:image/png;base64,<base64-encoded-bytes>)
 ```
-
-This works from any client but consumes tokens proportional to the image size.
-Prefer the curl upload above whenever shell access is available.
 
 ## Available Knowledge Bases
 
@@ -308,5 +314,5 @@ def register(mcp: FastMCP, get_user_id, fs_factory) -> None:
 
         lines = []
         for kb in kbs:
-            lines.append(f"- **{kb['name']}** (`{kb['slug']}`)")
+            lines.append(f"- **{kb['name']}** (`{kb['slug']}`) — id: `{kb['id']}`")
         return GUIDE_TEXT + "\n".join(lines)
