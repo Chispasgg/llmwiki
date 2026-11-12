@@ -4,6 +4,7 @@ from typing import Annotated, AsyncGenerator
 from fastapi import Depends, HTTPException, Request
 
 from config import settings
+from infra.auth.api_key import verify_api_key
 from scoped_db import ScopedDB
 from services.base import DocumentService
 from services.export import ExportService
@@ -127,3 +128,26 @@ async def get_workspace_service(request: Request):
     pool = getattr(request.app.state, "pool", None)
     is_sa = await _is_superadmin(pool, user_id)
     return request.app.state.factory.workspace_service(user_id, is_superadmin=is_sa)
+
+
+async def get_user_id_flexible(request: Request) -> str:
+    """Return user_id from cookie session OR Bearer API key.
+
+    Tries the standard cookie path first (get_user_id).  If that raises
+    HTTPException, falls back to the Authorization: Bearer sv_<key> header.
+    Used only by the new image-upload endpoint; existing endpoints are
+    unaffected.
+    """
+    try:
+        return await get_user_id(request)
+    except HTTPException:
+        pass
+
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header[len("Bearer ") :]
+        uid = await verify_api_key(request.app.state.pool, token)
+        if uid:
+            return uid
+
+    raise HTTPException(status_code=401, detail="Credenciales ausentes o inválidas")
