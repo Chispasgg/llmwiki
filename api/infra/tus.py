@@ -11,6 +11,11 @@ from fastapi import APIRouter, Request, HTTPException, Response
 
 from config import settings
 from deps import get_user_id
+from services.upload_ingest import (
+    ALLOWED_EXTENSIONS,
+    CONTENT_TYPES,
+    ingest_uploaded_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,32 +24,11 @@ def _append_file(path: Path, data: bytes):
     with open(path, "ab") as f:
         f.write(data)
 
+
 TUS_VERSION = "1.0.0"
 MAX_SIZE = settings.MAX_UPLOAD_BYTES
 UPLOAD_DIR = Path("/tmp/supavault_tus_uploads")
 STALE_SECONDS = 3600
-
-ALLOWED_EXTENSIONS = {
-    ".pdf": "pdf",
-    ".pptx": "pptx", ".ppt": "ppt",
-    ".docx": "docx", ".doc": "doc",
-    ".png": "png", ".jpg": "jpg", ".jpeg": "jpeg",
-    ".webp": "webp", ".gif": "gif",
-    ".xlsx": "xlsx", ".xls": "xls", ".csv": "csv",
-    ".html": "html", ".htm": "html",
-}
-CONTENT_TYPES = {
-    "pdf": "application/pdf",
-    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    "ppt": "application/vnd.ms-powerpoint",
-    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "doc": "application/msword",
-    "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
-    "webp": "image/webp", "gif": "image/gif",
-    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "xls": "application/vnd.ms-excel", "csv": "text/csv",
-    "html": "text/html", "htm": "text/html",
-}
 
 router = APIRouter(prefix="/v1/uploads", tags=["tus"])
 
@@ -67,7 +51,10 @@ _uploads: dict[str, TusUpload] = {}
 def _check_tus_version(request: Request):
     version = request.headers.get("Tus-Resumable")
     if version != TUS_VERSION:
-        raise HTTPException(status_code=412, detail=f"Unsupported Tus-Resumable version (expected {TUS_VERSION})")
+        raise HTTPException(
+            status_code=412,
+            detail=f"Unsupported Tus-Resumable version (expected {TUS_VERSION})",
+        )
 
 
 def _parse_metadata(header: str) -> dict[str, str]:
@@ -82,7 +69,10 @@ def _parse_metadata(header: str) -> dict[str, str]:
             try:
                 value = b64decode(parts[1]).decode("utf-8")
             except Exception:
-                raise HTTPException(status_code=400, detail=f"Invalid base64 in Upload-Metadata key '{key}'")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid base64 in Upload-Metadata key '{key}'",
+                )
         else:
             value = ""
         result[key] = value
@@ -104,42 +94,18 @@ def _get_upload(upload_id: str, user_id: str) -> TusUpload:
 
 
 async def _finalize(upload: TusUpload, app_state) -> str:
-    document_id = str(uuid4())
-    user_id = upload.user_id
-    ext = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else "pdf"
-    file_type = ALLOWED_EXTENSIONS.get(f".{ext}", ext)
-    storage_key = f"{document_id}/{upload.filename}"
-    title = upload.filename.rsplit(".", 1)[0] if "." in upload.filename else upload.filename
-    file_size = upload.upload_length
-
-    storage = getattr(app_state, "storage_service", None) or getattr(app_state, "s3_service", None)
-    if not storage:
-        raise ValueError("File storage not configured")
-    await storage.upload_file(storage_key, str(upload.temp_path), CONTENT_TYPES.get(ext, "application/octet-stream"), user_id=user_id)
-
-    pool = app_state.pool
-    try:
-        await pool.execute(
-            "INSERT INTO documents (id, knowledge_base_id, user_id, filename, path, title, "
-            "file_type, file_size, status) "
-            "VALUES ($1::uuid, $2::uuid, $3, $4, '/', $5, $6, $7, 'pending')",
-            document_id,
-            upload.knowledge_base_id,
-            user_id,
-            upload.filename,
-            title,
-            file_type,
-            file_size,
-        )
-    finally:
-        upload.temp_path.unlink(missing_ok=True)
-        _uploads.pop(upload.upload_id, None)
-
-    ocr_service = app_state.ocr_service
-    if ocr_service:
-        asyncio.create_task(ocr_service.process_document(document_id, user_id))
-
-    logger.info("TUS finalized: doc=%s file=%s", document_id[:8], upload.filename)
+    # Pop only on success: if ingest raises (e.g. storage failure), the upload
+    # stays in _uploads so cleanup_stale_uploads can delete its temp file later.
+    # Popping on failure would orphan the temp file on disk permanently.
+    document_id = await ingest_uploaded_file(
+        app_state,
+        kb_id=upload.knowledge_base_id,
+        user_id=upload.user_id,
+        filename=upload.filename,
+        temp_path=upload.temp_path,
+        file_size=upload.upload_length,
+    )
+    _uploads.pop(upload.upload_id, None)
     return document_id
 
 
@@ -147,7 +113,9 @@ async def cleanup_stale_uploads():
     while True:
         await asyncio.sleep(60)
         now = time.time()
-        stale = [uid for uid, u in _uploads.items() if now - u.last_activity > STALE_SECONDS]
+        stale = [
+            uid for uid, u in _uploads.items() if now - u.last_activity > STALE_SECONDS
+        ]
         for uid in stale:
             upload = _uploads.pop(uid, None)
             if upload:
@@ -163,11 +131,13 @@ async def _get_user_id(request: Request) -> str:
 async def tus_options():
     return Response(
         status_code=204,
-        headers=_tus_headers({
-            "Tus-Version": TUS_VERSION,
-            "Tus-Max-Size": str(MAX_SIZE),
-            "Tus-Extension": "creation",
-        }),
+        headers=_tus_headers(
+            {
+                "Tus-Version": TUS_VERSION,
+                "Tus-Max-Size": str(MAX_SIZE),
+                "Tus-Extension": "creation",
+            }
+        ),
     )
 
 
@@ -184,14 +154,18 @@ async def tus_create(request: Request):
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid Upload-Length")
     if upload_length > MAX_SIZE:
-        raise HTTPException(status_code=413, detail=f"Upload-Length exceeds maximum of {MAX_SIZE} bytes")
+        raise HTTPException(
+            status_code=413, detail=f"Upload-Length exceeds maximum of {MAX_SIZE} bytes"
+        )
 
     meta_header = request.headers.get("Upload-Metadata", "")
     metadata = _parse_metadata(meta_header)
 
     filename = metadata.get("filename", "").strip()
     if not filename:
-        raise HTTPException(status_code=400, detail="Missing filename in Upload-Metadata")
+        raise HTTPException(
+            status_code=400, detail="Missing filename in Upload-Metadata"
+        )
 
     ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext not in ALLOWED_EXTENSIONS:
@@ -202,12 +176,15 @@ async def tus_create(request: Request):
 
     kb_id = metadata.get("knowledge_base_id", "").strip()
     if not kb_id:
-        raise HTTPException(status_code=400, detail="Missing knowledge_base_id in Upload-Metadata")
+        raise HTTPException(
+            status_code=400, detail="Missing knowledge_base_id in Upload-Metadata"
+        )
 
     pool = request.app.state.pool
 
     try:
         import uuid as _uuid
+
         _uuid.UUID(kb_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid knowledge_base_id format")
@@ -217,14 +194,18 @@ async def tus_create(request: Request):
         kb_id,
     )
     if kb_owner != user_id:
-        raise HTTPException(status_code=403, detail="Knowledge base not found or not owned by you")
+        raise HTTPException(
+            status_code=403, detail="Knowledge base not found or not owned by you"
+        )
     storage_limit = settings.QUOTA_MAX_STORAGE_BYTES
 
     current_bytes = await pool.fetchval(
         "SELECT COALESCE(SUM(file_size), 0) FROM documents WHERE user_id = $1",
         user_id,
     )
-    in_progress_bytes = sum(u.upload_length for u in _uploads.values() if u.user_id == user_id)
+    in_progress_bytes = sum(
+        u.upload_length for u in _uploads.values() if u.user_id == user_id
+    )
     if current_bytes + in_progress_bytes + upload_length > storage_limit:
         used_mb = current_bytes / (1024 * 1024)
         max_mb = storage_limit / (1024 * 1024)
@@ -259,11 +240,13 @@ async def tus_head(upload_id: str, request: Request):
     upload = _get_upload(upload_id, user_id)
     return Response(
         status_code=200,
-        headers=_tus_headers({
-            "Upload-Offset": str(upload.upload_offset),
-            "Upload-Length": str(upload.upload_length),
-            "Cache-Control": "no-store",
-        }),
+        headers=_tus_headers(
+            {
+                "Upload-Offset": str(upload.upload_offset),
+                "Upload-Length": str(upload.upload_length),
+                "Cache-Control": "no-store",
+            }
+        ),
     )
 
 
@@ -274,7 +257,10 @@ async def tus_patch(upload_id: str, request: Request):
 
     content_type = request.headers.get("Content-Type", "")
     if content_type != "application/offset+octet-stream":
-        raise HTTPException(status_code=415, detail="Content-Type must be application/offset+octet-stream")
+        raise HTTPException(
+            status_code=415,
+            detail="Content-Type must be application/offset+octet-stream",
+        )
 
     upload = _get_upload(upload_id, user_id)
 
