@@ -6,6 +6,7 @@ ingestion to ingest_uploaded_file (storage + documents row + OCR).
 """
 
 import os
+import re
 import tempfile
 from pathlib import Path
 from uuid import UUID
@@ -50,8 +51,10 @@ async def upload_image(
     file: UploadFile = File(...),
     user_id: str = Depends(get_user_id_flexible),
 ) -> ImageUploadResponse:
-    # 1. Validate extension and sanitize path traversal via os.path.basename.
+    # 1. Sanitize filename: strip path traversal, then replace any char outside
+    # [A-Za-z0-9._-] with _ so the name is safe for storage URL interpolation.
     filename = os.path.basename(file.filename or "")
+    filename = re.sub(r"[^A-Za-z0-9._-]", "_", filename)
     _, ext = os.path.splitext(filename)
     ext = ext.lower()
     if ext not in _IMAGE_EXTENSIONS:
@@ -94,6 +97,10 @@ async def upload_image(
                         ),
                     )
                 tmp_f.write(chunk)
+
+        # Empty file check — must follow streaming so the temp is in scope for cleanup.
+        if total_size == 0:
+            raise HTTPException(status_code=400, detail="Fichero vacío")
 
         # 4. Quota check after streaming (file size is now known).
         # TUS uploads in-flight are intentionally ignored — by design.

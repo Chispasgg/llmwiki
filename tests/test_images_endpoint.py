@@ -8,8 +8,8 @@ The endpoint wires get_user_id_flexible as a Depends, but here user_id is
 passed directly so the dependency is bypassed.
 """
 
+import os
 from io import BytesIO
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
@@ -54,6 +54,13 @@ def _make_request(pool):
 def _make_upload_file(filename: str, data: bytes) -> UploadFile:
     """Build an UploadFile backed by an in-memory BytesIO buffer."""
     return UploadFile(file=BytesIO(data), filename=filename)
+
+
+def _controlled_fd(tmp_path, name: str):
+    """Create a real file in tmp_path and return (fd, path) for mkstemp patching."""
+    p = tmp_path / name
+    fd = os.open(str(p), os.O_RDWR | os.O_CREAT, 0o600)
+    return fd, p
 
 
 # ---------------------------------------------------------------------------
@@ -158,23 +165,83 @@ async def test_upload_image_no_extension_raises_400():
 
 
 # ---------------------------------------------------------------------------
-# Size limit (413)
+# Empty file (400)
 # ---------------------------------------------------------------------------
 
 
-async def test_upload_image_too_large_raises_413(monkeypatch):
-    """File exceeds MAX_UPLOAD_BYTES → HTTPException(413), ingest never called."""
+async def test_upload_image_empty_file_rejected():
+    """Zero-byte file → HTTPException(400, 'Fichero vacío'), ingest never called."""
+    pool = _make_pool(owner=USER_ID, quota_used=0)
+    request = _make_request(pool)
+    upload_file = _make_upload_file("img.png", b"")
+
+    mock_ingest = AsyncMock()
+    with patch("routes.images.ingest_uploaded_file", new=mock_ingest):
+        from routes.images import upload_image
+
+        with pytest.raises(HTTPException) as exc_info:
+            await upload_image(
+                kb_id=UUID(KB_ID),
+                request=request,
+                file=upload_file,
+                user_id=USER_ID,
+            )
+
+    assert exc_info.value.status_code == 400
+    assert "vacío" in exc_info.value.detail
+    mock_ingest.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Filename sanitization (charset [A-Za-z0-9._-])
+# ---------------------------------------------------------------------------
+
+
+async def test_upload_image_unsafe_chars_in_filename_sanitized():
+    """Chars outside [A-Za-z0-9._-] (spaces, #) are replaced with _ in response and ingest call."""
+    pool = _make_pool(owner=USER_ID, quota_used=0)
+    request = _make_request(pool)
+    # space and # must both become _
+    upload_file = _make_upload_file("my photo#2.png", PNG_BYTES)
+
+    mock_ingest = AsyncMock(return_value=DOC_ID)
+    with patch("routes.images.ingest_uploaded_file", new=mock_ingest):
+        from routes.images import upload_image
+
+        result = await upload_image(
+            kb_id=UUID(KB_ID),
+            request=request,
+            file=upload_file,
+            user_id=USER_ID,
+        )
+
+    assert result.filename == "my_photo_2.png"
+    kw = mock_ingest.call_args.kwargs
+    assert kw["filename"] == "my_photo_2.png"
+
+
+# ---------------------------------------------------------------------------
+# Size limit (413) — with temp cleanup assertion
+# ---------------------------------------------------------------------------
+
+
+async def test_upload_image_too_large_raises_413(tmp_path, monkeypatch):
+    """File exceeds MAX_UPLOAD_BYTES → HTTPException(413), ingest not called, temp cleaned up."""
     from config import settings
 
     monkeypatch.setattr(settings, "MAX_UPLOAD_BYTES", 10)
 
+    fd, controlled_temp = _controlled_fd(tmp_path, "llmwiki_img_too_large")
     pool = _make_pool(owner=USER_ID, quota_used=0)
     request = _make_request(pool)
     # 50 bytes > 10-byte limit
     upload_file = _make_upload_file("big.png", b"x" * 50)
 
     mock_ingest = AsyncMock()
-    with patch("routes.images.ingest_uploaded_file", new=mock_ingest):
+    with (
+        patch("tempfile.mkstemp", return_value=(fd, str(controlled_temp))),
+        patch("routes.images.ingest_uploaded_file", new=mock_ingest),
+    ):
         from routes.images import upload_image
 
         with pytest.raises(HTTPException) as exc_info:
@@ -187,26 +254,31 @@ async def test_upload_image_too_large_raises_413(monkeypatch):
 
     assert exc_info.value.status_code == 413
     mock_ingest.assert_not_called()
+    assert not controlled_temp.exists()
 
 
 # ---------------------------------------------------------------------------
-# Quota (413)
+# Quota (413) — with temp cleanup assertion
 # ---------------------------------------------------------------------------
 
 
-async def test_upload_image_quota_exceeded_raises_413(monkeypatch):
-    """current_storage + file_size > QUOTA_MAX_STORAGE_BYTES → HTTPException(413)."""
+async def test_upload_image_quota_exceeded_raises_413(tmp_path, monkeypatch):
+    """current_storage + file_size > QUOTA_MAX_STORAGE_BYTES → HTTPException(413), temp cleaned up."""
     from config import settings
 
     # quota 100 B; already used 90 B; file 50 B → 140 > 100
     monkeypatch.setattr(settings, "QUOTA_MAX_STORAGE_BYTES", 100)
 
+    fd, controlled_temp = _controlled_fd(tmp_path, "llmwiki_img_quota_exc")
     pool = _make_pool(owner=USER_ID, quota_used=90)
     request = _make_request(pool)
     upload_file = _make_upload_file("img.png", b"x" * 50)
 
     mock_ingest = AsyncMock()
-    with patch("routes.images.ingest_uploaded_file", new=mock_ingest):
+    with (
+        patch("tempfile.mkstemp", return_value=(fd, str(controlled_temp))),
+        patch("routes.images.ingest_uploaded_file", new=mock_ingest),
+    ):
         from routes.images import upload_image
 
         with pytest.raises(HTTPException) as exc_info:
@@ -219,6 +291,7 @@ async def test_upload_image_quota_exceeded_raises_413(monkeypatch):
 
     assert exc_info.value.status_code == 413
     mock_ingest.assert_not_called()
+    assert not controlled_temp.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -289,11 +362,7 @@ async def test_upload_image_ingest_failure_cleans_temp(tmp_path):
     Uses a controlled temp path so we can assert the file no longer exists.
     mkstemp is patched to redirect to a tmp_path location we can observe.
     """
-    import os
-
-    controlled_temp = tmp_path / "llmwiki_img_ingest_err"
-    # Pre-create the file so the fd returned by the patched mkstemp is valid.
-    fd = os.open(str(controlled_temp), os.O_RDWR | os.O_CREAT, 0o600)
+    fd, controlled_temp = _controlled_fd(tmp_path, "llmwiki_img_ingest_err")
 
     pool = _make_pool(owner=USER_ID, quota_used=0)
     request = _make_request(pool)
@@ -320,10 +389,7 @@ async def test_upload_image_ingest_failure_cleans_temp(tmp_path):
 
 async def test_upload_image_quota_db_error_cleans_temp(tmp_path):
     """Non-HTTP error during quota fetchval → temp file cleaned up, exception propagated."""
-    import os
-
-    controlled_temp = tmp_path / "llmwiki_img_quota_err"
-    fd = os.open(str(controlled_temp), os.O_RDWR | os.O_CREAT, 0o600)
+    fd, controlled_temp = _controlled_fd(tmp_path, "llmwiki_img_quota_err")
 
     pool = AsyncMock()
     # First fetchval: ownership succeeds; second fetchval: quota raises a DB error.
