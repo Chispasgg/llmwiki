@@ -133,15 +133,17 @@ async def get_workspace_service(request: Request):
 async def get_user_id_flexible(request: Request) -> str:
     """Return user_id from cookie session OR Bearer API key.
 
-    Tries the standard cookie path first (get_user_id).  If that raises
-    HTTPException, falls back to the Authorization: Bearer sv_<key> header.
-    Used only by the new image-upload endpoint; existing endpoints are
-    unaffected.
+    Tries the standard cookie path first (get_user_id).  Falls back to
+    Authorization: Bearer sv_<key> only on 401/403 (unauthenticated/forbidden).
+    Any other status (e.g. 503 auth provider not configured) is propagated as-is
+    to avoid masking infrastructure errors as spurious auth failures.
+    Used only by the new image-upload endpoint; existing endpoints are unaffected.
     """
     try:
         return await get_user_id(request)
-    except HTTPException:
-        pass
+    except HTTPException as exc:
+        if exc.status_code not in (401, 403):
+            raise
 
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):

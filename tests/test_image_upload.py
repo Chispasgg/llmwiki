@@ -132,8 +132,32 @@ async def test_verify_api_key_inactive_returns_none():
 
 
 # ---------------------------------------------------------------------------
-# get_user_id_flexible — Bearer path
+# get_user_id_flexible — cookie path and Bearer path
 # ---------------------------------------------------------------------------
+
+
+async def test_get_user_id_flexible_cookie_path_returns_user_id():
+    """Cookie auth succeeds → user_id returned without touching the Bearer header.
+
+    Verifies that when get_user_id succeeds, verify_api_key is never called
+    (pool.fetchrow is not invoked).
+    """
+    pool = AsyncMock()  # fetchrow must NOT be called on the cookie-success path
+    request = MagicMock()
+    request.app.state.pool = pool
+
+    auth_provider = AsyncMock()
+    auth_provider.get_current_user = AsyncMock(return_value=USER_ID)
+    request.app.state.auth_provider = auth_provider
+    # No Authorization header needed — cookie path short-circuits before reading it
+    request.headers.get = MagicMock(return_value=None)
+
+    from deps import get_user_id_flexible
+
+    result = await get_user_id_flexible(request)
+
+    assert result == USER_ID
+    pool.fetchrow.assert_not_called()
 
 
 async def test_get_user_id_flexible_bearer_returns_user_id():
