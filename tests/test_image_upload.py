@@ -237,7 +237,7 @@ async def test_ingest_inserts_document_with_correct_fields(tmp_path):
     sql_call = state.pool.execute.call_args[0]
     sql = sql_call[0]
     # path and status are SQL literals in the INSERT
-    assert "'/'," in sql or "path" in sql
+    assert "'/'," in sql
     assert "'pending'" in sql
     # file_type is the 6th positional param: (sql, doc_id, kb_id, user_id, filename, title, file_type, file_size)
     assert sql_call[6] == "png"
@@ -428,6 +428,10 @@ async def test_finalize_keeps_upload_on_ingest_error(tmp_path):
 
     # Upload must still be present — cleanup_stale_uploads will remove it and its temp.
     assert upload_id in tus_mod._uploads
+    # Temp file must still exist on disk: storage failed before the INSERT finally-unlink,
+    # so the file was never deleted.  cleanup_stale_uploads will delete it via the entry
+    # still in _uploads.  If we had popped _uploads on error, this file would be lost.
+    assert f.exists()
 
     # Cleanup: remove the entry so it doesn't leak into other tests.
     tus_mod._uploads.pop(upload_id, None)
